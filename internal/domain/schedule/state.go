@@ -1,4 +1,4 @@
-package workflow
+package schedule
 
 import (
 	"time"
@@ -6,18 +6,21 @@ import (
 	"github.com/google/uuid"
 )
 
-type ScheduleStatus string
+// Tick is the scheduler granularity: runs start on whole minutes (hh:mm:00).
+const Tick = time.Minute
+
+type Status string
 
 const (
-	StatusIdle    ScheduleStatus = "idle"
-	StatusRunning ScheduleStatus = "running"
+	StatusIdle    Status = "idle"
+	StatusRunning Status = "running"
 )
 
 // State is the scheduling state of a workflow. The lease guarantees that a
 // workflow never runs twice in parallel.
 type State struct {
 	WorkflowID           uuid.UUID
-	Status               ScheduleStatus
+	Status               Status
 	NextRunAt            time.Time
 	LeaseRunID           *uuid.UUID
 	LeaseStartedAt       *time.Time
@@ -29,7 +32,7 @@ type State struct {
 	LastStatus           string
 }
 
-func NewState(workflowID uuid.UUID, now time.Time, interval time.Duration) State {
+func New(workflowID uuid.UUID, now time.Time, interval time.Duration) State {
 	return State{
 		WorkflowID: workflowID,
 		Status:     StatusIdle,
@@ -40,10 +43,15 @@ func NewState(workflowID uuid.UUID, now time.Time, interval time.Duration) State
 // NextRun returns the first boundary strictly after `after` aligned on the
 // interval in UTC: a 5 minute workflow runs at hh:00, hh:05, hh:10...
 func NextRun(after time.Time, interval time.Duration) time.Time {
-	if interval < MinInterval {
-		interval = MinInterval
+	if interval < Tick {
+		interval = Tick
 	}
 	return after.UTC().Truncate(interval).Add(interval)
+}
+
+// Reschedule moves the next run to the first interval boundary after now.
+func (s *State) Reschedule(now time.Time, interval time.Duration) {
+	s.NextRunAt = NextRun(now, interval)
 }
 
 // Running reports whether a lease is held (valid or expired).

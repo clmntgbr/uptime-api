@@ -12,7 +12,9 @@ import (
 	"go-api/internal/contract"
 	"go-api/internal/domain/certificate"
 	"go-api/internal/domain/paginate"
+	domainrule "go-api/internal/domain/rule"
 	domainrun "go-api/internal/domain/run"
+	domainschedule "go-api/internal/domain/schedule"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/infrastructure/crypto"
@@ -78,7 +80,7 @@ func TestWorkflowLifecycle(t *testing.T) {
 		t.Fatalf("decrypt failed: %v %v", listed, err)
 	}
 
-	rule, _ := domainworkflow.ParseRule("response time exceeds 800 ms")
+	rule, _ := domainrule.Parse("response time exceeds 800 ms")
 	def := domainworkflow.Definition{
 		Name: "Checkout", Interval: 5 * time.Minute, Enabled: true,
 		Statics: []domainworkflow.StaticVariable{{Name: "base_url", Value: "https://api.example.com"}},
@@ -86,7 +88,7 @@ func TestWorkflowLifecycle(t *testing.T) {
 			{
 				Name: "login", Method: "POST", URL: "{{base_url}}/login", Body: `{"p":"{{password}}"}`,
 				Extractions: []domainworkflow.Extraction{{Name: "token", Source: domainworkflow.ExtractJSON, Expression: "$.token"}},
-				Rules:       []domainworkflow.Rule{rule},
+				Rules:       []domainrule.Rule{rule},
 			},
 			{Name: "orders", URL: "{{base_url}}/orders", Headers: map[string]string{"Authorization": "Bearer {{token}}"}},
 		},
@@ -97,7 +99,11 @@ func TestWorkflowLifecycle(t *testing.T) {
 	}
 	past := time.Now().UTC().Add(-time.Hour)
 	workflows := write.NewWorkflowWriteRepository(db)
-	if err := workflows.Save(ctx, w, domainworkflow.NewState(w.ID, past, w.Interval)); err != nil {
+	states := write.NewStateRepository(db)
+	if err := workflows.Save(ctx, w); err != nil {
+		t.Fatal(err)
+	}
+	if err := states.Save(ctx, domainschedule.New(w.ID, past, w.Interval)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -111,11 +117,10 @@ func TestWorkflowLifecycle(t *testing.T) {
 	if _, err := loaded.Update(def, []string{"password"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := workflows.Update(ctx, loaded, nil); err != nil {
+	if err := workflows.Update(ctx, loaded); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 
-	states := write.NewStateRepository(db)
 	runID := uuid.New()
 	err = states.WithTransaction(ctx, func(txCtx context.Context) error {
 		due, err := states.LockDue(txCtx, time.Now().UTC(), 1000)

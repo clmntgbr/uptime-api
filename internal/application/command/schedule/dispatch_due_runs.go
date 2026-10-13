@@ -11,6 +11,7 @@ import (
 	"go-api/internal/contract"
 	"go-api/internal/domain/port"
 	domainrun "go-api/internal/domain/run"
+	domainschedule "go-api/internal/domain/schedule"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
 
@@ -38,7 +39,7 @@ type DispatchStats struct {
 }
 
 type DispatchDueRunsHandler struct {
-	states    domainworkflow.StateRepository
+	states    domainschedule.Repository
 	workflows domainworkflow.WriteRepository
 	globals   variable.GlobalRepository
 	runs      domainrun.WriteRepository
@@ -52,7 +53,7 @@ type DispatchDueRunsHandler struct {
 }
 
 func NewDispatchDueRunsHandler(
-	states domainworkflow.StateRepository,
+	states domainschedule.Repository,
 	workflows domainworkflow.WriteRepository,
 	globals variable.GlobalRepository,
 	runs domainrun.WriteRepository,
@@ -98,7 +99,7 @@ func (h *DispatchDueRunsHandler) Handle(ctx context.Context) (DispatchStats, err
 				stats.Lag = lag
 			}
 			scheduledAt := state.NextRunAt
-			state.NextRunAt = domainworkflow.NextRun(now, d.Interval)
+			state.NextRunAt = domainschedule.NextRun(now, d.Interval)
 
 			if state.LeaseActive(now) {
 				if err := h.record(txCtx, domainrun.NewSkipped(state.WorkflowID, d.UserID, now)); err != nil {
@@ -186,7 +187,7 @@ func (h *DispatchDueRunsHandler) record(ctx context.Context, r *domainrun.Run) e
 	return h.outbox.StoreEvents(ctx, r.PullEvents())
 }
 
-func (h *DispatchDueRunsHandler) recordTimeout(ctx context.Context, lease domainworkflow.ExpiredLease, workflowID, userID uuid.UUID) error {
+func (h *DispatchDueRunsHandler) recordTimeout(ctx context.Context, lease domainschedule.ExpiredLease, workflowID, userID uuid.UUID) error {
 	claimed, err := h.processed.MarkProcessed(ctx, lease.RunID.String(), RecordRunHandlerName)
 	if err != nil {
 		return err

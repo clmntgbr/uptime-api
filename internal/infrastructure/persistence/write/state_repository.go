@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	domainworkflow "go-api/internal/domain/workflow"
+	domainschedule "go-api/internal/domain/schedule"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -16,7 +16,7 @@ type stateRepository struct {
 	db *gorm.DB
 }
 
-func NewStateRepository(db *gorm.DB) domainworkflow.StateRepository {
+func NewStateRepository(db *gorm.DB) domainschedule.Repository {
 	return &stateRepository{db: db}
 }
 
@@ -44,7 +44,7 @@ ORDER BY s.next_run_at
 LIMIT @limit
 FOR UPDATE OF s SKIP LOCKED`
 
-func (r *stateRepository) LockDue(ctx context.Context, now time.Time, limit int) ([]domainworkflow.Due, error) {
+func (r *stateRepository) LockDue(ctx context.Context, now time.Time, limit int) ([]domainschedule.Due, error) {
 	var rows []dueRow
 	err := DBWithContext(ctx, r.db).
 		Raw(lockDueSQL, map[string]any{"now": now.UTC(), "limit": limit}).
@@ -52,9 +52,9 @@ func (r *stateRepository) LockDue(ctx context.Context, now time.Time, limit int)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]domainworkflow.Due, 0, len(rows))
+	out := make([]domainschedule.Due, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, domainworkflow.Due{
+		out = append(out, domainschedule.Due{
 			State:    stateDomainFromModel(row.WorkflowStateModel),
 			UserID:   row.UserID,
 			Interval: time.Duration(row.IntervalSeconds) * time.Second,
@@ -63,7 +63,7 @@ func (r *stateRepository) LockDue(ctx context.Context, now time.Time, limit int)
 	return out, nil
 }
 
-func (r *stateRepository) GetForUpdate(ctx context.Context, workflowID uuid.UUID) (*domainworkflow.State, error) {
+func (r *stateRepository) GetForUpdate(ctx context.Context, workflowID uuid.UUID) (*domainschedule.State, error) {
 	var model WorkflowStateModel
 	err := DBWithContext(ctx, r.db).
 		Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -78,11 +78,11 @@ func (r *stateRepository) GetForUpdate(ctx context.Context, workflowID uuid.UUID
 	return &state, nil
 }
 
-func (r *stateRepository) Save(ctx context.Context, state domainworkflow.State) error {
+func (r *stateRepository) Save(ctx context.Context, state domainschedule.State) error {
 	return DBWithContext(ctx, r.db).Save(stateModelFromDomain(state)).Error
 }
 
-func stateModelFromDomain(s domainworkflow.State) *WorkflowStateModel {
+func stateModelFromDomain(s domainschedule.State) *WorkflowStateModel {
 	return &WorkflowStateModel{
 		WorkflowID:           s.WorkflowID,
 		Status:               string(s.Status),
@@ -99,10 +99,10 @@ func stateModelFromDomain(s domainworkflow.State) *WorkflowStateModel {
 	}
 }
 
-func stateDomainFromModel(m WorkflowStateModel) domainworkflow.State {
-	return domainworkflow.State{
+func stateDomainFromModel(m WorkflowStateModel) domainschedule.State {
+	return domainschedule.State{
 		WorkflowID:           m.WorkflowID,
-		Status:               domainworkflow.ScheduleStatus(m.Status),
+		Status:               domainschedule.Status(m.Status),
 		NextRunAt:            m.NextRunAt,
 		LeaseRunID:           m.LeaseRunID,
 		LeaseStartedAt:       m.LeaseStartedAt,

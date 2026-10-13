@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	domainschedule "go-api/internal/domain/schedule"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
 
@@ -95,7 +96,7 @@ func (r *workflowQueryRepository) FindByID(ctx context.Context, userID, id uuid.
 		Calls:           make([]domainworkflow.CallView, 0, len(calls)),
 	}
 	if row.Status != nil {
-		view.Status = domainworkflow.ScheduleStatus(*row.Status)
+		view.Status = domainschedule.Status(*row.Status)
 	}
 	if row.LastStatus != nil {
 		view.LastStatus = *row.LastStatus

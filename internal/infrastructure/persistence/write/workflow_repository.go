@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	domainrule "go-api/internal/domain/rule"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/infrastructure/persistence/dbtype"
@@ -31,20 +32,16 @@ func (r *workflowWriteRepository) WithTransaction(ctx context.Context, fn func(c
 	})
 }
 
-func (r *workflowWriteRepository) Save(ctx context.Context, w *domainworkflow.Workflow, state domainworkflow.State) error {
+func (r *workflowWriteRepository) Save(ctx context.Context, w *domainworkflow.Workflow) error {
 	return r.WithTransaction(ctx, func(ctx context.Context) error {
-		db := DBWithContext(ctx, r.db)
-		if err := db.Create(workflowModelFromDomain(w)).Error; err != nil {
+		if err := DBWithContext(ctx, r.db).Create(workflowModelFromDomain(w)).Error; err != nil {
 			return err
 		}
-		if err := r.insertChildren(ctx, w); err != nil {
-			return err
-		}
-		return db.Create(stateModelFromDomain(state)).Error
+		return r.insertChildren(ctx, w)
 	})
 }
 
-func (r *workflowWriteRepository) Update(ctx context.Context, w *domainworkflow.Workflow, nextRunAt *time.Time) error {
+func (r *workflowWriteRepository) Update(ctx context.Context, w *domainworkflow.Workflow) error {
 	return r.WithTransaction(ctx, func(ctx context.Context) error {
 		db := DBWithContext(ctx, r.db)
 		model := workflowModelFromDomain(w)
@@ -64,16 +61,7 @@ func (r *workflowWriteRepository) Update(ctx context.Context, w *domainworkflow.
 		if err := db.Where("workflow_id = ? AND type = ?", w.ID, string(variable.TypeStatic)).Delete(&VariableModel{}).Error; err != nil {
 			return err
 		}
-		if err := r.insertChildren(ctx, w); err != nil {
-			return err
-		}
-		if nextRunAt == nil {
-			return nil
-		}
-		return db.Model(&WorkflowStateModel{}).Where("workflow_id = ?", w.ID).Updates(map[string]any{
-			"next_run_at": nextRunAt.UTC(),
-			"updated_at":  time.Now().UTC(),
-		}).Error
+		return r.insertChildren(ctx, w)
 	})
 }
 
@@ -178,17 +166,17 @@ func (r *workflowWriteRepository) hydrate(ctx context.Context, models []Workflow
 	for _, c := range calls {
 		callIDs = append(callIDs, c.ID)
 	}
-	rulesByCall := map[uuid.UUID][]domainworkflow.Rule{}
+	rulesByCall := map[uuid.UUID][]domainrule.Rule{}
 	if len(callIDs) > 0 {
 		var rules []RuleModel
 		if err := db.Where("call_id IN ?", callIDs).Order("call_id, position").Find(&rules).Error; err != nil {
 			return nil, err
 		}
 		for _, rule := range rules {
-			rulesByCall[rule.CallID] = append(rulesByCall[rule.CallID], domainworkflow.Rule{
+			rulesByCall[rule.CallID] = append(rulesByCall[rule.CallID], domainrule.Rule{
 				ID:       rule.ID,
-				Subject:  domainworkflow.Subject(rule.Subject),
-				Operator: domainworkflow.Operator(rule.Operator),
+				Subject:  domainrule.Subject(rule.Subject),
+				Operator: domainrule.Operator(rule.Operator),
 				Target:   derefString(rule.Target),
 				Value:    derefString(rule.Value),
 			})
@@ -289,7 +277,7 @@ func callModelFromDomain(workflowID uuid.UUID, c domainworkflow.Call, now time.T
 	}, nil
 }
 
-func callDomainFromModel(m CallModel, rules []domainworkflow.Rule) (domainworkflow.Call, error) {
+func callDomainFromModel(m CallModel, rules []domainrule.Rule) (domainworkflow.Call, error) {
 	headers := map[string]string{}
 	if len(m.Headers) > 0 {
 		if err := json.Unmarshal(m.Headers, &headers); err != nil {

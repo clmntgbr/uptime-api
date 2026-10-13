@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"go-api/internal/contract"
-	domainworkflow "go-api/internal/domain/workflow"
+	domainrule "go-api/internal/domain/rule"
 )
 
 type observation struct {
@@ -26,7 +26,7 @@ type observation struct {
 // evaluate checks one rule. Comparison operators (is, contains, exists...) pass
 // when the sentence is true; threshold operators (exceeds, below, certificate
 // alerts) describe the bad state and fail when the sentence is true.
-func evaluate(rule domainworkflow.Rule, obs observation) contract.RuleResult {
+func evaluate(rule domainrule.Rule, obs observation) contract.RuleResult {
 	res := contract.RuleResult{
 		Subject:  string(rule.Subject),
 		Operator: string(rule.Operator),
@@ -38,7 +38,7 @@ func evaluate(rule domainworkflow.Rule, obs observation) contract.RuleResult {
 	}
 
 	switch rule.Subject {
-	case domainworkflow.SubjectStatus:
+	case domainrule.SubjectStatus:
 		observed := strconv.Itoa(obs.status)
 		codes := strings.Split(rule.Value, ",")
 		matched := false
@@ -49,60 +49,60 @@ func evaluate(rule domainworkflow.Rule, obs observation) contract.RuleResult {
 			}
 		}
 		switch rule.Operator {
-		case domainworkflow.OpIsNot:
+		case domainrule.OpIsNot:
 			return pass(observed, "not "+rule.Value, !matched)
-		case domainworkflow.OpIn:
+		case domainrule.OpIn:
 			return pass(observed, "one of "+strings.ReplaceAll(rule.Value, ",", ", "), matched)
 		default:
 			return pass(observed, rule.Value, matched)
 		}
 
-	case domainworkflow.SubjectResponseTime:
+	case domainrule.SubjectResponseTime:
 		limit, err := strconv.ParseInt(rule.Value, 10, 64)
 		if err != nil {
-			if limit, err = domainworkflow.ParseDurationMS(rule.Value); err != nil {
+			if limit, err = domainrule.ParseDurationMS(rule.Value); err != nil {
 				return pass(formatMS(obs.totalMS), rule.Value, false)
 			}
 		}
 		return pass(formatMS(obs.totalMS), "at most "+formatMS(limit), obs.totalMS <= limit)
 
-	case domainworkflow.SubjectSize:
+	case domainrule.SubjectSize:
 		limit, err := strconv.ParseInt(rule.Value, 10, 64)
 		if err != nil {
-			if limit, err = domainworkflow.ParseSizeBytes(rule.Value); err != nil {
-				return pass(domainworkflow.FormatBytes(obs.size), rule.Value, false)
+			if limit, err = domainrule.ParseSizeBytes(rule.Value); err != nil {
+				return pass(domainrule.FormatBytes(obs.size), rule.Value, false)
 			}
 		}
-		return pass(domainworkflow.FormatBytes(obs.size), "at most "+domainworkflow.FormatBytes(limit), obs.size <= limit)
+		return pass(domainrule.FormatBytes(obs.size), "at most "+domainrule.FormatBytes(limit), obs.size <= limit)
 
-	case domainworkflow.SubjectBody:
+	case domainrule.SubjectBody:
 		contains := strings.Contains(string(obs.body.raw), rule.Value)
-		if rule.Operator == domainworkflow.OpNotContains {
+		if rule.Operator == domainrule.OpNotContains {
 			return pass(presence(contains), "absent", !contains)
 		}
 		return pass(presence(contains), "present", contains)
 
-	case domainworkflow.SubjectHeader:
+	case domainrule.SubjectHeader:
 		values, exists := obs.headers[http.CanonicalHeaderKey(rule.Target)]
 		value := strings.Join(values, ", ")
 		switch rule.Operator {
-		case domainworkflow.OpExists:
+		case domainrule.OpExists:
 			return pass(presence(exists), "present", exists)
-		case domainworkflow.OpContains:
+		case domainrule.OpContains:
 			return pass(observedOrAbsent(value, exists), "contains "+rule.Value, exists && strings.Contains(value, rule.Value))
 		default:
 			return pass(observedOrAbsent(value, exists), rule.Value, exists && value == rule.Value)
 		}
 
-	case domainworkflow.SubjectJSON:
+	case domainrule.SubjectJSON:
 		return evaluateJSON(rule, obs, pass)
 
-	case domainworkflow.SubjectCertificate:
+	case domainrule.SubjectCertificate:
 		if obs.tls == nil {
 			return pass("no certificate", "a TLS certificate", false)
 		}
 		switch rule.Operator {
-		case domainworkflow.OpChainInvalid:
+		case domainrule.OpChainInvalid:
 			observed := "valid"
 			if !obs.tls.ChainValid {
 				observed = "invalid"
@@ -111,7 +111,7 @@ func evaluate(rule domainworkflow.Rule, obs observation) contract.RuleResult {
 				}
 			}
 			return pass(observed, "valid", obs.tls.ChainValid)
-		case domainworkflow.OpNameMismatch:
+		case domainrule.OpNameMismatch:
 			return pass(map[bool]string{true: "matches", false: "does not match"}[obs.tls.NameMatch], "matches", obs.tls.NameMatch)
 		default:
 			days, err := strconv.Atoi(rule.Value)
@@ -130,7 +130,7 @@ func evaluate(rule domainworkflow.Rule, obs observation) contract.RuleResult {
 	return pass("", rule.Value, false)
 }
 
-func evaluateJSON(rule domainworkflow.Rule, obs observation, pass func(string, string, bool) contract.RuleResult) contract.RuleResult {
+func evaluateJSON(rule domainrule.Rule, obs observation, pass func(string, string, bool) contract.RuleResult) contract.RuleResult {
 	v, err := obs.body.jsonPath(rule.Target)
 	found := err == nil
 	observed := "absent"
@@ -141,19 +141,19 @@ func evaluateJSON(rule domainworkflow.Rule, obs observation, pass func(string, s
 	}
 
 	switch rule.Operator {
-	case domainworkflow.OpExists:
+	case domainrule.OpExists:
 		return pass(observed, "present", found)
-	case domainworkflow.OpNotExists:
+	case domainrule.OpNotExists:
 		return pass(observed, "absent", !found)
-	case domainworkflow.OpIsNot:
+	case domainrule.OpIsNot:
 		return pass(observed, "not "+rule.Value, !found || observed != rule.Value)
-	case domainworkflow.OpExceeds, domainworkflow.OpBelow:
+	case domainrule.OpExceeds, domainrule.OpBelow:
 		limit, limitErr := strconv.ParseFloat(rule.Value, 64)
 		n, numErr := toNumber(v)
 		if !found || numErr != nil || limitErr != nil {
 			return pass(observed, "a number", false)
 		}
-		if rule.Operator == domainworkflow.OpExceeds {
+		if rule.Operator == domainrule.OpExceeds {
 			return pass(observed, "at most "+rule.Value, n <= limit)
 		}
 		return pass(observed, "at least "+rule.Value, n >= limit)

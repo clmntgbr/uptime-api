@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go-api/internal/domain/event"
+	"go-api/internal/domain/schedule"
 	"go-api/internal/domain/variable"
 
 	"github.com/google/uuid"
@@ -15,7 +16,7 @@ const (
 	MaxCalls        = 20
 	MaxVariables    = 50
 	MaxNameLength   = 200
-	MinInterval     = time.Minute
+	MinInterval     = schedule.Tick
 	WorkflowTimeout = 5 * time.Minute
 )
 
@@ -123,7 +124,7 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 	if name == "" || len(name) > MaxNameLength {
 		return &ValidationError{Message: fmt.Sprintf("workflow name is required (max %d characters)", MaxNameLength)}
 	}
-	if def.Interval < MinInterval || def.Interval%time.Minute != 0 {
+	if def.Interval < MinInterval || def.Interval%schedule.Tick != 0 {
 		return &ValidationError{Message: "interval must be a whole number of minutes, at least 1 minute"}
 	}
 	if len(def.Calls) == 0 || len(def.Calls) > MaxCalls {

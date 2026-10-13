@@ -1,9 +1,8 @@
-package workflow
+package rule
 
 import (
 	"errors"
 	"fmt"
-	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -84,7 +83,7 @@ type Rule struct {
 }
 
 var (
-	ErrInvalidRule = errors.New("invalid rule")
+	ErrInvalid = errors.New("invalid rule")
 
 	statusPattern = regexp.MustCompile(`^[1-5]([0-9]{2}|xx)$`)
 	durationValue = regexp.MustCompile(`^(\d+(?:\.\d+)?)\s*(ms|s)?$`)
@@ -93,14 +92,14 @@ var (
 	numberValue   = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
 )
 
-// NewRule validates and normalizes a rule.
-func NewRule(subject Subject, operator Operator, target, value string) (Rule, error) {
+// New validates and normalizes a rule.
+func New(subject Subject, operator Operator, target, value string) (Rule, error) {
 	ops, ok := allowedOperators[subject]
 	if !ok {
-		return Rule{}, fmt.Errorf("%w: unknown subject %q", ErrInvalidRule, subject)
+		return Rule{}, fmt.Errorf("%w: unknown subject %q", ErrInvalid, subject)
 	}
 	if !containsOperator(ops, operator) {
-		return Rule{}, fmt.Errorf("%w: operator %q is not allowed for subject %q", ErrInvalidRule, operator, subject)
+		return Rule{}, fmt.Errorf("%w: operator %q is not allowed for subject %q", ErrInvalid, operator, subject)
 	}
 
 	target = strings.TrimSpace(target)
@@ -109,11 +108,11 @@ func NewRule(subject Subject, operator Operator, target, value string) (Rule, er
 	switch subject {
 	case SubjectJSON:
 		if !strings.HasPrefix(target, "$") {
-			return Rule{}, fmt.Errorf("%w: json rules need a JSONPath starting with $", ErrInvalidRule)
+			return Rule{}, fmt.Errorf("%w: json rules need a JSONPath starting with $", ErrInvalid)
 		}
 	case SubjectHeader:
 		if target == "" || strings.ContainsAny(target, " \t:") {
-			return Rule{}, fmt.Errorf("%w: header rules need a header name", ErrInvalidRule)
+			return Rule{}, fmt.Errorf("%w: header rules need a header name", ErrInvalid)
 		}
 	default:
 		target = ""
@@ -122,7 +121,7 @@ func NewRule(subject Subject, operator Operator, target, value string) (Rule, er
 	if !operator.needsValue() {
 		value = ""
 	} else if value == "" {
-		return Rule{}, fmt.Errorf("%w: %s %s needs a value", ErrInvalidRule, subject, operator)
+		return Rule{}, fmt.Errorf("%w: %s %s needs a value", ErrInvalid, subject, operator)
 	}
 
 	normalized, err := normalizeValue(subject, operator, value)
@@ -146,7 +145,7 @@ func normalizeValue(subject Subject, operator Operator, value string) (string, e
 		for i, code := range codes {
 			code = strings.ToLower(code)
 			if !statusPattern.MatchString(code) {
-				return "", fmt.Errorf("%w: %q is not a status code or class (200, 2xx)", ErrInvalidRule, code)
+				return "", fmt.Errorf("%w: %q is not a status code or class (200, 2xx)", ErrInvalid, code)
 			}
 			codes[i] = code
 		}
@@ -166,66 +165,19 @@ func normalizeValue(subject Subject, operator Operator, value string) (string, e
 	case SubjectCertificate:
 		m := daysValue.FindStringSubmatch(strings.ToLower(value))
 		if m == nil {
-			return "", fmt.Errorf("%w: %q is not a number of days", ErrInvalidRule, value)
+			return "", fmt.Errorf("%w: %q is not a number of days", ErrInvalid, value)
 		}
 		days, _ := strconv.Atoi(m[1])
 		if days <= 0 {
-			return "", fmt.Errorf("%w: certificate days must be positive", ErrInvalidRule)
+			return "", fmt.Errorf("%w: certificate days must be positive", ErrInvalid)
 		}
 		return strconv.Itoa(days), nil
 	case SubjectJSON:
 		if (operator == OpExceeds || operator == OpBelow) && !numberValue.MatchString(value) {
-			return "", fmt.Errorf("%w: %q is not a number", ErrInvalidRule, value)
+			return "", fmt.Errorf("%w: %q is not a number", ErrInvalid, value)
 		}
 	}
 	return value, nil
-}
-
-// ParseDurationMS reads "800 ms", "800", "2 s" or "1.5s" as milliseconds.
-func ParseDurationMS(value string) (int64, error) {
-	m := durationValue.FindStringSubmatch(strings.ToLower(strings.TrimSpace(value)))
-	if m == nil {
-		return 0, fmt.Errorf("%w: %q is not a duration (800 ms, 2 s)", ErrInvalidRule, value)
-	}
-	n, _ := strconv.ParseFloat(m[1], 64)
-	if m[2] == "s" {
-		n *= 1000
-	}
-	if n <= 0 {
-		return 0, fmt.Errorf("%w: duration must be positive", ErrInvalidRule)
-	}
-	return int64(math.Round(n)), nil
-}
-
-// ParseSizeBytes reads "512", "100 B", "64 KB" or "1.5 MB" as bytes.
-func ParseSizeBytes(value string) (int64, error) {
-	m := sizeValue.FindStringSubmatch(strings.ToLower(strings.TrimSpace(value)))
-	if m == nil {
-		return 0, fmt.Errorf("%w: %q is not a size (100 B, 64 KB, 1 MB)", ErrInvalidRule, value)
-	}
-	n, _ := strconv.ParseFloat(m[1], 64)
-	switch m[2] {
-	case "kb", "ko":
-		n *= 1024
-	case "mb", "mo":
-		n *= 1024 * 1024
-	}
-	if n <= 0 {
-		return 0, fmt.Errorf("%w: size must be positive", ErrInvalidRule)
-	}
-	return int64(math.Round(n)), nil
-}
-
-// FormatBytes renders a byte count with the largest exact unit.
-func FormatBytes(n int64) string {
-	switch {
-	case n >= 1024*1024 && n%(1024*1024) == 0:
-		return fmt.Sprintf("%d MB", n/(1024*1024))
-	case n >= 1024 && n%1024 == 0:
-		return fmt.Sprintf("%d KB", n/1024)
-	default:
-		return fmt.Sprintf("%d B", n)
-	}
 }
 
 // References lists the variables used by the rule value.
@@ -303,91 +255,9 @@ func withUnit(value, unit string) string {
 	return value + unit
 }
 
-// ParseRule reads the sentence form used in workflow files, e.g.
-// "status is 200", "response time exceeds 800 ms", "json $.items exists",
-// "certificate expires in less than 14 days".
-func ParseRule(text string) (Rule, error) {
-	s := strings.Join(strings.Fields(text), " ")
-	lower := strings.ToLower(s)
-
-	cut := func(prefix string) (string, bool) {
-		if strings.HasPrefix(lower, prefix) {
-			return s[len(prefix):], true
-		}
-		return "", false
-	}
-	invalid := fmt.Errorf("%w: cannot understand %q", ErrInvalidRule, text)
-
-	switch {
-	case strings.HasPrefix(lower, "status "):
-		if v, ok := cut("status is not "); ok {
-			return NewRule(SubjectStatus, OpIsNot, "", v)
-		}
-		if v, ok := cut("status is "); ok {
-			return NewRule(SubjectStatus, OpIs, "", v)
-		}
-		if v, ok := cut("status in "); ok {
-			return NewRule(SubjectStatus, OpIn, "", v)
-		}
-	case strings.HasPrefix(lower, "response time "):
-		if v, ok := cut("response time exceeds "); ok {
-			return NewRule(SubjectResponseTime, OpExceeds, "", v)
-		}
-	case strings.HasPrefix(lower, "body "):
-		if v, ok := cut("body does not contain "); ok {
-			return NewRule(SubjectBody, OpNotContains, "", v)
-		}
-		if v, ok := cut("body contains "); ok {
-			return NewRule(SubjectBody, OpContains, "", v)
-		}
-	case strings.HasPrefix(lower, "json "), strings.HasPrefix(lower, "header "):
-		subject := SubjectJSON
-		if strings.HasPrefix(lower, "header ") {
-			subject = SubjectHeader
-		}
-		parts := strings.SplitN(s, " ", 3)
-		if len(parts) < 3 {
-			return Rule{}, invalid
-		}
-		target, rest := parts[1], parts[2]
-		restLower := strings.ToLower(rest)
-		for _, candidate := range []struct {
-			phrase   string
-			operator Operator
-		}{
-			{"is not ", OpIsNot},
-			{"is below ", OpBelow},
-			{"is ", OpIs},
-			{"exceeds ", OpExceeds},
-			{"contains ", OpContains},
-			{"does not exist", OpNotExists},
-			{"exists", OpExists},
-		} {
-			if strings.HasPrefix(restLower, candidate.phrase) {
-				return NewRule(subject, candidate.operator, target, rest[len(candidate.phrase):])
-			}
-		}
-	case strings.HasPrefix(lower, "size "):
-		if v, ok := cut("size exceeds "); ok {
-			return NewRule(SubjectSize, OpExceeds, "", v)
-		}
-	case strings.HasPrefix(lower, "certificate "):
-		if v, ok := cut("certificate expires in less than "); ok {
-			return NewRule(SubjectCertificate, OpExpiresWithin, "", v)
-		}
-		if lower == "certificate chain is invalid" {
-			return NewRule(SubjectCertificate, OpChainInvalid, "", "")
-		}
-		if lower == "certificate name does not match" {
-			return NewRule(SubjectCertificate, OpNameMismatch, "", "")
-		}
-	}
-	return Rule{}, invalid
-}
-
-// DefaultRules apply when a call declares none: the call fails unless the
+// Defaults apply when a call declares none: the call fails unless the
 // status is 2xx (network errors already make it `error`).
-func DefaultRules() []Rule {
+func Defaults() []Rule {
 	return []Rule{{Subject: SubjectStatus, Operator: OpIs, Value: "2xx"}}
 }
 

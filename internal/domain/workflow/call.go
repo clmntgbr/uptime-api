@@ -3,11 +3,11 @@ package workflow
 import (
 	"fmt"
 	"net/url"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
 
+	"go-api/internal/domain/rule"
 	"go-api/internal/domain/variable"
 
 	"github.com/google/uuid"
@@ -28,27 +28,6 @@ const (
 	IPv6  IPVersion = "ipv6"
 )
 
-type ExtractionSource string
-
-const (
-	// ExtractJSON reads a JSONPath from the body: `$.access_token`.
-	ExtractJSON ExtractionSource = "json"
-	// ExtractHeader reads a response header: `Set-Cookie`.
-	ExtractHeader ExtractionSource = "header"
-	// ExtractStatus reads the status code.
-	ExtractStatus ExtractionSource = "status"
-	// ExtractRegex applies a regular expression to the body; the first capture
-	// group is used when present, the whole match otherwise.
-	ExtractRegex ExtractionSource = "regex"
-)
-
-// Extraction declares a `call` variable produced from the call response.
-type Extraction struct {
-	Name       string
-	Source     ExtractionSource
-	Expression string
-}
-
 var allowedMethods = map[string]struct{}{
 	"GET": {}, "POST": {}, "PUT": {}, "PATCH": {}, "DELETE": {}, "HEAD": {}, "OPTIONS": {},
 }
@@ -68,7 +47,7 @@ type Call struct {
 	IPVersion   IPVersion
 	ProxyURL    string
 	Extractions []Extraction
-	Rules       []Rule
+	Rules       []rule.Rule
 }
 
 // CallDefinition is the user input for a call; IDs are assigned by the aggregate.
@@ -84,7 +63,7 @@ type CallDefinition struct {
 	IPVersion   IPVersion
 	ProxyURL    string
 	Extractions []Extraction
-	Rules       []Rule
+	Rules       []rule.Rule
 }
 
 func buildCall(def CallDefinition, position int, id uuid.UUID) (Call, error) {
@@ -149,7 +128,7 @@ func buildCall(def CallDefinition, position int, id uuid.UUID) (Call, error) {
 		extractions = append(extractions, normalized)
 	}
 
-	rules := make([]Rule, len(def.Rules))
+	rules := make([]rule.Rule, len(def.Rules))
 	for i, r := range def.Rules {
 		if r.ID == uuid.Nil {
 			r.ID = uuid.New()
@@ -199,33 +178,6 @@ func validateURLTemplate(raw string) error {
 	return nil
 }
 
-func normalizeExtraction(e Extraction) (Extraction, error) {
-	e.Name = strings.TrimSpace(e.Name)
-	e.Expression = strings.TrimSpace(e.Expression)
-	if err := variable.ValidateName(e.Name); err != nil {
-		return Extraction{}, err
-	}
-	switch e.Source {
-	case ExtractJSON:
-		if !strings.HasPrefix(e.Expression, "$") {
-			return Extraction{}, fmt.Errorf("extraction %q: JSONPath must start with $", e.Name)
-		}
-	case ExtractHeader:
-		if e.Expression == "" || strings.ContainsAny(e.Expression, " \t:") {
-			return Extraction{}, fmt.Errorf("extraction %q: header name is required", e.Name)
-		}
-	case ExtractStatus:
-		e.Expression = ""
-	case ExtractRegex:
-		if _, err := regexp.Compile(e.Expression); err != nil || e.Expression == "" {
-			return Extraction{}, fmt.Errorf("extraction %q: invalid regular expression", e.Name)
-		}
-	default:
-		return Extraction{}, fmt.Errorf("extraction %q: unknown source %q", e.Name, e.Source)
-	}
-	return e, nil
-}
-
 // templates returns every field of the call that may contain placeholders.
 func (c Call) templates() []string {
 	out := []string{c.URL, c.Body}
@@ -258,9 +210,9 @@ func (c Call) References() []string {
 }
 
 // EffectiveRules returns the declared rules, or the default rule when none.
-func (c Call) EffectiveRules() []Rule {
+func (c Call) EffectiveRules() []rule.Rule {
 	if len(c.Rules) == 0 {
-		return DefaultRules()
+		return rule.Defaults()
 	}
 	return c.Rules
 }

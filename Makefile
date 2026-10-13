@@ -8,8 +8,7 @@ dev:
 	$(COMPOSE_DEV) up -d
 
 restart:
-	$(COMPOSE_DEV) down
-	$(COMPOSE_DEV) up -d
+	$(COMPOSE_DEV) restart api worker worker-calls scheduler
 
 build:
 	$(COMPOSE_DEV) up -d --build

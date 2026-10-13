@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"go-api/internal/domain/port"
+	"go-api/internal/domain/schedule"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
 
@@ -18,6 +19,7 @@ type CreateWorkflowCommand struct {
 
 type CreateWorkflowHandler struct {
 	repo      domainworkflow.WriteRepository
+	states    schedule.Repository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
 	clock     port.Clock
@@ -25,11 +27,12 @@ type CreateWorkflowHandler struct {
 
 func NewCreateWorkflowHandler(
 	repo domainworkflow.WriteRepository,
+	states schedule.Repository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
 	clock port.Clock,
 ) *CreateWorkflowHandler {
-	return &CreateWorkflowHandler{repo: repo, variables: variables, outbox: outbox, clock: clock}
+	return &CreateWorkflowHandler{repo: repo, states: states, variables: variables, outbox: outbox, clock: clock}
 }
 
 // Handle validates and stores the workflow; its first run is the next interval boundary.
@@ -43,10 +46,13 @@ func (h *CreateWorkflowHandler) Handle(ctx context.Context, cmd CreateWorkflowCo
 	if err != nil {
 		return nil, err
 	}
-	state := domainworkflow.NewState(w.ID, h.clock.Now(), w.Interval)
+	state := schedule.New(w.ID, h.clock.Now(), w.Interval)
 
 	err = h.repo.WithTransaction(ctx, func(txCtx context.Context) error {
-		if err := h.repo.Save(txCtx, w, state); err != nil {
+		if err := h.repo.Save(txCtx, w); err != nil {
+			return err
+		}
+		if err := h.states.Save(txCtx, state); err != nil {
 			return err
 		}
 		return h.outbox.StoreEvents(txCtx, w.PullEvents())

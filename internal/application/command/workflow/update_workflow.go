@@ -3,9 +3,9 @@ package workflow
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"go-api/internal/domain/port"
+	"go-api/internal/domain/schedule"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
 
@@ -20,6 +20,7 @@ type UpdateWorkflowCommand struct {
 
 type UpdateWorkflowHandler struct {
 	repo      domainworkflow.WriteRepository
+	states    schedule.Repository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
 	clock     port.Clock
@@ -27,11 +28,12 @@ type UpdateWorkflowHandler struct {
 
 func NewUpdateWorkflowHandler(
 	repo domainworkflow.WriteRepository,
+	states schedule.Repository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
 	clock port.Clock,
 ) *UpdateWorkflowHandler {
-	return &UpdateWorkflowHandler{repo: repo, variables: variables, outbox: outbox, clock: clock}
+	return &UpdateWorkflowHandler{repo: repo, states: states, variables: variables, outbox: outbox, clock: clock}
 }
 
 // Handle replaces the definition. A run in progress keeps the definition it was
@@ -59,13 +61,13 @@ func (h *UpdateWorkflowHandler) Handle(ctx context.Context, cmd UpdateWorkflowCo
 		if err != nil {
 			return err
 		}
-		var nextRunAt *time.Time
-		if scheduleChanged {
-			next := domainworkflow.NextRun(h.clock.Now(), w.Interval)
-			nextRunAt = &next
-		}
-		if err := h.repo.Update(txCtx, w, nextRunAt); err != nil {
+		if err := h.repo.Update(txCtx, w); err != nil {
 			return err
+		}
+		if scheduleChanged {
+			if err := h.reschedule(txCtx, w); err != nil {
+				return err
+			}
 		}
 		updated = w
 		return h.outbox.StoreEvents(txCtx, w.PullEvents())
@@ -74,4 +76,16 @@ func (h *UpdateWorkflowHandler) Handle(ctx context.Context, cmd UpdateWorkflowCo
 		return nil, err
 	}
 	return updated, nil
+}
+
+func (h *UpdateWorkflowHandler) reschedule(ctx context.Context, w *domainworkflow.Workflow) error {
+	state, err := h.states.GetForUpdate(ctx, w.ID)
+	if err != nil {
+		return err
+	}
+	if state == nil {
+		return fmt.Errorf("schedule state missing for workflow %s", w.ID)
+	}
+	state.Reschedule(h.clock.Now(), w.Interval)
+	return h.states.Save(ctx, *state)
 }

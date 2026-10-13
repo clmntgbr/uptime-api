@@ -14,11 +14,12 @@ import (
 	"testing"
 	"time"
 
-	commandrun "go-api/internal/application/command/run"
 	"go-api/internal/application/command/execution"
+	commandrun "go-api/internal/application/command/run"
 	"go-api/internal/application/command/schedule"
 	"go-api/internal/contract"
 	"go-api/internal/domain/port"
+	domainschedule "go-api/internal/domain/schedule"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/engine"
@@ -113,7 +114,11 @@ func TestScheduleExecuteRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	workflows := write.NewWorkflowWriteRepository(db)
-	if err := workflows.Save(ctx, w, domainworkflow.NewState(w.ID, time.Now().Add(-time.Hour), w.Interval)); err != nil {
+	states := write.NewStateRepository(db)
+	if err := workflows.Save(ctx, w); err != nil {
+		t.Fatal(err)
+	}
+	if err := states.Save(ctx, domainschedule.New(w.ID, time.Now().Add(-time.Hour), w.Interval)); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -123,7 +128,6 @@ func TestScheduleExecuteRecord(t *testing.T) {
 		db.Exec("DELETE FROM workflows WHERE id = ?", w.ID)
 	})
 
-	states := write.NewStateRepository(db)
 	runs := write.NewRunWriteRepository(db)
 	claimer := processed.NewTxClaimer(db)
 	outboxRepo := outbox.NewRepository(db)

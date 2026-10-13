@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	domainrule "go-api/internal/domain/rule"
 	domainworkflow "go-api/internal/domain/workflow"
 
 	"gopkg.in/yaml.v3"
@@ -120,7 +121,7 @@ func parseCall(c workflowFileCall) (domainworkflow.CallDefinition, error) {
 	}
 
 	for _, text := range c.Rules {
-		rule, err := domainworkflow.ParseRule(text)
+		rule, err := domainrule.Parse(text)
 		if err != nil {
 			return def, err
 		}

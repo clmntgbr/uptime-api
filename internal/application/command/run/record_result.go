@@ -12,13 +12,13 @@ import (
 	"go-api/internal/domain/certificate"
 	"go-api/internal/domain/port"
 	domainrun "go-api/internal/domain/run"
-	domainworkflow "go-api/internal/domain/workflow"
+	domainschedule "go-api/internal/domain/schedule"
 
 	"github.com/google/uuid"
 )
 
 type RecordResultHandler struct {
-	states       domainworkflow.StateRepository
+	states       domainschedule.Repository
 	runs         domainrun.WriteRepository
 	certificates certificate.Repository
 	processed    port.ProcessedEventRepository
@@ -26,7 +26,7 @@ type RecordResultHandler struct {
 }
 
 func NewRecordResultHandler(
-	states domainworkflow.StateRepository,
+	states domainschedule.Repository,
 	runs domainrun.WriteRepository,
 	certificates certificate.Repository,
 	processed port.ProcessedEventRepository,

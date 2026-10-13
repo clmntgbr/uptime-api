@@ -14,8 +14,8 @@ import (
 
 	"go-api/internal/contract"
 	"go-api/internal/domain/port"
+	domainrule "go-api/internal/domain/rule"
 	"go-api/internal/domain/variable"
-	domainworkflow "go-api/internal/domain/workflow"
 
 	"github.com/google/uuid"
 )
@@ -199,17 +199,17 @@ func (r *Runner) runCall(ctx context.Context, state *run, call contract.JobCall)
 	b := &body{raw: resp.Body}
 	cr.ExtractedVariables = state.extractAll(call, resp, b)
 
-	rules := make([]domainworkflow.Rule, 0, len(call.Rules))
+	rules := make([]domainrule.Rule, 0, len(call.Rules))
 	for _, jr := range call.Rules {
-		rules = append(rules, domainworkflow.Rule{
-			Subject:  domainworkflow.Subject(jr.Subject),
-			Operator: domainworkflow.Operator(jr.Operator),
+		rules = append(rules, domainrule.Rule{
+			Subject:  domainrule.Subject(jr.Subject),
+			Operator: domainrule.Operator(jr.Operator),
 			Target:   jr.Target,
 			Value:    rendered.ruleValues[jr.ID],
 		})
 	}
 	if len(rules) == 0 {
-		rules = domainworkflow.DefaultRules()
+		rules = domainrule.Defaults()
 	}
 	obs := observation{
 		status:  resp.Status,
@@ -226,7 +226,7 @@ func (r *Runner) runCall(ctx context.Context, state *run, call contract.JobCall)
 		rr.Text = state.masker.mask(rr.Text)
 		rr.Observed = state.masker.mask(rr.Observed)
 		rr.Expected = state.masker.mask(rr.Expected)
-		if rr.Subject == string(domainworkflow.SubjectHeader) && isSensitiveHeader(rule.Target) {
+		if rr.Subject == string(domainrule.SubjectHeader) && isSensitiveHeader(rule.Target) {
 			rr.Observed = variable.MaskedValue
 		}
 		if !rr.Passed {
