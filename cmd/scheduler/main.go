@@ -119,7 +119,7 @@ type scheduler struct {
 
 // lead ticks at every hh:mm:00 until ctx is done or the lock connection is lost.
 func (s *scheduler) lead(ctx context.Context, lock *sql.Conn) {
-	s.rotate(ctx)
+	s.purgeExpiredRuns(ctx)
 	for {
 		now := time.Now().UTC()
 		next := now.Truncate(time.Minute).Add(time.Minute)
@@ -159,14 +159,14 @@ func (s *scheduler) tick(ctx context.Context, at time.Time) {
 		}
 	}
 	if at.Minute() == 7 {
-		s.rotate(ctx)
+		s.purgeExpiredRuns(ctx)
 	}
 	s.heartbeat(ctx)
 }
 
-func (s *scheduler) rotate(ctx context.Context) {
-	if err := s.container.Maintain.RotatePartitions(ctx); err != nil {
-		s.logger.Error("partition rotation failed", "error", err)
+func (s *scheduler) purgeExpiredRuns(ctx context.Context) {
+	if err := s.container.Maintain.PurgeExpiredRuns(ctx); err != nil {
+		s.logger.Error("expired runs purge failed", "error", err)
 	}
 }
 

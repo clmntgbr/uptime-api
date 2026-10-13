@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Persistence mappings for the partitioned result tables and their aggregates.
+// Persistence mappings for the result tables and their aggregates.
 
 type RunModel struct {
 	ID           uuid.UUID    `gorm:"column:id;primaryKey"`
@@ -17,7 +17,7 @@ type RunModel struct {
 	Trigger      string       `gorm:"column:trigger"`
 	Status       string       `gorm:"column:status"`
 	Reason       *string      `gorm:"column:reason"`
-	StartedAt    time.Time    `gorm:"column:started_at;primaryKey"`
+	StartedAt    time.Time    `gorm:"column:started_at"`
 	FinishedAt   time.Time    `gorm:"column:finished_at"`
 	DurationMS   int          `gorm:"column:duration_ms"`
 	CallsTotal   int          `gorm:"column:calls_total"`
@@ -31,10 +31,9 @@ type RunModel struct {
 
 func (RunModel) TableName() string { return "runs" }
 
-type CallResultModel struct {
+type CallRunModel struct {
 	ID                 uuid.UUID    `gorm:"column:id;primaryKey"`
 	RunID              uuid.UUID    `gorm:"column:run_id"`
-	RunStartedAt       time.Time    `gorm:"column:run_started_at;primaryKey"`
 	WorkflowID         uuid.UUID    `gorm:"column:workflow_id"`
 	CallID             *uuid.UUID   `gorm:"column:call_id"`
 	Name               string       `gorm:"column:name"`
@@ -57,20 +56,19 @@ type CallResultModel struct {
 	FinishedAt         *time.Time   `gorm:"column:finished_at"`
 }
 
-func (CallResultModel) TableName() string { return "call_results" }
+func (CallRunModel) TableName() string { return "call_runs" }
 
 type RuleResultModel struct {
-	ID           uuid.UUID `gorm:"column:id;primaryKey"`
-	CallResultID uuid.UUID `gorm:"column:call_result_id"`
-	RunID        uuid.UUID `gorm:"column:run_id"`
-	RunStartedAt time.Time `gorm:"column:run_started_at;primaryKey"`
-	Position     int       `gorm:"column:position"`
-	Subject      string    `gorm:"column:subject"`
-	Operator     string    `gorm:"column:operator"`
-	Text         string    `gorm:"column:text"`
-	Observed     string    `gorm:"column:observed"`
-	Expected     string    `gorm:"column:expected"`
-	Passed       bool      `gorm:"column:passed"`
+	ID        uuid.UUID `gorm:"column:id;primaryKey"`
+	CallRunID uuid.UUID `gorm:"column:call_run_id"`
+	RunID     uuid.UUID `gorm:"column:run_id"`
+	Position  int       `gorm:"column:position"`
+	Subject   string    `gorm:"column:subject"`
+	Operator  string    `gorm:"column:operator"`
+	Text      string    `gorm:"column:text"`
+	Observed  string    `gorm:"column:observed"`
+	Expected  string    `gorm:"column:expected"`
+	Passed    bool      `gorm:"column:passed"`
 }
 
 func (RuleResultModel) TableName() string { return "rule_results" }

@@ -423,7 +423,7 @@ Les notifications envoyées à Centrifugo ne portent jamais de corps, de headers
 
 ## Modèle de données Postgres
 
-Postgres est la source de vérité, accessible uniquement à `api`, `scheduler` et `worker`. Chaque table métier porte un `org_id` (multi-tenant) et toute requête de l'`api` est filtrée par organisation. Les tables de résultats, qui grossissent vite, sont partitionnées par date et écrites uniquement par le `worker`.
+Postgres est la source de vérité, accessible uniquement à `api`, `scheduler` et `worker`. Chaque table métier porte un `org_id` (multi-tenant) et toute requête de l'`api` est filtrée par organisation. Les tables de résultats, qui grossissent vite, sont écrites uniquement par le `worker` (et par le `scheduler` pour les runs sautés ou expirés).
 
 **Configuration**
 
@@ -444,13 +444,13 @@ Postgres est la source de vérité, accessible uniquement à `api`, `scheduler` 
 | `workflow_state` | Statut, `next_run_at`, bail (`lease_until`), échecs et réussites consécutifs, état `confirming` | Lue par le `scheduler`, écrite par le `scheduler` et le `worker` |
 | `certificates` | Certificats vus par les calls : hôte, émetteur, expiration, dernière observation, palier déjà notifié | Base d'un futur inventaire des échéances |
 
-**Résultats (partitionnés)**
+**Résultats**
 
 | Table | Contenu | Points d'attention |
 | --- | --- | --- |
-| `runs` | Une passe de workflow : statut, début, fin, déclencheur (planifié, manuel, test), variables non secrètes | Partition mensuelle, clé unique sur `run_id` |
-| `call_results` | Un call : requête, réponse, timings, réseau, TLS, erreur, variables extraites | Corps tronqué, `body_ref` au-delà de 256 Ko |
-| `rule_results` | Phrase de la règle, valeur observée, valeur attendue, réussite | Lié au résultat qui l'a produit |
+| `runs` | Une passe de workflow : statut, début, fin, déclencheur (planifié, manuel, test), variables non secrètes | Clé primaire sur `id`, index sur `started_at` pour la rétention |
+| `call_runs` | Un call exécuté : requête, réponse, timings, réseau, TLS, erreur, variables extraites | Corps tronqué au-delà de 256 Ko, supprimé avec son run |
+| `rule_results` | Phrase de la règle, valeur observée, valeur attendue, réussite | Lié au call run qui l'a produit, supprimé avec lui |
 
 **Incidents**
 
@@ -461,7 +461,7 @@ Postgres est la source de vérité, accessible uniquement à `api`, `scheduler` 
 | `notifications` | Canal, statut (`pending`, `sent`, `failed`), tentative, heure d'envoi, clé d'idempotence |
 | `audit_log` | Qui a modifié quoi, non modifiable, conservé 12 mois |
 
-**Volumétrie (hypothèse)** : 100 workflows de 3 calls exécutés chaque minute produisent 432 000 `call_results` par jour. À environ 5 Ko par résultat (métadonnées et corps compressé), cela fait 2,2 Go par jour, soit 65 Go sur 30 jours.
+**Volumétrie (hypothèse)** : 100 workflows de 3 calls exécutés chaque minute produisent 432 000 `call_runs` par jour. À environ 5 Ko par résultat (métadonnées et corps compressé), cela fait 2,2 Go par jour, soit 65 Go sur 30 jours.
 
 **Rétention par offre**
 
@@ -471,7 +471,7 @@ Postgres est la source de vérité, accessible uniquement à `api`, `scheduler` 
 | Pro | 30 jours | 7 jours |
 | Équipe | 90 jours | 30 jours |
 
-Les runs de test sont supprimés après 24 heures quelle que soit l'offre. La suppression se fait en détachant ou supprimant les partitions échues, ce qui est instantané et évite les gros `DELETE`. Les statuts agrégés (disponibilité par jour, latence médiane et p95 par heure) sont calculés à part par le `scheduler` et conservés plus longtemps, pour tracer des courbes sur des mois sans garder les détails.
+Les runs de test sont supprimés après 24 heures quelle que soit l'offre. La suppression se fait par lots de 1 000 runs (les call runs et règles suivent par clé étrangère). Un partitionnement mensuel pourra remplacer ces `DELETE` quand le volume l'exigera. Les statuts agrégés (disponibilité par jour, latence médiane et p95 par heure) sont calculés à part par le `scheduler` et conservés plus longtemps, pour tracer des courbes sur des mois sans garder les détails.
 
 **Si la base devient lourde** : TimescaleDB (compression et agrégats continus) reste compatible avec Postgres et suffit largement avant d'envisager ClickHouse.
 

@@ -32,7 +32,7 @@ Go/Fiber API template with **Clean Architecture**, **CQRS**, **Outbox pattern**,
 cmd/
   api/          HTTP server
   worker/       Outbox relay + Kafka consumers (events, workflow results)
-  scheduler/    Leases due workflows at hh:mm:00, publishes jobs, partitions, aggregates
+  scheduler/    Leases due workflows at hh:mm:00, publishes jobs, expires old runs, aggregates
   worker-calls/ Executes jobs (HTTP calls, rules), publishes results
   cli/          Migrations, workflow:import, variable:set, keys:generate
 internal/

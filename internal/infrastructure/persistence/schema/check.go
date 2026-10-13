@@ -23,7 +23,7 @@ func Models() []any {
 		&write.WorkflowStateModel{},
 		&write.CertificateModel{},
 		&write.RunModel{},
-		&write.CallResultModel{},
+		&write.CallRunModel{},
 		&write.RuleResultModel{},
 		&write.HourlyAggregateModel{},
 		&write.DailyAggregateModel{},

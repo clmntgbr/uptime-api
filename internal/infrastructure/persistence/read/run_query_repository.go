@@ -62,7 +62,6 @@ func (r *runQueryRepository) FindByID(ctx context.Context, userID, runID uuid.UU
 	var model write.RunModel
 	err := r.db.WithContext(ctx).
 		Where("id = ? AND user_id = ?", runID, userID).
-		Order("recorded_at DESC").
 		Take(&model).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -71,9 +70,9 @@ func (r *runQueryRepository) FindByID(ctx context.Context, userID, runID uuid.UU
 		return nil, err
 	}
 
-	var calls []write.CallResultModel
+	var calls []write.CallRunModel
 	err = r.db.WithContext(ctx).
-		Where("run_id = ? AND run_started_at = ?", model.ID, model.StartedAt).
+		Where("run_id = ?", model.ID).
 		Order("position").
 		Find(&calls).Error
 	if err != nil {
@@ -81,15 +80,15 @@ func (r *runQueryRepository) FindByID(ctx context.Context, userID, runID uuid.UU
 	}
 	var rules []write.RuleResultModel
 	err = r.db.WithContext(ctx).
-		Where("run_id = ? AND run_started_at = ?", model.ID, model.StartedAt).
-		Order("call_result_id, position").
+		Where("run_id = ?", model.ID).
+		Order("call_run_id, position").
 		Find(&rules).Error
 	if err != nil {
 		return nil, err
 	}
 	rulesByCall := map[uuid.UUID][]domainrun.RuleResult{}
 	for _, rr := range rules {
-		rulesByCall[rr.CallResultID] = append(rulesByCall[rr.CallResultID], domainrun.RuleResult{
+		rulesByCall[rr.CallRunID] = append(rulesByCall[rr.CallRunID], domainrun.RuleResult{
 			ID: rr.ID, Position: rr.Position, Subject: rr.Subject, Operator: rr.Operator,
 			Text: rr.Text, Observed: rr.Observed, Expected: rr.Expected, Passed: rr.Passed,
 		})
@@ -129,7 +128,7 @@ func runView(m write.RunModel) domainrun.View {
 	}
 }
 
-func callResultView(m write.CallResultModel, rules []domainrun.RuleResult) (domainrun.CallResultView, error) {
+func callResultView(m write.CallRunModel, rules []domainrun.RuleResult) (domainrun.CallResultView, error) {
 	v := domainrun.CallResultView{
 		ID:         m.ID,
 		CallID:     m.CallID,

@@ -15,11 +15,10 @@ type WriteRepository interface {
 	Save(ctx context.Context, r *Run) error
 }
 
-// PartitionMaintainer manages the monthly partitions of the result tables.
-type PartitionMaintainer interface {
-	EnsurePartitions(ctx context.Context, monthsAhead int) error
-	// DropPartitionsBefore drops partitions entirely older than cutoff and returns their names.
-	DropPartitionsBefore(ctx context.Context, cutoff time.Time) ([]string, error)
+// Retention expires old results.
+type Retention interface {
+	// DeleteRunsBefore deletes the runs started before cutoff, with their call and rule results.
+	DeleteRunsBefore(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 // AggregateRepository computes availability and latency summaries kept longer than the details.

@@ -53,10 +53,10 @@ func (r *runWriteRepository) Save(ctx context.Context, run *domainrun.Run) error
 		return nil
 	}
 
-	calls := make([]CallResultModel, 0, len(run.Calls))
+	calls := make([]CallRunModel, 0, len(run.Calls))
 	var rules []RuleResultModel
 	for _, c := range run.Calls {
-		m, err := callResultModel(run, c)
+		m, err := callRunModel(run, c)
 		if err != nil {
 			return err
 		}
@@ -67,17 +67,16 @@ func (r *runWriteRepository) Save(ctx context.Context, run *domainrun.Run) error
 				id = uuid.New()
 			}
 			rules = append(rules, RuleResultModel{
-				ID:           id,
-				CallResultID: m.ID,
-				RunID:        run.ID,
-				RunStartedAt: model.StartedAt,
-				Position:     rr.Position,
-				Subject:      rr.Subject,
-				Operator:     rr.Operator,
-				Text:         rr.Text,
-				Observed:     rr.Observed,
-				Expected:     rr.Expected,
-				Passed:       rr.Passed,
+				ID:        id,
+				CallRunID: m.ID,
+				RunID:     run.ID,
+				Position:  rr.Position,
+				Subject:   rr.Subject,
+				Operator:  rr.Operator,
+				Text:      rr.Text,
+				Observed:  rr.Observed,
+				Expected:  rr.Expected,
+				Passed:    rr.Passed,
 			})
 		}
 	}
@@ -90,48 +89,47 @@ func (r *runWriteRepository) Save(ctx context.Context, run *domainrun.Run) error
 	return nil
 }
 
-func callResultModel(run *domainrun.Run, c domainrun.CallResult) (CallResultModel, error) {
+func callRunModel(run *domainrun.Run, c domainrun.CallResult) (CallRunModel, error) {
 	request, err := marshalJSONB(c.Request)
 	if err != nil {
-		return CallResultModel{}, err
+		return CallRunModel{}, err
 	}
 	response, err := marshalJSONB(c.Response)
 	if err != nil {
-		return CallResultModel{}, err
+		return CallRunModel{}, err
 	}
 	timings, err := marshalJSONB(c.Timings)
 	if err != nil {
-		return CallResultModel{}, err
+		return CallRunModel{}, err
 	}
 	network, err := marshalJSONB(c.Network)
 	if err != nil {
-		return CallResultModel{}, err
+		return CallRunModel{}, err
 	}
 	var tls dbtype.JSONB
 	if c.TLS != nil {
 		raw, err := json.Marshal(c.TLS)
 		if err != nil {
-			return CallResultModel{}, err
+			return CallRunModel{}, err
 		}
 		tls = dbtype.JSONB(raw)
 	}
 	extracted, err := marshalJSONB(c.ExtractedVariables)
 	if err != nil {
-		return CallResultModel{}, err
+		return CallRunModel{}, err
 	}
 	used, err := marshalJSONBOr(c.UsedVariables, "[]")
 	if err != nil {
-		return CallResultModel{}, err
+		return CallRunModel{}, err
 	}
 
 	id := c.ID
 	if id == uuid.Nil {
 		id = uuid.New()
 	}
-	m := CallResultModel{
+	m := CallRunModel{
 		ID:                 id,
 		RunID:              run.ID,
-		RunStartedAt:       run.StartedAt.UTC(),
 		WorkflowID:         run.WorkflowID,
 		CallID:             c.CallID,
 		Name:               c.Name,
@@ -186,25 +184,33 @@ func nullableTime(t time.Time) *time.Time {
 	return &utc
 }
 
-type partitionMaintainer struct {
+type runRetention struct {
 	db *gorm.DB
 }
 
-func NewPartitionMaintainer(db *gorm.DB) domainrun.PartitionMaintainer {
-	return &partitionMaintainer{db: db}
+func NewRunRetention(db *gorm.DB) domainrun.Retention {
+	return &runRetention{db: db}
 }
 
-func (p *partitionMaintainer) EnsurePartitions(ctx context.Context, monthsAhead int) error {
-	return p.db.WithContext(ctx).
-		Exec("SELECT ensure_result_partitions(@months)", map[string]any{"months": monthsAhead}).Error
-}
+// Deleting in small batches keeps each transaction and its locks short.
+const deleteRunsBeforeSQL = `
+DELETE FROM runs
+WHERE id IN (SELECT id FROM runs WHERE started_at < @cutoff LIMIT @limit)`
 
-func (p *partitionMaintainer) DropPartitionsBefore(ctx context.Context, cutoff time.Time) ([]string, error) {
-	var dropped []string
-	err := p.db.WithContext(ctx).
-		Raw("SELECT drop_result_partitions_before(@cutoff)", map[string]any{"cutoff": cutoff.UTC()}).
-		Scan(&dropped).Error
-	return dropped, err
+const deleteRunsBatchSize = 1000
+
+func (r *runRetention) DeleteRunsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	var total int64
+	for {
+		res := r.db.WithContext(ctx).Exec(deleteRunsBeforeSQL, map[string]any{"cutoff": cutoff.UTC(), "limit": deleteRunsBatchSize})
+		if res.Error != nil {
+			return total, res.Error
+		}
+		total += res.RowsAffected
+		if res.RowsAffected < deleteRunsBatchSize {
+			return total, nil
+		}
+	}
 }
 
 type aggregateRepository struct {

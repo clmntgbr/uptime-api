@@ -124,7 +124,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		db.Exec("DELETE FROM rule_results WHERE run_id IN (SELECT id FROM runs WHERE workflow_id = ?)", w.ID)
-		db.Exec("DELETE FROM call_results WHERE workflow_id = ?", w.ID)
+		db.Exec("DELETE FROM call_runs WHERE workflow_id = ?", w.ID)
 		db.Exec("DELETE FROM runs WHERE workflow_id = ?", w.ID)
 		db.Exec("DELETE FROM workflows WHERE id = ?", w.ID)
 	})
@@ -180,7 +180,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 		t.Fatalf("state not completed: %+v", state)
 	}
 	var storedBody string
-	db.Raw("SELECT request->>'body' FROM call_results WHERE workflow_id = ? AND position = 1", w.ID).Scan(&storedBody)
+	db.Raw("SELECT request->>'body' FROM call_runs WHERE workflow_id = ? AND position = 1", w.ID).Scan(&storedBody)
 	if strings.Contains(storedBody, "hunter22") {
 		t.Fatal("secret stored in clear in the call result")
 	}

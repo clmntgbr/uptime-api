@@ -198,7 +198,7 @@ func TestWorkflowLifecycle(t *testing.T) {
 	t.Cleanup(func() {
 		db.Exec("DELETE FROM processed_events WHERE event_id = ?", runID)
 		db.Exec("DELETE FROM rule_results WHERE run_id = ?", runID)
-		db.Exec("DELETE FROM call_results WHERE run_id = ?", runID)
+		db.Exec("DELETE FROM call_runs WHERE run_id = ?", runID)
 		db.Exec("DELETE FROM runs WHERE id = ?", runID)
 	})
 
@@ -253,13 +253,18 @@ func TestWorkflowLifecycle(t *testing.T) {
 		db.Exec("DELETE FROM daily_aggregates WHERE workflow_id = ?", w.ID)
 	})
 
-	partitions := write.NewPartitionMaintainer(db)
-	if err := partitions.EnsurePartitions(ctx, 2); err != nil {
-		t.Fatalf("ensure partitions: %v", err)
+	retention := write.NewRunRetention(db)
+	if deleted, err := retention.DeleteRunsBefore(ctx, time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)); err != nil || deleted != 0 {
+		t.Fatalf("retention must keep recent runs: %d %v", deleted, err)
 	}
-	dropped, err := partitions.DropPartitionsBefore(ctx, time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC))
-	if err != nil || len(dropped) != 0 {
-		t.Fatalf("drop partitions: %v %v", dropped, err)
+	if err := db.Exec("DELETE FROM runs WHERE id = ?", runID).Error; err != nil {
+		t.Fatal(err)
+	}
+	var orphans int64
+	db.Raw("SELECT (SELECT COUNT(*) FROM call_runs WHERE run_id = @id) + (SELECT COUNT(*) FROM rule_results WHERE run_id = @id)",
+		map[string]any{"id": runID}).Scan(&orphans)
+	if orphans != 0 {
+		t.Fatalf("deleting a run must delete its call runs and rule results, %d left", orphans)
 	}
 
 	db.Exec("UPDATE workflow_state SET next_run_at = ? WHERE workflow_id = ?", past, w.ID)

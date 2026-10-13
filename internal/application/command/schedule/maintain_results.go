@@ -11,21 +11,21 @@ import (
 )
 
 type MaintainResultsHandler struct {
-	partitions domainrun.PartitionMaintainer
+	retention  domainrun.Retention
 	aggregates domainrun.AggregateRepository
 	clock      port.Clock
-	retention  time.Duration
+	keepFor    time.Duration
 	logger     *slog.Logger
 }
 
 func NewMaintainResultsHandler(
-	partitions domainrun.PartitionMaintainer,
+	retention domainrun.Retention,
 	aggregates domainrun.AggregateRepository,
 	clock port.Clock,
-	retention time.Duration,
+	keepFor time.Duration,
 	logger *slog.Logger,
 ) *MaintainResultsHandler {
-	return &MaintainResultsHandler{partitions: partitions, aggregates: aggregates, clock: clock, retention: retention, logger: logger}
+	return &MaintainResultsHandler{retention: retention, aggregates: aggregates, clock: clock, keepFor: keepFor, logger: logger}
 }
 
 // ComputeAggregates refreshes the current and previous buckets: late results
@@ -43,18 +43,14 @@ func (h *MaintainResultsHandler) ComputeAggregates(ctx context.Context) error {
 	return nil
 }
 
-// RotatePartitions creates the next monthly partitions and drops the ones
-// entirely older than the retention. Aggregates are kept.
-func (h *MaintainResultsHandler) RotatePartitions(ctx context.Context) error {
-	if err := h.partitions.EnsurePartitions(ctx, 2); err != nil {
-		return fmt.Errorf("ensure partitions: %w", err)
-	}
-	dropped, err := h.partitions.DropPartitionsBefore(ctx, h.clock.Now().Add(-h.retention))
+// PurgeExpiredRuns deletes the runs older than the retention. Aggregates are kept.
+func (h *MaintainResultsHandler) PurgeExpiredRuns(ctx context.Context) error {
+	deleted, err := h.retention.DeleteRunsBefore(ctx, h.clock.Now().Add(-h.keepFor))
 	if err != nil {
-		return fmt.Errorf("drop partitions: %w", err)
+		return fmt.Errorf("delete expired runs: %w", err)
 	}
-	for _, name := range dropped {
-		h.logger.Info("result partition dropped", "partition", name)
+	if deleted > 0 {
+		h.logger.Info("expired runs deleted", "count", deleted)
 	}
 	return nil
 }
