@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	domaincall "go-api/internal/domain/call"
 	domainrule "go-api/internal/domain/rule"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
@@ -119,13 +120,17 @@ func (r *workflowWriteRepository) insertChildren(ctx context.Context, w *domainw
 	return db.Create(&statics).Error
 }
 
+// Delete is a soft delete: calls, rules, variables and past runs are kept.
 func (r *workflowWriteRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return DBWithContext(ctx, r.db).Delete(&WorkflowModel{}, "id = ?", id).Error
+	now := time.Now().UTC()
+	return DBWithContext(ctx, r.db).Model(&WorkflowModel{}).
+		Where("id = ? AND deleted_at IS NULL", id).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error
 }
 
 func (r *workflowWriteRepository) GetByID(ctx context.Context, id uuid.UUID) (*domainworkflow.Workflow, error) {
 	var model WorkflowModel
-	err := DBWithContext(ctx, r.db).First(&model, "id = ?", id).Error
+	err := DBWithContext(ctx, r.db).First(&model, "id = ? AND deleted_at IS NULL", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -141,7 +146,7 @@ func (r *workflowWriteRepository) GetByID(ctx context.Context, id uuid.UUID) (*d
 
 func (r *workflowWriteRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]*domainworkflow.Workflow, error) {
 	var models []WorkflowModel
-	if err := DBWithContext(ctx, r.db).Where("user_id = ?", userID).Order("created_at").Find(&models).Error; err != nil {
+	if err := DBWithContext(ctx, r.db).Where("user_id = ? AND deleted_at IS NULL", userID).Order("created_at").Find(&models).Error; err != nil {
 		return nil, err
 	}
 	return r.hydrate(ctx, models)
@@ -188,7 +193,7 @@ func (r *workflowWriteRepository) hydrate(ctx context.Context, models []Workflow
 		return nil, err
 	}
 
-	callsByWorkflow := map[uuid.UUID][]domainworkflow.Call{}
+	callsByWorkflow := map[uuid.UUID][]domaincall.Call{}
 	for _, c := range calls {
 		call, err := callDomainFromModel(c, rulesByCall[c.ID])
 		if err != nil {
@@ -240,7 +245,7 @@ type extractionJSON struct {
 	Expression string `json:"expression,omitempty"`
 }
 
-func callModelFromDomain(workflowID uuid.UUID, c domainworkflow.Call, now time.Time) (CallModel, error) {
+func callModelFromDomain(workflowID uuid.UUID, c domaincall.Call, now time.Time) (CallModel, error) {
 	headers, err := json.Marshal(c.Headers)
 	if err != nil {
 		return CallModel{}, err
@@ -277,32 +282,32 @@ func callModelFromDomain(workflowID uuid.UUID, c domainworkflow.Call, now time.T
 	}, nil
 }
 
-func callDomainFromModel(m CallModel, rules []domainrule.Rule) (domainworkflow.Call, error) {
+func callDomainFromModel(m CallModel, rules []domainrule.Rule) (domaincall.Call, error) {
 	headers := map[string]string{}
 	if len(m.Headers) > 0 {
 		if err := json.Unmarshal(m.Headers, &headers); err != nil {
-			return domainworkflow.Call{}, err
+			return domaincall.Call{}, err
 		}
 	}
 	query := map[string]string{}
 	if len(m.Query) > 0 {
 		if err := json.Unmarshal(m.Query, &query); err != nil {
-			return domainworkflow.Call{}, err
+			return domaincall.Call{}, err
 		}
 	}
 	var raw []extractionJSON
 	if len(m.Extractions) > 0 {
 		if err := json.Unmarshal(m.Extractions, &raw); err != nil {
-			return domainworkflow.Call{}, err
+			return domaincall.Call{}, err
 		}
 	}
-	extractions := make([]domainworkflow.Extraction, 0, len(raw))
+	extractions := make([]domaincall.Extraction, 0, len(raw))
 	for _, e := range raw {
-		extractions = append(extractions, domainworkflow.Extraction{
-			Name: e.Name, Source: domainworkflow.ExtractionSource(e.Source), Expression: e.Expression,
+		extractions = append(extractions, domaincall.Extraction{
+			Name: e.Name, Source: domaincall.ExtractionSource(e.Source), Expression: e.Expression,
 		})
 	}
-	return domainworkflow.Call{
+	return domaincall.Call{
 		ID:          m.ID,
 		Position:    m.Position,
 		Name:        m.Name,
@@ -313,7 +318,7 @@ func callDomainFromModel(m CallModel, rules []domainrule.Rule) (domainworkflow.C
 		Body:        derefString(m.Body),
 		Timeout:     time.Duration(m.TimeoutMS) * time.Millisecond,
 		VerifyTLS:   m.VerifyTLS,
-		IPVersion:   domainworkflow.IPVersion(m.IPVersion),
+		IPVersion:   domaincall.IPVersion(m.IPVersion),
 		ProxyURL:    derefString(m.ProxyURL),
 		Extractions: extractions,
 		Rules:       rules,

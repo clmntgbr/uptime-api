@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go-api/internal/contract"
+	domaincall "go-api/internal/domain/call"
 	"go-api/internal/domain/certificate"
 	"go-api/internal/domain/paginate"
 	domainrule "go-api/internal/domain/rule"
@@ -84,10 +85,10 @@ func TestWorkflowLifecycle(t *testing.T) {
 	def := domainworkflow.Definition{
 		Name: "Checkout", Interval: 5 * time.Minute, Enabled: true,
 		Statics: []domainworkflow.StaticVariable{{Name: "base_url", Value: "https://api.example.com"}},
-		Calls: []domainworkflow.CallDefinition{
+		Calls: []domaincall.Definition{
 			{
 				Name: "login", Method: "POST", URL: "{{base_url}}/login", Body: `{"p":"{{password}}"}`,
-				Extractions: []domainworkflow.Extraction{{Name: "token", Source: domainworkflow.ExtractJSON, Expression: "$.token"}},
+				Extractions: []domaincall.Extraction{{Name: "token", Source: domaincall.ExtractJSON, Expression: "$.token"}},
 				Rules:       []domainrule.Rule{rule},
 			},
 			{Name: "orders", URL: "{{base_url}}/orders", Headers: map[string]string{"Authorization": "Bearer {{token}}"}},
@@ -220,8 +221,18 @@ func TestWorkflowLifecycle(t *testing.T) {
 	}
 
 	wfView, err := read.NewWorkflowQueryRepository(db).FindByID(ctx, userID, w.ID)
-	if err != nil || wfView == nil || len(wfView.Calls) != 2 || wfView.Calls[0].RuleCount != 1 || wfView.LastStatus != "failed" {
+	if err != nil || wfView == nil || wfView.Name != def.Name || wfView.Status == "" || wfView.LastStatus != "failed" || wfView.LastRunAt == nil {
 		t.Fatalf("workflow view: %+v %v", wfView, err)
+	}
+
+	listQuery := paginate.PaginateQuery{Page: 1, Limit: 10, SortBy: "name", OrderBy: paginate.OrderByDesc, Search: def.Name[:3]}
+	list, total, err := read.NewWorkflowQueryRepository(db).List(ctx, userID, listQuery)
+	if err != nil || total != 1 || len(list) != 1 || list[0].ID != w.ID || list[0].Name != def.Name {
+		t.Fatalf("workflow list: %+v total=%d %v", list, total, err)
+	}
+	listQuery.Search = "100%_match"
+	if list, total, err = read.NewWorkflowQueryRepository(db).List(ctx, userID, listQuery); err != nil || total != 0 || len(list) != 0 {
+		t.Fatalf("search must treat %% and _ literally: %+v total=%d %v", list, total, err)
 	}
 
 	aggregates := write.NewAggregateRepository(db)
@@ -251,7 +262,42 @@ func TestWorkflowLifecycle(t *testing.T) {
 		t.Fatalf("drop partitions: %v %v", dropped, err)
 	}
 
+	db.Exec("UPDATE workflow_state SET next_run_at = ? WHERE workflow_id = ?", past, w.ID)
 	if err := workflows.Delete(ctx, w.ID); err != nil {
 		t.Fatal(err)
+	}
+	var kept write.WorkflowModel
+	if err := db.First(&kept, "id = ?", w.ID).Error; err != nil || kept.DeletedAt == nil {
+		t.Fatalf("delete must be soft: %+v %v", kept, err)
+	}
+	var keptCalls int64
+	db.Model(&write.CallModel{}).Where("workflow_id = ?", w.ID).Count(&keptCalls)
+	if keptCalls != 2 {
+		t.Fatalf("calls of a deleted workflow must be kept, got %d", keptCalls)
+	}
+	if deleted, err := workflows.GetByID(ctx, w.ID); err != nil || deleted != nil {
+		t.Fatalf("a deleted workflow must not load: %+v %v", deleted, err)
+	}
+	if owned, err := workflows.ListByUser(ctx, userID); err != nil || len(owned) != 0 {
+		t.Fatalf("a deleted workflow must not be listed for the user: %+v %v", owned, err)
+	}
+	if view, err := read.NewWorkflowQueryRepository(db).FindByID(ctx, userID, w.ID); err != nil || view != nil {
+		t.Fatalf("a deleted workflow must not have a detail: %+v %v", view, err)
+	}
+	listQuery.Search = ""
+	if list, total, err = read.NewWorkflowQueryRepository(db).List(ctx, userID, listQuery); err != nil || total != 0 || len(list) != 0 {
+		t.Fatalf("a deleted workflow must not be listed: %+v total=%d %v", list, total, err)
+	}
+	err = states.WithTransaction(ctx, func(txCtx context.Context) error {
+		due, err := states.LockDue(txCtx, time.Now().UTC(), 1000)
+		for _, d := range due {
+			if d.State.WorkflowID == w.ID {
+				t.Error("a deleted workflow must not be scheduled")
+			}
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatalf("lock due after delete: %v", err)
 	}
 }

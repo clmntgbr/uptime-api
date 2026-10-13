@@ -14,9 +14,7 @@ type Status string
 const (
 	StatusSuccess Status = "success"
 	StatusFailed  Status = "failed"
-	// StatusSkipped is a pass not executed because the previous run still held the lease.
 	StatusSkipped Status = "skipped"
-	// StatusError is a run whose lease expired without any result.
 	StatusError Status = "error"
 )
 

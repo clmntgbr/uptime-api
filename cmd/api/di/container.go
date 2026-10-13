@@ -6,10 +6,14 @@ import (
 	authcmd "go-api/internal/application/command/auth"
 	identitycmd "go-api/internal/application/command/identity"
 	usercmd "go-api/internal/application/command/user"
+	workflowcmd "go-api/internal/application/command/workflow"
 	queryuser "go-api/internal/application/query/user"
-	infraClerk "go-api/internal/infrastructure/clerk"
+	queryworkflow "go-api/internal/application/query/workflow"
+	"go-api/internal/domain/port"
 	"go-api/internal/infrastructure/centrifugo"
+	infraClerk "go-api/internal/infrastructure/clerk"
 	"go-api/internal/infrastructure/config"
+	"go-api/internal/infrastructure/crypto"
 	"go-api/internal/infrastructure/persistence/outbox"
 	"go-api/internal/infrastructure/persistence/read"
 	"go-api/internal/infrastructure/persistence/write"
@@ -25,6 +29,7 @@ type Container struct {
 	UserWebhookHandler     *httphandler.UserWebhookHandler
 	UserHandler            *httphandler.UserHandler
 	RealtimeHandler        *httphandler.RealtimeHandler
+	WorkflowHandler        *httphandler.WorkflowHandler
 }
 
 func NewContainer(db *gorm.DB, env *config.Config) *Container {
@@ -45,6 +50,16 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	fetchUserHandler := identitycmd.NewFetchUserHandler(infraClerk.NewUserGateway(env.ClerkSecretKey))
 	getUserByIDHandler := queryuser.NewGetUserByIDHandler(userReadRepo)
 
+	cipher, err := crypto.NewAESCipher(env.SecretsEncryptionKey)
+	if err != nil {
+		log.Fatalf("invalid SECRETS_ENCRYPTION_KEY: %v", err)
+	}
+	workflowWriteRepo := write.NewWorkflowWriteRepository(db)
+	workflowReadRepo := read.NewWorkflowQueryRepository(db)
+	stateRepo := write.NewStateRepository(db)
+	globalVariableRepo := write.NewGlobalVariableRepository(db, cipher)
+	clock := port.SystemClock{}
+
 	return &Container{
 		AuthenticateMiddleware: middleware.NewAuthenticateMiddleware(
 			validateTokenHandler,
@@ -60,5 +75,12 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		),
 		UserHandler:     httphandler.NewUserHandler(getUserByIDHandler),
 		RealtimeHandler: httphandler.NewRealtimeHandler(centrifugo.NewConnectionInfoCreator(env)),
+		WorkflowHandler: httphandler.NewWorkflowHandler(
+			workflowcmd.NewCreateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo, clock),
+			workflowcmd.NewUpdateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo, clock),
+			queryworkflow.NewListWorkflowsHandler(workflowReadRepo),
+			queryworkflow.NewGetWorkflowHandler(workflowReadRepo),
+			workflowcmd.NewDeleteWorkflowHandler(workflowWriteRepo, outboxRepo),
+		),
 	}
 }

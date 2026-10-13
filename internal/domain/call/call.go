@@ -1,4 +1,4 @@
-package workflow
+package call
 
 import (
 	"fmt"
@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	DefaultCallTimeout = 30 * time.Second
-	MaxCallTimeout     = 60 * time.Second
-	MinCallTimeout     = 100 * time.Millisecond
-	MaxCallNameLength  = 100
+	DefaultTimeout = 30 * time.Second
+	MaxTimeout     = 60 * time.Second
+	MinTimeout     = 100 * time.Millisecond
+	MaxNameLength  = 100
 )
 
 type IPVersion string
@@ -50,8 +50,8 @@ type Call struct {
 	Rules       []rule.Rule
 }
 
-// CallDefinition is the user input for a call; IDs are assigned by the aggregate.
-type CallDefinition struct {
+// Definition is the user input for a call; IDs are assigned by the workflow.
+type Definition struct {
 	Name        string
 	Method      string
 	URL         string
@@ -66,14 +66,14 @@ type CallDefinition struct {
 	Rules       []rule.Rule
 }
 
-func buildCall(def CallDefinition, position int, id uuid.UUID) (Call, error) {
+func New(def Definition, position int, id uuid.UUID) (Call, error) {
 	name := strings.TrimSpace(def.Name)
 	fail := func(format string, args ...any) (Call, error) {
 		return Call{}, &ValidationError{Call: name, Message: fmt.Sprintf(format, args...)}
 	}
 
-	if name == "" || len(name) > MaxCallNameLength {
-		return fail("call name is required (max %d characters)", MaxCallNameLength)
+	if name == "" || len(name) > MaxNameLength {
+		return fail("call name is required (max %d characters)", MaxNameLength)
 	}
 
 	method := strings.ToUpper(strings.TrimSpace(def.Method))
@@ -91,10 +91,10 @@ func buildCall(def CallDefinition, position int, id uuid.UUID) (Call, error) {
 
 	timeout := def.Timeout
 	if timeout == 0 {
-		timeout = DefaultCallTimeout
+		timeout = DefaultTimeout
 	}
-	if timeout < MinCallTimeout || timeout > MaxCallTimeout {
-		return fail("timeout must be between %s and %s", MinCallTimeout, MaxCallTimeout)
+	if timeout < MinTimeout || timeout > MaxTimeout {
+		return fail("timeout must be between %s and %s", MinTimeout, MaxTimeout)
 	}
 
 	ipVersion := def.IPVersion

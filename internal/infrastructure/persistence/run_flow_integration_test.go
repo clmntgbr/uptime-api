@@ -18,6 +18,7 @@ import (
 	commandrun "go-api/internal/application/command/run"
 	"go-api/internal/application/command/schedule"
 	"go-api/internal/contract"
+	domaincall "go-api/internal/domain/call"
 	"go-api/internal/domain/port"
 	domainschedule "go-api/internal/domain/schedule"
 	"go-api/internal/domain/variable"
@@ -103,9 +104,9 @@ func TestScheduleExecuteRecord(t *testing.T) {
 	def := domainworkflow.Definition{
 		Name: "flow", Interval: time.Minute, Enabled: true,
 		Statics: []domainworkflow.StaticVariable{{Name: "base_url", Value: target.URL}},
-		Calls: []domainworkflow.CallDefinition{
+		Calls: []domaincall.Definition{
 			{Name: "login", Method: "POST", URL: "{{base_url}}/login", Body: `{"password":"{{password}}"}`,
-				Extractions: []domainworkflow.Extraction{{Name: "access_token", Source: domainworkflow.ExtractJSON, Expression: "$.access_token"}}},
+				Extractions: []domaincall.Extraction{{Name: "access_token", Source: domaincall.ExtractJSON, Expression: "$.access_token"}}},
 			{Name: "orders", URL: "{{base_url}}/orders", Headers: map[string]string{"Authorization": "Bearer {{access_token}}"}},
 		},
 	}

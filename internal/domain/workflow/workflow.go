@@ -1,10 +1,12 @@
 package workflow
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	domaincall "go-api/internal/domain/call"
 	"go-api/internal/domain/event"
 	"go-api/internal/domain/schedule"
 	"go-api/internal/domain/variable"
@@ -32,7 +34,7 @@ type Definition struct {
 	Interval time.Duration
 	Enabled  bool
 	Statics  []StaticVariable
-	Calls    []CallDefinition
+	Calls    []domaincall.Definition
 }
 
 // Workflow is an ordered list of calls run at a regular interval. Calls only
@@ -45,7 +47,7 @@ type Workflow struct {
 	Timeout   time.Duration
 	Enabled   bool
 	Statics   []StaticVariable
-	Calls     []Call
+	Calls     []domaincall.Call
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
@@ -141,15 +143,19 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 		existingIDs[c.Name] = c.ID
 	}
 
-	calls := make([]Call, 0, len(def.Calls))
+	calls := make([]domaincall.Call, 0, len(def.Calls))
 	callNames := map[string]struct{}{}
 	for i, cd := range def.Calls {
 		id, ok := existingIDs[strings.TrimSpace(cd.Name)]
 		if !ok {
 			id = uuid.New()
 		}
-		call, err := buildCall(cd, i+1, id)
+		call, err := domaincall.New(cd, i+1, id)
 		if err != nil {
+			var cerr *domaincall.ValidationError
+			if errors.As(err, &cerr) {
+				return &ValidationError{Call: cerr.Call, Message: cerr.Message}
+			}
 			return err
 		}
 		if _, dup := callNames[call.Name]; dup {
@@ -197,7 +203,7 @@ func buildStatics(existing, defs []StaticVariable) ([]StaticVariable, error) {
 
 // validateVariables enforces the resolution rules: one namespace across the
 // three types, and a call only uses variables available before it runs.
-func validateVariables(statics []StaticVariable, calls []Call, globalNames []string) error {
+func validateVariables(statics []StaticVariable, calls []domaincall.Call, globalNames []string) error {
 	origin := map[string]string{}
 	for _, g := range globalNames {
 		origin[g] = string(variable.TypeGlobal)

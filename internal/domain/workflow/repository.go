@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"go-api/internal/domain/paginate"
 	"go-api/internal/domain/schedule"
 
 	"github.com/google/uuid"
@@ -24,30 +25,26 @@ type WriteRepository interface {
 type ReadRepository interface {
 	// FindByID returns nil, nil when the workflow does not exist for that user.
 	FindByID(ctx context.Context, userID, id uuid.UUID) (*View, error)
+	// List returns one page of the user's workflows and the total before pagination.
+	List(ctx context.Context, userID uuid.UUID, q paginate.PaginateQuery) ([]ListView, int64, error)
 }
 
-// View is the read model of a workflow with its current scheduling state.
+type ListView struct {
+	ID   uuid.UUID
+	Name string
+}
+
+// View is the read model of a workflow with its current scheduling state, without its calls.
 type View struct {
 	ID              uuid.UUID
 	UserID          uuid.UUID
 	Name            string
 	IntervalSeconds int
 	Enabled         bool
-	Calls           []CallView
-	StaticNames     []string
 	Status          schedule.Status
 	NextRunAt       *time.Time
 	LastRunAt       *time.Time
 	LastStatus      string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
-}
-
-type CallView struct {
-	ID        uuid.UUID
-	Position  int
-	Name      string
-	Method    string
-	URL       string
-	RuleCount int
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	domaincall "go-api/internal/domain/call"
 	domainworkflow "go-api/internal/domain/workflow"
 
 	"github.com/google/uuid"
@@ -58,13 +59,13 @@ func TestParseWorkflowFile(t *testing.T) {
 		t.Fatalf("static order must follow the file: %+v", def.Statics)
 	}
 	login := def.Calls[0]
-	if login.Extractions[0].Source != domainworkflow.ExtractJSON || login.Extractions[1].Source != domainworkflow.ExtractHeader ||
+	if login.Extractions[0].Source != domaincall.ExtractJSON || login.Extractions[1].Source != domaincall.ExtractHeader ||
 		login.Extractions[1].Expression != "Set-Cookie" {
 		t.Fatalf("unexpected extractions %+v", login.Extractions)
 	}
 	list := def.Calls[1]
-	if list.Timeout != 10*time.Second || list.Extractions[1].Source != domainworkflow.ExtractStatus ||
-		list.Extractions[2].Source != domainworkflow.ExtractRegex || list.Extractions[2].Expression != "ref=([a-z0-9]+)" {
+	if list.Timeout != 10*time.Second || list.Extractions[1].Source != domaincall.ExtractStatus ||
+		list.Extractions[2].Source != domaincall.ExtractRegex || list.Extractions[2].Expression != "ref=([a-z0-9]+)" {
 		t.Fatalf("unexpected call %+v", list)
 	}
 

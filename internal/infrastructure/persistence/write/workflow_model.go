@@ -12,14 +12,15 @@ import (
 // Schema is owned by SQL migrations — do not encode DDL in tags.
 
 type WorkflowModel struct {
-	ID              uuid.UUID `gorm:"column:id;primaryKey"`
-	UserID          uuid.UUID `gorm:"column:user_id"`
-	Name            string    `gorm:"column:name"`
-	IntervalSeconds int       `gorm:"column:interval_seconds"`
-	TimeoutMS       int       `gorm:"column:timeout_ms"`
-	Enabled         bool      `gorm:"column:enabled"`
-	CreatedAt       time.Time `gorm:"column:created_at"`
-	UpdatedAt       time.Time `gorm:"column:updated_at"`
+	ID              uuid.UUID  `gorm:"column:id;primaryKey"`
+	UserID          uuid.UUID  `gorm:"column:user_id"`
+	Name            string     `gorm:"column:name"`
+	IntervalSeconds int        `gorm:"column:interval_seconds"`
+	TimeoutMS       int        `gorm:"column:timeout_ms"`
+	Enabled         bool       `gorm:"column:enabled"`
+	CreatedAt       time.Time  `gorm:"column:created_at"`
+	UpdatedAt       time.Time  `gorm:"column:updated_at"`
+	DeletedAt       *time.Time `gorm:"column:deleted_at"`
 }
 
 func (WorkflowModel) TableName() string { return "workflows" }

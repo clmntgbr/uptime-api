@@ -30,6 +30,15 @@ func setupAPIRoutes(app *fiber.App, container *di.Container) {
 	protected := public.Group("", container.AuthenticateMiddleware.Protected())
 	setupUserRoutes(protected, container)
 	setupRealtimeRoutes(protected, container)
+	setupWorkflowRoutes(protected, container)
+}
+
+func setupWorkflowRoutes(api fiber.Router, container *di.Container) {
+	api.Get("/workflows", container.WorkflowHandler.List)
+	api.Post("/workflows", container.WorkflowHandler.Create)
+	api.Get("/workflows/:id", container.WorkflowHandler.GetByID)
+	api.Put("/workflows/:id", container.WorkflowHandler.Update)
+	api.Delete("/workflows/:id", container.WorkflowHandler.Delete)
 }
 
 func setupRealtimeRoutes(api fiber.Router, container *di.Container) {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	domaincall "go-api/internal/domain/call"
 	domainrule "go-api/internal/domain/rule"
 	domainworkflow "go-api/internal/domain/workflow"
 
@@ -92,8 +93,8 @@ func parseWorkflowFile(data []byte) (domainworkflow.Definition, error) {
 	return def, nil
 }
 
-func parseCall(c workflowFileCall) (domainworkflow.CallDefinition, error) {
-	def := domainworkflow.CallDefinition{
+func parseCall(c workflowFileCall) (domaincall.Definition, error) {
+	def := domaincall.Definition{
 		Name:      c.Name,
 		Method:    c.Method,
 		URL:       c.URL,
@@ -101,7 +102,7 @@ func parseCall(c workflowFileCall) (domainworkflow.CallDefinition, error) {
 		Query:     c.Query,
 		Body:      c.Body,
 		VerifyTLS: c.VerifyTLS,
-		IPVersion: domainworkflow.IPVersion(strings.ToLower(c.IPVersion)),
+		IPVersion: domaincall.IPVersion(strings.ToLower(c.IPVersion)),
 		ProxyURL:  c.Proxy,
 	}
 	if c.Timeout != "" {
@@ -130,18 +131,18 @@ func parseCall(c workflowFileCall) (domainworkflow.CallDefinition, error) {
 	return def, nil
 }
 
-func parseExtraction(name, expression string) domainworkflow.Extraction {
+func parseExtraction(name, expression string) domaincall.Extraction {
 	expression = strings.TrimSpace(expression)
 	lower := strings.ToLower(expression)
 	switch {
 	case lower == "status":
-		return domainworkflow.Extraction{Name: name, Source: domainworkflow.ExtractStatus}
+		return domaincall.Extraction{Name: name, Source: domaincall.ExtractStatus}
 	case strings.HasPrefix(lower, "header:"):
-		return domainworkflow.Extraction{Name: name, Source: domainworkflow.ExtractHeader, Expression: strings.TrimSpace(expression[len("header:"):])}
+		return domaincall.Extraction{Name: name, Source: domaincall.ExtractHeader, Expression: strings.TrimSpace(expression[len("header:"):])}
 	case strings.HasPrefix(lower, "regex:"):
-		return domainworkflow.Extraction{Name: name, Source: domainworkflow.ExtractRegex, Expression: expression[len("regex:"):]}
+		return domaincall.Extraction{Name: name, Source: domaincall.ExtractRegex, Expression: expression[len("regex:"):]}
 	default:
-		return domainworkflow.Extraction{Name: name, Source: domainworkflow.ExtractJSON, Expression: expression}
+		return domaincall.Extraction{Name: name, Source: domaincall.ExtractJSON, Expression: expression}
 	}
 }
 

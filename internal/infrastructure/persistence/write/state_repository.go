@@ -39,7 +39,7 @@ const lockDueSQL = `
 SELECT s.*, w.user_id, w.interval_seconds
 FROM workflow_state s
 JOIN workflows w ON w.id = s.workflow_id
-WHERE w.enabled AND s.next_run_at <= @now
+WHERE w.enabled AND w.deleted_at IS NULL AND s.next_run_at <= @now
 ORDER BY s.next_run_at
 LIMIT @limit
 FOR UPDATE OF s SKIP LOCKED`
