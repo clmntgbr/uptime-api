@@ -68,8 +68,7 @@ func NewMigrateCommand() *cobra.Command {
 			Use:   "check",
 			Short: "Fail if persistence models and database schema diverge",
 			RunE: func(cmd *cobra.Command, args []string) error {
-				env := config.Load()
-				db := config.ConnectDatabase(env)
+				db := config.ConnectDatabaseURL(config.LoadCLI().DatabaseURL)
 				if err := schema.AssertModelsMatchDB(db); err != nil {
 					return err
 				}
@@ -83,8 +82,7 @@ func NewMigrateCommand() *cobra.Command {
 }
 
 func openSQL() (*sql.DB, error) {
-	env := config.Load()
-	db := config.ConnectDatabase(env)
+	db := config.ConnectDatabaseURL(config.LoadCLI().DatabaseURL)
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("get sql db: %w", err)

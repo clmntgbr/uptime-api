@@ -1,0 +1,200 @@
+package engine
+
+import (
+	"errors"
+	"fmt"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"go-api/internal/contract"
+	domainworkflow "go-api/internal/domain/workflow"
+)
+
+type observation struct {
+	status  int
+	totalMS int64
+	size    int64
+	headers http.Header
+	body    *body
+	tls     *contract.TLSInfo
+	now     time.Time
+}
+
+// evaluate checks one rule. Comparison operators (is, contains, exists...) pass
+// when the sentence is true; threshold operators (exceeds, below, certificate
+// alerts) describe the bad state and fail when the sentence is true.
+func evaluate(rule domainworkflow.Rule, obs observation) contract.RuleResult {
+	res := contract.RuleResult{
+		Subject:  string(rule.Subject),
+		Operator: string(rule.Operator),
+		Text:     rule.Text(),
+	}
+	pass := func(observed, expected string, ok bool) contract.RuleResult {
+		res.Observed, res.Expected, res.Passed = observed, expected, ok
+		return res
+	}
+
+	switch rule.Subject {
+	case domainworkflow.SubjectStatus:
+		observed := strconv.Itoa(obs.status)
+		codes := strings.Split(rule.Value, ",")
+		matched := false
+		for _, code := range codes {
+			if statusMatches(obs.status, strings.TrimSpace(code)) {
+				matched = true
+				break
+			}
+		}
+		switch rule.Operator {
+		case domainworkflow.OpIsNot:
+			return pass(observed, "not "+rule.Value, !matched)
+		case domainworkflow.OpIn:
+			return pass(observed, "one of "+strings.ReplaceAll(rule.Value, ",", ", "), matched)
+		default:
+			return pass(observed, rule.Value, matched)
+		}
+
+	case domainworkflow.SubjectResponseTime:
+		limit, err := strconv.ParseInt(rule.Value, 10, 64)
+		if err != nil {
+			if limit, err = domainworkflow.ParseDurationMS(rule.Value); err != nil {
+				return pass(formatMS(obs.totalMS), rule.Value, false)
+			}
+		}
+		return pass(formatMS(obs.totalMS), "at most "+formatMS(limit), obs.totalMS <= limit)
+
+	case domainworkflow.SubjectSize:
+		limit, err := strconv.ParseInt(rule.Value, 10, 64)
+		if err != nil {
+			if limit, err = domainworkflow.ParseSizeBytes(rule.Value); err != nil {
+				return pass(domainworkflow.FormatBytes(obs.size), rule.Value, false)
+			}
+		}
+		return pass(domainworkflow.FormatBytes(obs.size), "at most "+domainworkflow.FormatBytes(limit), obs.size <= limit)
+
+	case domainworkflow.SubjectBody:
+		contains := strings.Contains(string(obs.body.raw), rule.Value)
+		if rule.Operator == domainworkflow.OpNotContains {
+			return pass(presence(contains), "absent", !contains)
+		}
+		return pass(presence(contains), "present", contains)
+
+	case domainworkflow.SubjectHeader:
+		values, exists := obs.headers[http.CanonicalHeaderKey(rule.Target)]
+		value := strings.Join(values, ", ")
+		switch rule.Operator {
+		case domainworkflow.OpExists:
+			return pass(presence(exists), "present", exists)
+		case domainworkflow.OpContains:
+			return pass(observedOrAbsent(value, exists), "contains "+rule.Value, exists && strings.Contains(value, rule.Value))
+		default:
+			return pass(observedOrAbsent(value, exists), rule.Value, exists && value == rule.Value)
+		}
+
+	case domainworkflow.SubjectJSON:
+		return evaluateJSON(rule, obs, pass)
+
+	case domainworkflow.SubjectCertificate:
+		if obs.tls == nil {
+			return pass("no certificate", "a TLS certificate", false)
+		}
+		switch rule.Operator {
+		case domainworkflow.OpChainInvalid:
+			observed := "valid"
+			if !obs.tls.ChainValid {
+				observed = "invalid"
+				if obs.tls.VerifyError != "" {
+					observed += " (" + obs.tls.VerifyError + ")"
+				}
+			}
+			return pass(observed, "valid", obs.tls.ChainValid)
+		case domainworkflow.OpNameMismatch:
+			return pass(map[bool]string{true: "matches", false: "does not match"}[obs.tls.NameMatch], "matches", obs.tls.NameMatch)
+		default:
+			days, err := strconv.Atoi(rule.Value)
+			if err != nil {
+				return pass("", rule.Value, false)
+			}
+			expiry := obs.tls.ChainExpiresAt
+			if expiry.IsZero() {
+				expiry = obs.tls.ExpiresAt
+			}
+			left := expiry.Sub(obs.now)
+			observed := fmt.Sprintf("%d days left (%s)", int(math.Floor(left.Hours()/24)), expiry.UTC().Format("2006-01-02"))
+			return pass(observed, fmt.Sprintf("at least %d days", days), left >= time.Duration(days)*24*time.Hour)
+		}
+	}
+	return pass("", rule.Value, false)
+}
+
+func evaluateJSON(rule domainworkflow.Rule, obs observation, pass func(string, string, bool) contract.RuleResult) contract.RuleResult {
+	v, err := obs.body.jsonPath(rule.Target)
+	found := err == nil
+	observed := "absent"
+	if found {
+		observed = stringify(v)
+	} else if !errors.Is(err, errNotFound) {
+		observed = err.Error()
+	}
+
+	switch rule.Operator {
+	case domainworkflow.OpExists:
+		return pass(observed, "present", found)
+	case domainworkflow.OpNotExists:
+		return pass(observed, "absent", !found)
+	case domainworkflow.OpIsNot:
+		return pass(observed, "not "+rule.Value, !found || observed != rule.Value)
+	case domainworkflow.OpExceeds, domainworkflow.OpBelow:
+		limit, limitErr := strconv.ParseFloat(rule.Value, 64)
+		n, numErr := toNumber(v)
+		if !found || numErr != nil || limitErr != nil {
+			return pass(observed, "a number", false)
+		}
+		if rule.Operator == domainworkflow.OpExceeds {
+			return pass(observed, "at most "+rule.Value, n <= limit)
+		}
+		return pass(observed, "at least "+rule.Value, n >= limit)
+	default:
+		return pass(observed, rule.Value, found && observed == rule.Value)
+	}
+}
+
+func statusMatches(status int, code string) bool {
+	code = strings.ToLower(code)
+	if len(code) == 3 && strings.HasSuffix(code, "xx") {
+		return status/100 == int(code[0]-'0')
+	}
+	n, err := strconv.Atoi(code)
+	return err == nil && n == status
+}
+
+func toNumber(v any) (float64, error) {
+	switch t := v.(type) {
+	case int64:
+		return float64(t), nil
+	case float64:
+		return t, nil
+	case string:
+		return strconv.ParseFloat(t, 64)
+	}
+	return 0, errors.New("not a number")
+}
+
+func formatMS(ms int64) string { return strconv.FormatInt(ms, 10) + " ms" }
+
+func presence(ok bool) string {
+	if ok {
+		return "present"
+	}
+	return "absent"
+}
+
+func observedOrAbsent(value string, exists bool) string {
+	if !exists {
+		return "absent"
+	}
+	return value
+}

@@ -23,50 +23,53 @@ type Config struct {
 	CORSAllowHeaders      []string
 	CORSMaxAge            int
 	RateLimitMax          int
-	RabbitMQURL           string
-	RabbitMQExchange      string
-	RabbitMQQueue         string
-	RabbitMQRoutingKey    string
-	RabbitMQRetryTTLMS    int
-	WorkerMaxRetries      int
 	OutboxPollInterval    time.Duration
 	WorkerConcurrency     int
+	WorkerResultsGroup    string
+	WorkerEventsGroup     string
 	CentrifugoURL         string
 	CentrifugoAPIKey      string
 	CentrifugoTokenSecret string
 	CentrifugoPublicWSURL string
+	SecretsEncryptionKey  string
+	MetricsAddr           string
+	Kafka                 KafkaConfig
 }
 
+// Load reads the configuration shared by the api, worker and cli binaries.
 func Load() *Config {
-	if err := godotenv.Load(); err != nil {
-		log.Println("no .env file found, using environment variables")
-	}
+	loadDotEnv()
 
 	return &Config{
-		DatabaseURL:          getEnv("DATABASE_URL"),
-		ClerkWebhookSecret:   getEnv("CLERK_WEBHOOK_SECRET"),
-		Port:                 getEnv("PORT"),
-		Environment:          getEnv("GO_ENV"),
-		ClerkSecretKey:       getEnv("CLERK_SECRET_KEY"),
-		ClerkFrontendAPI:     getEnv("CLERK_FRONTEND_API"),
-		CORSAllowedOrigins:   strings.Split(getEnv("CORS_ALLOWED_ORIGINS"), ","),
-		CORSAllowCredentials: getEnvBool("CORS_ALLOW_CREDENTIALS"),
-		CORSAllowMethods:     strings.Split(getEnv("CORS_ALLOW_METHODS"), ","),
-		CORSAllowHeaders:     strings.Split(getEnv("CORS_ALLOW_HEADERS"), ","),
-		CORSMaxAge:           getEnvInt("CORS_MAX_AGE"),
-		RateLimitMax:         getEnvInt("RATE_LIMIT_MAX"),
-		RabbitMQURL:          getEnv("RABBITMQ_URL"),
-		RabbitMQExchange:     getEnvOrDefault("RABBITMQ_EXCHANGE", "domain.events"),
-		RabbitMQQueue:        getEnvOrDefault("RABBITMQ_QUEUE", "domain.events"),
-		RabbitMQRoutingKey:   getEnvOrDefault("RABBITMQ_ROUTING_KEY", "user.#"),
-		RabbitMQRetryTTLMS:   getEnvIntOrDefault("RABBITMQ_RETRY_TTL_MS", 30000),
-		WorkerMaxRetries:     getEnvIntOrDefault("WORKER_MAX_RETRIES", 3),
-		OutboxPollInterval:   getEnvDuration("OUTBOX_POLL_INTERVAL", 2*time.Second),
-		WorkerConcurrency:    getEnvIntOrDefault("WORKER_CONCURRENCY", 4),
+		DatabaseURL:           getEnv("DATABASE_URL"),
+		ClerkWebhookSecret:    getEnv("CLERK_WEBHOOK_SECRET"),
+		Port:                  getEnv("PORT"),
+		Environment:           getEnv("GO_ENV"),
+		ClerkSecretKey:        getEnv("CLERK_SECRET_KEY"),
+		ClerkFrontendAPI:      getEnv("CLERK_FRONTEND_API"),
+		CORSAllowedOrigins:    strings.Split(getEnv("CORS_ALLOWED_ORIGINS"), ","),
+		CORSAllowCredentials:  getEnvBool("CORS_ALLOW_CREDENTIALS"),
+		CORSAllowMethods:      strings.Split(getEnv("CORS_ALLOW_METHODS"), ","),
+		CORSAllowHeaders:      strings.Split(getEnv("CORS_ALLOW_HEADERS"), ","),
+		CORSMaxAge:            getEnvInt("CORS_MAX_AGE"),
+		RateLimitMax:          getEnvInt("RATE_LIMIT_MAX"),
+		OutboxPollInterval:    getEnvDuration("OUTBOX_POLL_INTERVAL", time.Second),
+		WorkerConcurrency:     getEnvIntOrDefault("WORKER_CONCURRENCY", 8),
+		WorkerResultsGroup:    getEnvOrDefault("WORKER_RESULTS_GROUP", "worker"),
+		WorkerEventsGroup:     getEnvOrDefault("WORKER_EVENTS_GROUP", "worker-events"),
 		CentrifugoURL:         getEnv("CENTRIFUGO_URL"),
 		CentrifugoAPIKey:      getEnv("CENTRIFUGO_API_KEY"),
 		CentrifugoTokenSecret: getEnv("CENTRIFUGO_TOKEN_SECRET"),
 		CentrifugoPublicWSURL: getEnvOrDefault("CENTRIFUGO_PUBLIC_WS_URL", ""),
+		SecretsEncryptionKey:  getEnvOrDefault("SECRETS_ENCRYPTION_KEY", ""),
+		MetricsAddr:           getEnvOrDefault("METRICS_ADDR", ":9100"),
+		Kafka:                 loadKafka("worker"),
+	}
+}
+
+func loadDotEnv() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file found, using environment variables")
 	}
 }
 
@@ -92,6 +95,14 @@ func getEnvBool(key string) bool {
 		return false
 	}
 
+	return value == "true"
+}
+
+func getEnvBoolOrDefault(key string, defaultValue bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
 	return value == "true"
 }
 
@@ -135,4 +146,12 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 		return 0
 	}
 	return parsed
+}
+
+func hostname() string {
+	name, err := os.Hostname()
+	if err != nil || name == "" {
+		return "local"
+	}
+	return name
 }

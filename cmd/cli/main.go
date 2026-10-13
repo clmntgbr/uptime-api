@@ -17,6 +17,10 @@ func main() {
 
 	rootCmd.AddCommand(
 		cliCommand.NewMigrateCommand(),
+		cliCommand.NewWorkflowImportCommand(),
+		cliCommand.NewVariableSetCommand(),
+		cliCommand.NewKeysGenerateCommand(),
+		cliCommand.NewPurgeCommand(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

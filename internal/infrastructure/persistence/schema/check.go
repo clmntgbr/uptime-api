@@ -16,6 +16,17 @@ func Models() []any {
 		&write.UserModel{},
 		&outbox.OutboxEvent{},
 		&processed.ProcessedEvent{},
+		&write.WorkflowModel{},
+		&write.CallModel{},
+		&write.RuleModel{},
+		&write.VariableModel{},
+		&write.WorkflowStateModel{},
+		&write.CertificateModel{},
+		&write.RunModel{},
+		&write.CallResultModel{},
+		&write.RuleResultModel{},
+		&write.HourlyAggregateModel{},
+		&write.DailyAggregateModel{},
 	}
 }
 

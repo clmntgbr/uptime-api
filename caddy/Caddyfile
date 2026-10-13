@@ -1,0 +1,19 @@
+{$SITE_ADDRESS} {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	handle /webhooks/* {
+		reverse_proxy api:3000
+	}
+
+	handle /connection/websocket {
+		reverse_proxy centrifugo:8000
+	}
+
+	handle {
+		respond 404
+	}
+}

@@ -10,6 +10,10 @@ import (
 )
 
 func ConnectDatabase(cfg *Config) *gorm.DB {
+	return ConnectDatabaseURL(cfg.DatabaseURL)
+}
+
+func ConnectDatabaseURL(dsn string) *gorm.DB {
 	logLevel := logger.Warn
 
 	gormLogger := logger.New(
@@ -23,7 +27,7 @@ func ConnectDatabase(cfg *Config) *gorm.DB {
 	)
 
 	db, err := gorm.Open(postgres.New(postgres.Config{
-		DSN:                  cfg.DatabaseURL,
+		DSN:                  dsn,
 		PreferSimpleProtocol: true,
 	}), &gorm.Config{
 		Logger:      gormLogger,

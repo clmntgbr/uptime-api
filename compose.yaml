@@ -1,24 +1,153 @@
+x-go-prod: &go-prod
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: production
+  restart: unless-stopped
+
+x-kafka-client-env: &kafka-client-env
+  KAFKA_BROKERS: kafka:9092
+  KAFKA_SASL_MECHANISM: SCRAM-SHA-512
+  KAFKA_TLS: "true"
+  KAFKA_TLS_CA_FILE: /run/secrets/kafka-ca.pem
+
 services:
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: production
-    container_name: api
-    command: ["./api"]
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    environment:
+      SITE_ADDRESS: ${CADDY_SITE_ADDRESS}
+    networks: [edge]
     restart: unless-stopped
 
+  api:
+    <<: *go-prod
+    command: ["./api"]
+    env_file: [.env]
+    environment:
+      DATABASE_URL: ${API_DATABASE_URL}
+    networks: [edge, backend, data]
+    deploy:
+      replicas: 2
+
+  scheduler:
+    <<: *go-prod
+    command: ["./scheduler"]
+    env_file: [.env]
+    environment:
+      <<: *kafka-client-env
+      DATABASE_URL: ${SCHEDULER_DATABASE_URL}
+      KAFKA_CLIENT_ID: scheduler
+      KAFKA_USERNAME: scheduler
+      KAFKA_PASSWORD: ${KAFKA_SCHEDULER_PASSWORD}
+    volumes:
+      - ./deploy/kafka/secrets/ca.pem:/run/secrets/kafka-ca.pem:ro
+    networks: [backend, data, heartbeat]
+
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: production
-    container_name: worker
+    <<: *go-prod
     command: ["./worker"]
-    env_file:
-      - .env
+    env_file: [.env]
+    environment:
+      <<: *kafka-client-env
+      DATABASE_URL: ${WORKER_DATABASE_URL}
+      KAFKA_CLIENT_ID: worker
+      KAFKA_USERNAME: worker
+      KAFKA_PASSWORD: ${KAFKA_WORKER_PASSWORD}
+    volumes:
+      - ./deploy/kafka/secrets/ca.pem:/run/secrets/kafka-ca.pem:ro
+    networks: [backend, data]
+    deploy:
+      replicas: 2
+
+  worker-calls:
+    <<: *go-prod
+    command: ["./worker-calls"]
+    environment:
+      <<: *kafka-client-env
+      KAFKA_CLIENT_ID: worker-calls
+      KAFKA_USERNAME: worker-calls
+      KAFKA_PASSWORD: ${KAFKA_WORKER_CALLS_PASSWORD}
+      JOB_SEAL_PUBLIC_KEY: ${JOB_SEAL_PUBLIC_KEY}
+      JOB_SEAL_PRIVATE_KEY: ${JOB_SEAL_PRIVATE_KEY}
+      HTTP_USER_AGENT: ${HTTP_USER_AGENT}
+    volumes:
+      - ./deploy/kafka/secrets/ca.pem:/run/secrets/kafka-ca.pem:ro
+    read_only: true
+    cap_drop: [ALL]
+    user: "10001"
+    mem_limit: 512m
+    networks: [egress]
+    deploy:
+      replicas: 2
+
+  kafka:
+    image: apache/kafka:3.9.0
+    entrypoint: ["/bin/bash", "/etc/kafka-custom/start.sh"]
+    environment:
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+      KAFKA_ADMIN_PASSWORD: ${KAFKA_ADMIN_PASSWORD}
+    volumes:
+      - ./deploy/kafka/server.properties:/etc/kafka-custom/server.properties:ro
+      - ./deploy/kafka/start.sh:/etc/kafka-custom/start.sh:ro
+      - ./deploy/kafka/secrets:/etc/kafka-custom/secrets:ro
+      - kafkadata:/var/lib/kafka/data
+    networks: [backend, egress]
     restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:3.9.0
+    entrypoint: ["/bin/bash", "/scripts/topics.sh"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_SECURITY: sasl
+      KAFKA_ADMIN_PASSWORD: ${KAFKA_ADMIN_PASSWORD}
+      KAFKA_SCHEDULER_PASSWORD: ${KAFKA_SCHEDULER_PASSWORD}
+      KAFKA_WORKER_PASSWORD: ${KAFKA_WORKER_PASSWORD}
+      KAFKA_WORKER_CALLS_PASSWORD: ${KAFKA_WORKER_CALLS_PASSWORD}
+      REPLICATION_FACTOR: ${KAFKA_REPLICATION_FACTOR:-1}
+    volumes:
+      - ./deploy/kafka:/scripts:ro
+    depends_on: [kafka]
+    networks: [backend]
+
+  centrifugo:
+    image: centrifugo/centrifugo:v5
+    command: ["centrifugo", "-c", "config.json"]
+    volumes:
+      - ./centrifugo:/centrifugo:ro
+    working_dir: /centrifugo
+    environment:
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+      CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_SECRET}
+      CENTRIFUGO_ALLOWED_ORIGINS: ${CENTRIFUGO_ALLOWED_ORIGINS}
+    networks: [edge, backend]
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [data]
+    restart: unless-stopped
+
+networks:
+  edge:
+  backend:
+    internal: true
+  data:
+    internal: true
+  egress:
+  # Outbound only, for the scheduler heartbeat to the external watchdog.
+  heartbeat:
+
+volumes:
+  kafkadata:
+  pgdata:
+  caddy_data:

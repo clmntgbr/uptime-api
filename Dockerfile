@@ -1,7 +1,7 @@
 # ============================================
 # Base stage - Common dependencies
 # ============================================
-FROM golang:1.25-alpine AS base
+FROM golang:1.26-alpine AS base
 
 WORKDIR /app
 
@@ -47,6 +47,18 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -a -installsuffix cgo \
     -ldflags="-w -s" \
+    -o scheduler \
+    ./cmd/scheduler
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -a -installsuffix cgo \
+    -ldflags="-w -s" \
+    -o worker-calls \
+    ./cmd/worker-calls
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -a -installsuffix cgo \
+    -ldflags="-w -s" \
     -o cli \
     ./cmd/cli
 
@@ -65,6 +77,8 @@ WORKDIR /home/appuser
 
 COPY --from=builder --chown=appuser:appuser /app/api .
 COPY --from=builder --chown=appuser:appuser /app/worker .
+COPY --from=builder --chown=appuser:appuser /app/scheduler .
+COPY --from=builder --chown=appuser:appuser /app/worker-calls .
 COPY --from=builder --chown=appuser:appuser /app/cli .
 
 USER appuser

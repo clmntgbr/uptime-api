@@ -1,9 +1,38 @@
+x-go-dev: &go-dev
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: development
+  volumes:
+    - .:/app
+    - go-modules:/go/pkg/mod
+    - go-build-cache:/root/.cache/go-build
+  restart: unless-stopped
+
+x-centrifugo-env: &centrifugo-env
+  CENTRIFUGO_URL: http://centrifugo:8000/api
+  CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:-dev-centrifugo-api-key}
+  CENTRIFUGO_TOKEN_SECRET: ${CENTRIFUGO_TOKEN_SECRET:-dev-centrifugo-token-secret}
+  CENTRIFUGO_PUBLIC_WS_URL: ${CENTRIFUGO_PUBLIC_WS_URL:-ws://localhost:8000/connection/websocket}
+
 services:
+  caddy:
+    container_name: caddy
+    image: caddy:2
+    ports:
+      - "8080:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    environment:
+      SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
+    depends_on:
+      - api
+      - centrifugo
+    networks: [edge]
+    restart: unless-stopped
+
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
+    <<: *go-dev
     container_name: api
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/livez"]
@@ -13,62 +42,69 @@ services:
       start_period: 60s
     ports:
       - "4000:3000"
-    volumes:
-      - .:/app
-      - go-modules:/go/pkg/mod
-      - go-build-cache:/root/.cache/go-build
     env_file:
       - .env
     environment:
-      CENTRIFUGO_URL: http://centrifugo:8000/api
-      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:-dev-centrifugo-api-key}
-      CENTRIFUGO_TOKEN_SECRET: ${CENTRIFUGO_TOKEN_SECRET:-dev-centrifugo-token-secret}
-      CENTRIFUGO_PUBLIC_WS_URL: ${CENTRIFUGO_PUBLIC_WS_URL:-ws://localhost:8000/connection/websocket}
+      <<: *centrifugo-env
     depends_on:
       database:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
       centrifugo:
         condition: service_started
-    networks:
-      - api
-    restart: unless-stopped
+    networks: [edge, backend, data]
+
+  scheduler:
+    <<: *go-dev
+    container_name: scheduler
+    command: ["go", "run", "./cmd/scheduler"]
+    env_file:
+      - .env
+    environment:
+      KAFKA_CLIENT_ID: scheduler
+    depends_on:
+      database:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    networks: [backend, data, heartbeat]
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
+    <<: *go-dev
     container_name: worker
     command: ["go", "run", "./cmd/worker"]
-    volumes:
-      - .:/app
-      - go-modules:/go/pkg/mod
-      - go-build-cache:/root/.cache/go-build
     env_file:
       - .env
     environment:
-      CENTRIFUGO_URL: http://centrifugo:8000/api
-      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:-dev-centrifugo-api-key}
-      CENTRIFUGO_TOKEN_SECRET: ${CENTRIFUGO_TOKEN_SECRET:-dev-centrifugo-token-secret}
-      CENTRIFUGO_PUBLIC_WS_URL: ${CENTRIFUGO_PUBLIC_WS_URL:-ws://localhost:8000/connection/websocket}
+      <<: *centrifugo-env
+      KAFKA_CLIENT_ID: worker
     depends_on:
       database:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       centrifugo:
         condition: service_started
-      mailpit:
-        condition: service_started
-    networks:
-      - api
-    restart: unless-stopped
+    networks: [backend, data]
+
+  # No env_file on purpose: worker-calls must never receive database or Clerk credentials.
+  worker-calls:
+    <<: *go-dev
+    container_name: worker-calls
+    command: ["go", "run", "./cmd/worker-calls"]
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: worker-calls
+      JOB_SEAL_PUBLIC_KEY: ${JOB_SEAL_PUBLIC_KEY}
+      JOB_SEAL_PRIVATE_KEY: ${JOB_SEAL_PRIVATE_KEY}
+      SSRF_ALLOW_PRIVATE: ${SSRF_ALLOW_PRIVATE:-false}
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    networks: [egress]
 
   database:
     container_name: datastore
-    image: postgres:${POSTGRES_VERSION:-16}-alpine
+    image: postgres:${POSTGRES_VERSION:-17}-alpine
     healthcheck:
       test: ["CMD", "pg_isready", "-d", "${POSTGRES_DB:-app}", "-U", "${POSTGRES_USER:-app}"]
       timeout: 5s
@@ -82,28 +118,54 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-app}
     volumes:
       - database_data:/var/lib/postgresql/data:rw
-    networks:
-      - api
+    networks: [data]
     restart: unless-stopped
 
-  rabbitmq:
-    container_name: broker
-    image: rabbitmq:3.13-management-alpine
+  kafka:
+    container_name: kafka
+    image: apache/kafka:3.9.0
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
       start_period: 30s
     ports:
-      - "9002:5672"
-      - "9003:15672"
+      - "9094:9094"
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-user}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-password}
-    networks:
-      - api
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-uptime-dev-cluster-0001}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_MESSAGE_MAX_BYTES: 4194304
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks: [backend, egress]
     restart: unless-stopped
+
+  kafka-init:
+    container_name: kafka-init
+    image: apache/kafka:3.9.0
+    entrypoint: ["/bin/bash", "/scripts/topics.sh"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      REPLICATION_FACTOR: 1
+    volumes:
+      - ./deploy/kafka:/scripts:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [backend]
 
   centrifugo:
     container_name: centrifugo
@@ -118,8 +180,7 @@ services:
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:-dev-centrifugo-api-key}
       CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_SECRET:-dev-centrifugo-token-secret}
       CENTRIFUGO_ALLOWED_ORIGINS: ${CENTRIFUGO_ALLOWED_ORIGINS:-http://localhost:3000 http://localhost:3001}
-    networks:
-      - api
+    networks: [edge, backend]
     restart: unless-stopped
 
   ngrok:
@@ -130,8 +191,7 @@ services:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
     ports:
       - "4040:4040"
-    networks:
-      - api
+    networks: [edge]
     restart: unless-stopped
 
   mailpit:
@@ -140,15 +200,20 @@ services:
     ports:
       - "9025:1025"
       - "9026:8025"
-    networks:
-      - api
+    networks: [backend]
     restart: unless-stopped
 
 volumes:
   go-modules:
   go-build-cache:
   database_data:
+  kafka_data:
 
+# Same topology as compose.yaml, but backend and data are not `internal` here:
+# dev containers run `go run` (module downloads) and expose ports to the host.
 networks:
-  api:
-    name: go
+  edge:
+  backend:
+  data:
+  egress:
+  heartbeat:

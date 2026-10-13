@@ -2,43 +2,41 @@ package di
 
 import (
 	"log"
+	"log/slog"
 
+	commandrun "go-api/internal/application/command/run"
 	"go-api/internal/application/event/dedup"
+	eventrun "go-api/internal/application/event/run"
 	eventuser "go-api/internal/application/event/user"
 	"go-api/internal/application/registry"
+	domainrun "go-api/internal/domain/run"
 	domainuser "go-api/internal/domain/user"
 	"go-api/internal/infrastructure/centrifugo"
 	"go-api/internal/infrastructure/config"
-	"go-api/internal/infrastructure/messaging/rabbitmq"
+	"go-api/internal/infrastructure/messaging/kafka"
 	"go-api/internal/infrastructure/notification"
 	"go-api/internal/infrastructure/persistence/outbox"
 	"go-api/internal/infrastructure/persistence/processed"
+	"go-api/internal/infrastructure/persistence/write"
 
 	"gorm.io/gorm"
 )
 
 type Container struct {
-	Relay    *outbox.Relay
-	Consumer *rabbitmq.Consumer
-	Conn     *rabbitmq.Connection
+	Relay           *outbox.Relay
+	EventsConsumer  *kafka.Consumer
+	ResultsConsumer *kafka.Consumer
+	Producer        *kafka.Producer
 }
 
 func NewContainer(db *gorm.DB, env *config.Config) *Container {
-	topology := rabbitmq.DefaultTopology(
-		env.RabbitMQExchange,
-		env.RabbitMQQueue,
-		env.RabbitMQRoutingKey,
-		env.RabbitMQRetryTTLMS,
-	)
-
-	conn, err := rabbitmq.Connect(env.RabbitMQURL, topology)
+	producer, err := kafka.NewProducer(env.Kafka)
 	if err != nil {
-		log.Fatalf("failed to connect to rabbitmq: %v", err)
+		log.Fatalf("failed to create kafka producer: %v", err)
 	}
 
-	publisher := rabbitmq.NewPublisher(conn, env.RabbitMQExchange)
 	outboxRepo := outbox.NewRepository(db)
-	relay := outbox.NewRelay(outboxRepo, publisher, env.OutboxPollInterval, 50)
+	relay := outbox.NewRelay(outboxRepo, kafka.NewEventPublisher(producer), env.OutboxPollInterval, 50)
 
 	dedupRepo := processed.NewRepository(db)
 	notifier := notification.NewLogNotifier()
@@ -82,11 +80,39 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		publishUserRealtime.OnDeleted,
 	))
 
-	consumer := rabbitmq.NewConsumer(conn, reg, env.WorkerConcurrency, env.WorkerMaxRetries)
+	logger := slog.Default()
+	publishRunRealtime := eventrun.NewPublishRunRealtimeHandler(realtimePublisher, logger)
+	reg.Register(domainrun.EventTypeRunRecorded, dedup.With(
+		dedupRepo,
+		"publish_run_realtime",
+		publishRunRealtime.OnRecorded,
+	))
+
+	eventsConsumer := kafka.NewConsumer(
+		env.Kafka,
+		kafka.DefaultConsumerOptions(env.WorkerEventsGroup, kafka.TopicEvents, env.WorkerConcurrency, true),
+		kafka.RegistryHandler(reg),
+		producer,
+	)
+
+	recordResult := commandrun.NewRecordResultHandler(
+		write.NewStateRepository(db),
+		write.NewRunWriteRepository(db),
+		write.NewCertificateRepository(db),
+		processed.NewTxClaimer(db),
+		outboxRepo,
+	)
+	resultsConsumer := kafka.NewConsumer(
+		env.Kafka,
+		kafka.DefaultConsumerOptions(env.WorkerResultsGroup, kafka.TopicWorkflowResults, env.WorkerConcurrency, true),
+		kafka.PayloadHandler(recordResult.Handle),
+		producer,
+	)
 
 	return &Container{
-		Relay:    relay,
-		Consumer: consumer,
-		Conn:     conn,
+		Relay:           relay,
+		EventsConsumer:  eventsConsumer,
+		ResultsConsumer: resultsConsumer,
+		Producer:        producer,
 	}
 }

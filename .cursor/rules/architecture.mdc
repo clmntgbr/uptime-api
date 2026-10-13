@@ -18,7 +18,8 @@ cmd/*/di → interfaces/http → application/{command,query,event,registry} → 
 ```
 
 - **domain** never imports `infrastructure`, `interfaces`, `application`, or `cmd`
-- **application** depends only on `domain` (and small shared app helpers like `application/messaging` or `application/realtime`) — never concrete adapters
+- **application** depends only on `domain` and `contract` (and small shared app helpers like `application/messaging` or `application/realtime`) — never concrete adapters
+- **engine** depends only on `domain` and `contract`; it reaches the network and storage through ports (`engine.Executor`, `port.BodyStore`) wired in `cmd/*/di`
 - Wire concrete implementations only in `cmd/*/di`
 - HTTP handlers call Command/Query handlers directly — no generic `CommandBus` by default
 
@@ -36,7 +37,9 @@ internal/
   domain/<aggregate>/     entity.go, events.go, repository.go (Write/Read interfaces)
   domain/event/           DomainEvent interface
   domain/paginate/        PaginateQuery / PaginateResponse
-  domain/port/            Outbox, messaging, dedup, realtime, external ports
+  domain/port/            Outbox, messaging, dedup, realtime, execution, external ports
+  contract/               versioned Kafka message contracts (leaf package, no internal imports)
+  engine/                 pure execution engine (depends on domain + contract, I/O only via ports)
   application/command/    sync write use-cases
   application/query/      read models / views
   application/event/      async handlers (+ dedup wrappers, realtime publish)
@@ -44,7 +47,7 @@ internal/
   application/registry/   HandlerRegistry (Register / Dispatch)
   infrastructure/
     persistence/write|read|outbox|processed
-    messaging/rabbitmq/   publisher, consumer, topology (retry/DLQ)
+    messaging/kafka/      producer, consumer (offset tracking, retry topic, DLQ)
     config|<vendor adapters>/...
   interfaces/http/
     handler/              HTTP handlers + *_ports.go (test seams)
@@ -55,9 +58,9 @@ internal/
     validation/           struct tags + Fiber error handler
 cmd/
   api/                    HTTP server
-  worker/                 outbox relay + main RabbitMQ consumer
-  cli/                    SQL migrations (goose) + schema check
-  <extra>/                optional specialized binaries (scheduler, pipeline workers, ...)
+  worker/                 outbox relay + main Kafka consumers (events, results)
+  cli/                    SQL migrations (goose), schema check, admin commands
+  <extra>/                specialized binaries (example: scheduler, worker-calls)
 migrations/               *.sql (schema source of truth)
 ```
 
@@ -68,7 +71,7 @@ migrations/               *.sql (schema source of truth)
 - **No physical read/write DB split** by default — same Postgres; write repos use aggregates, read repos return views.
 - **Version event types** from day one: `user.created.v1`, `order.paid.v1`, ...
 - Prefer **one main worker process** with internal dispatch via `HandlerRegistry`.
-- Prefer **one shared/main queue** initially; split only when throughput, ownership, or scaling requires it.
+- Prefer **one shared/main topic** initially; split only when throughput, ownership, or scaling requires it.
 
 ## Domain events & aggregates
 
@@ -83,7 +86,7 @@ migrations/               *.sql (schema source of truth)
 - Package: `internal/application/command/<aggregate>/`
 - In one DB transaction: save aggregate + `outbox.StoreEvents(PullEvents())`.
 - Outbox row `id` = domain `eventId`.
-- HTTP handler invokes command handler and returns immediately (do not wait for RabbitMQ).
+- HTTP handler invokes command handler and returns immediately (do not wait for the broker).
 
 ## Queries (read)
 
@@ -192,7 +195,7 @@ One shape for every error response, on every endpoint including webhooks:
 ## Outbox
 
 - Table `outbox_events`; store in the same transaction as the write.
-- Worker relay polls unpublished rows, publishes envelope to RabbitMQ, then sets `published_at`.
+- Worker relay polls unpublished rows, publishes the envelope to the `events` Kafka topic (key = aggregate ID), then sets `published_at`.
 - Envelope includes `eventId`, `type`, `aggregateId`, `occurredAt`, `payload`.
 
 ## Event handlers & registry
@@ -205,7 +208,7 @@ One shape for every error response, on every endpoint including webhooks:
 ## Realtime (when used)
 
 - Do not publish realtime events directly from HTTP/commands.
-- Preferred path: outbox -> RabbitMQ -> worker handler -> realtime publisher port.
+- Preferred path: outbox -> Kafka `events` -> worker handler -> realtime publisher port.
 - WS event `type` should be `entity.action` (example: `user.created`), not domain versioned type.
 
 ## Idempotence (`processed_events`)
@@ -215,17 +218,27 @@ One shape for every error response, on every endpoint including webhooks:
 - For external side effects: use provider idempotency keys when available.
 - Use dedup wrappers/helpers when wiring handlers.
 
-## Retry / DLQ (RabbitMQ)
+## Retry / DLQ (Kafka)
 
-- Classify errors: retryable vs non-retryable.
-- Topology: `queue` -> `queue.retry` (TTL + DLX back to main) -> `queue.dlq`.
-- Never `Nack(requeue=true)` for retries.
+- Classify errors: retryable vs non-retryable (`application/messaging`).
+- Topology per topic: `<topic>` -> `<topic>.retry` (headers `attempt` + `not_before`, consumed by a separate `<group>.retry` group that waits until `not_before`) -> `<topic>.dlq`.
+- A few in-place retries with backoff first; after that the record moves to `.retry`, and to `.dlq` after the max attempts or immediately when non-retryable.
+- Never block a partition on a failing record: offsets are committed up to the oldest record still in flight, so a record is only committed once it is handled, forwarded to `.retry`, or forwarded to `.dlq`.
+- Messages are keyed by aggregate (example: `workflow_id`) so ordering holds per key; handlers that need ordering use the consumer's per-key lanes.
+- Delivery is at least once: every consumer is idempotent (`processed_events` or a natural key).
 - Invalid envelope / poison messages go to DLQ (avoid tight loops).
 - DLQ is for investigation and replay, do not auto-purge.
 
+## Kafka contracts
+
+- Messages exchanged between binaries (jobs, results) live in `internal/contract`: versioned (`v`), validated with `Validate()` before processing, snake_case JSON. A breaking change requires a new version.
+- Domain events still go through the outbox to the `events` topic; contracts are for work items, not domain events.
+- Secret values never travel in clear on Kafka: seal them for the consumer's public key.
+- Keep messages under `max.message.bytes` (4 MB): large payloads are truncated (or moved to an object store, with the message carrying a reference).
+
 ## Specialized workers (optional pattern)
 
-Use dedicated binaries/queues when a handler is CPU/IO heavy, has different scaling needs, or a distinct failure profile.
+Use dedicated binaries/topics when a handler is CPU/IO heavy, has different scaling needs, or a distinct failure profile.
 
 Keep orchestration (enqueue next step, finalize, cleanup, realtime publish) on the main worker when possible.
 
@@ -323,7 +336,7 @@ Add focused tests for branches that are hard to reach via DTO validation only (r
 
 ### Test style
 
-- **Unit tests at the HTTP boundary**: Fiber `app.Test(req)` with mocked command/query handlers — no real DB, RabbitMQ, or Docker in handler tests.
+- **Unit tests at the HTTP boundary**: Fiber `app.Test(req)` with mocked command/query handlers — no real DB, Kafka, or Docker in handler tests.
 - Use `testutil.WithActiveProject`, `WithUserWithoutProject`, `WithLocal` (webhook payloads in `c.Locals`), `JSONRequest`, `MultipartImportRequest`, `DecodeJSON`.
 - Reuse stable UUIDs from `testutil` fixtures; do not duplicate IDs per package.
 - Split large handlers into multiple `_test.go` files by concern (example: `step/create_http_test.go`, `step/create_condition_test.go`).
@@ -354,9 +367,10 @@ Add focused tests for branches that are hard to reach via DTO validation only (r
 - Import adapters from the application layer
 - Introduce a generic `CommandBus` / `Dispatch(any)` unless truly required
 - Put DDL in domain entity tags
-- Use `Nack(requeue=true)` for retries
+- Retry a Kafka record by blocking its partition or re-producing it to the same topic — use the `.retry` topic
+- Put secret values in clear in a Kafka message
 - Publish realtime directly from API request path
-- Split queues by event type prematurely
+- Split topics by event type prematurely
 - Skip payload validation at any input boundary
 - Expand scope beyond the request (no drive-by refactors)
 - Put handler tests next to production handler files — use `handler/test/<resource>/` only

@@ -1,0 +1,116 @@
+package write
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	domainworkflow "go-api/internal/domain/workflow"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+type stateRepository struct {
+	db *gorm.DB
+}
+
+func NewStateRepository(db *gorm.DB) domainworkflow.StateRepository {
+	return &stateRepository{db: db}
+}
+
+func (r *stateRepository) WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	if _, ok := ctx.Value(txCtxKey{}).(*gorm.DB); ok {
+		return fn(ctx)
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(ContextWithTx(ctx, tx))
+	})
+}
+
+type dueRow struct {
+	WorkflowStateModel
+	UserID          uuid.UUID `gorm:"column:user_id"`
+	IntervalSeconds int       `gorm:"column:interval_seconds"`
+}
+
+const lockDueSQL = `
+SELECT s.*, w.user_id, w.interval_seconds
+FROM workflow_state s
+JOIN workflows w ON w.id = s.workflow_id
+WHERE w.enabled AND s.next_run_at <= @now
+ORDER BY s.next_run_at
+LIMIT @limit
+FOR UPDATE OF s SKIP LOCKED`
+
+func (r *stateRepository) LockDue(ctx context.Context, now time.Time, limit int) ([]domainworkflow.Due, error) {
+	var rows []dueRow
+	err := DBWithContext(ctx, r.db).
+		Raw(lockDueSQL, map[string]any{"now": now.UTC(), "limit": limit}).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domainworkflow.Due, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domainworkflow.Due{
+			State:    stateDomainFromModel(row.WorkflowStateModel),
+			UserID:   row.UserID,
+			Interval: time.Duration(row.IntervalSeconds) * time.Second,
+		})
+	}
+	return out, nil
+}
+
+func (r *stateRepository) GetForUpdate(ctx context.Context, workflowID uuid.UUID) (*domainworkflow.State, error) {
+	var model WorkflowStateModel
+	err := DBWithContext(ctx, r.db).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(&model, "workflow_id = ?", workflowID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	state := stateDomainFromModel(model)
+	return &state, nil
+}
+
+func (r *stateRepository) Save(ctx context.Context, state domainworkflow.State) error {
+	return DBWithContext(ctx, r.db).Save(stateModelFromDomain(state)).Error
+}
+
+func stateModelFromDomain(s domainworkflow.State) *WorkflowStateModel {
+	return &WorkflowStateModel{
+		WorkflowID:           s.WorkflowID,
+		Status:               string(s.Status),
+		NextRunAt:            s.NextRunAt.UTC(),
+		LeaseRunID:           s.LeaseRunID,
+		LeaseStartedAt:       s.LeaseStartedAt,
+		LeaseUntil:           s.LeaseUntil,
+		ConsecutiveFailures:  s.ConsecutiveFailures,
+		ConsecutiveSuccesses: s.ConsecutiveSuccesses,
+		LastRunID:            s.LastRunID,
+		LastRunAt:            s.LastRunAt,
+		LastStatus:           nullableString(s.LastStatus),
+		UpdatedAt:            time.Now().UTC(),
+	}
+}
+
+func stateDomainFromModel(m WorkflowStateModel) domainworkflow.State {
+	return domainworkflow.State{
+		WorkflowID:           m.WorkflowID,
+		Status:               domainworkflow.ScheduleStatus(m.Status),
+		NextRunAt:            m.NextRunAt,
+		LeaseRunID:           m.LeaseRunID,
+		LeaseStartedAt:       m.LeaseStartedAt,
+		LeaseUntil:           m.LeaseUntil,
+		ConsecutiveFailures:  m.ConsecutiveFailures,
+		ConsecutiveSuccesses: m.ConsecutiveSuccesses,
+		LastRunID:            m.LastRunID,
+		LastRunAt:            m.LastRunAt,
+		LastStatus:           derefString(m.LastStatus),
+	}
+}

@@ -1,0 +1,29 @@
+package config
+
+type WorkerCallsConfig struct {
+	JobSealPublicKey  string
+	JobSealPrivateKey string
+	Concurrency       int
+	Group             string
+	UserAgent         string
+	AllowPrivateIPs   bool
+	MetricsAddr       string
+	Kafka             KafkaConfig
+}
+
+// LoadWorkerCalls reads the worker-calls configuration. It deliberately has no
+// database settings: worker-calls never talks to Postgres.
+func LoadWorkerCalls() *WorkerCallsConfig {
+	loadDotEnv()
+
+	return &WorkerCallsConfig{
+		JobSealPublicKey:  getEnv("JOB_SEAL_PUBLIC_KEY"),
+		JobSealPrivateKey: getEnv("JOB_SEAL_PRIVATE_KEY"),
+		Concurrency:       getEnvIntOrDefault("WORKER_CALLS_CONCURRENCY", 50),
+		Group:             getEnvOrDefault("WORKER_CALLS_GROUP", "worker-calls"),
+		UserAgent:         getEnvOrDefault("HTTP_USER_AGENT", "UptimeMonitor/1.0 (+https://uptime.example.com/bot)"),
+		AllowPrivateIPs:   getEnvBoolOrDefault("SSRF_ALLOW_PRIVATE", false),
+		MetricsAddr:       getEnvOrDefault("METRICS_ADDR", ":9100"),
+		Kafka:             loadKafka("worker-calls"),
+	}
+}
