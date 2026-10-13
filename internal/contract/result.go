@@ -37,7 +37,7 @@ type Result struct {
 	DurationMS int64             `json:"duration_ms"`
 	Counts     Counts            `json:"counts"`
 	Variables  map[string]string `json:"variables,omitempty"`
-	Calls      []CallResult      `json:"calls"`
+	Calls      []CallRun         `json:"calls"`
 	EmittedAt  time.Time         `json:"emitted_at"`
 }
 
@@ -48,7 +48,7 @@ type Counts struct {
 	Skipped int `json:"skipped"`
 }
 
-type CallResult struct {
+type CallRun struct {
 	CallID             string            `json:"call_id"`
 	Name               string            `json:"name"`
 	Order              int               `json:"order"`
@@ -60,7 +60,7 @@ type CallResult struct {
 	TimingsMS          Timings           `json:"timings_ms"`
 	Network            NetworkInfo       `json:"network"`
 	TLS                *TLSInfo          `json:"tls,omitempty"`
-	Rules              []RuleResult      `json:"rules"`
+	Rules              []RuleRun         `json:"rules"`
 	ExtractedVariables map[string]string `json:"extracted_variables,omitempty"`
 	UsedVariables      []string          `json:"used_variables,omitempty"`
 	Error              *CallError        `json:"error,omitempty"`
@@ -125,7 +125,7 @@ type TLSCertificate struct {
 	NotAfter time.Time `json:"not_after"`
 }
 
-type RuleResult struct {
+type RuleRun struct {
 	Subject  string `json:"subject"`
 	Operator string `json:"operator"`
 	Text     string `json:"text"`

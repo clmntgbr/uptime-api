@@ -24,9 +24,7 @@ func Models() []any {
 		&write.CertificateModel{},
 		&write.RunModel{},
 		&write.CallRunModel{},
-		&write.RuleResultModel{},
-		&write.HourlyAggregateModel{},
-		&write.DailyAggregateModel{},
+		&write.RuleRunModel{},
 	}
 }
 

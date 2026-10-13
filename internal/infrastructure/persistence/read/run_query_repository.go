@@ -78,7 +78,7 @@ func (r *runQueryRepository) FindByID(ctx context.Context, userID, runID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	var rules []write.RuleResultModel
+	var rules []write.RuleRunModel
 	err = r.db.WithContext(ctx).
 		Where("run_id = ?", model.ID).
 		Order("call_run_id, position").
@@ -86,9 +86,9 @@ func (r *runQueryRepository) FindByID(ctx context.Context, userID, runID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	rulesByCall := map[uuid.UUID][]domainrun.RuleResult{}
+	rulesByCall := map[uuid.UUID][]domainrun.RuleRun{}
 	for _, rr := range rules {
-		rulesByCall[rr.CallRunID] = append(rulesByCall[rr.CallRunID], domainrun.RuleResult{
+		rulesByCall[rr.CallRunID] = append(rulesByCall[rr.CallRunID], domainrun.RuleRun{
 			ID: rr.ID, Position: rr.Position, Subject: rr.Subject, Operator: rr.Operator,
 			Text: rr.Text, Observed: rr.Observed, Expected: rr.Expected, Passed: rr.Passed,
 		})
@@ -97,13 +97,13 @@ func (r *runQueryRepository) FindByID(ctx context.Context, userID, runID uuid.UU
 	detail := &domainrun.DetailView{
 		View:      runView(model),
 		Variables: map[string]string{},
-		Calls:     make([]domainrun.CallResultView, 0, len(calls)),
+		Calls:     make([]domainrun.CallRunView, 0, len(calls)),
 	}
 	if err := unmarshalOptional(model.Variables, &detail.Variables); err != nil {
 		return nil, err
 	}
 	for _, c := range calls {
-		view, err := callResultView(c, rulesByCall[c.ID])
+		view, err := callRunView(c, rulesByCall[c.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -128,8 +128,8 @@ func runView(m write.RunModel) domainrun.View {
 	}
 }
 
-func callResultView(m write.CallRunModel, rules []domainrun.RuleResult) (domainrun.CallResultView, error) {
-	v := domainrun.CallResultView{
+func callRunView(m write.CallRunModel, rules []domainrun.RuleRun) (domainrun.CallRunView, error) {
+	v := domainrun.CallRunView{
 		ID:         m.ID,
 		CallID:     m.CallID,
 		Name:       m.Name,
@@ -142,7 +142,7 @@ func callResultView(m write.CallRunModel, rules []domainrun.RuleResult) (domainr
 		FinishedAt: m.FinishedAt,
 	}
 	if v.Rules == nil {
-		v.Rules = []domainrun.RuleResult{}
+		v.Rules = []domainrun.RuleRun{}
 	}
 	if m.HTTPStatus != nil {
 		v.HTTPStatus = *m.HTTPStatus
@@ -162,13 +162,13 @@ func callResultView(m write.CallRunModel, rules []domainrun.RuleResult) (domainr
 		{m.UsedVariables, &v.UsedVariables},
 	} {
 		if err := unmarshalOptional(field.raw, field.dst); err != nil {
-			return domainrun.CallResultView{}, err
+			return domainrun.CallRunView{}, err
 		}
 	}
 	if len(m.TLS) > 0 {
 		var tls contract.TLSInfo
 		if err := json.Unmarshal(m.TLS, &tls); err != nil {
-			return domainrun.CallResultView{}, err
+			return domainrun.CallRunView{}, err
 		}
 		v.TLS = &tls
 	}

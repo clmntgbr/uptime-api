@@ -160,12 +160,12 @@ func TestWorkflowLifecycle(t *testing.T) {
 		Status: domainrun.StatusFailed, StartedAt: started, FinishedAt: started.Add(time.Second),
 		Counts:    domainrun.Counts{Success: 1, Failed: 1},
 		Variables: map[string]string{"password": variable.MaskedValue},
-		Calls: []domainrun.CallResult{{
+		Calls: []domainrun.CallRun{{
 			CallID: &callID, Name: "login", Position: 1, Status: domainrun.CallFailed, HTTPStatus: 200,
 			Request:  contract.RequestInfo{Method: "POST", URL: "https://api.example.com/login"},
 			Response: contract.ResponseInfo{Body: `{"token":"x"}`, Size: 13},
 			TLS:      &contract.TLSInfo{Host: "api.example.com", Port: 443, ExpiresAt: started.Add(240 * time.Hour)},
-			Rules: []domainrun.RuleResult{{Position: 1, Subject: "response_time", Operator: "exceeds",
+			Rules: []domainrun.RuleRun{{Position: 1, Subject: "response_time", Operator: "exceeds",
 				Text: "response time exceeds 800 ms", Observed: "950 ms", Expected: "800 ms", Passed: false}},
 			StartedAt: started, FinishedAt: started.Add(time.Second),
 		}},
@@ -197,7 +197,7 @@ func TestWorkflowLifecycle(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		db.Exec("DELETE FROM processed_events WHERE event_id = ?", runID)
-		db.Exec("DELETE FROM rule_results WHERE run_id = ?", runID)
+		db.Exec("DELETE FROM rule_runs WHERE run_id = ?", runID)
 		db.Exec("DELETE FROM call_runs WHERE run_id = ?", runID)
 		db.Exec("DELETE FROM runs WHERE id = ?", runID)
 	})
@@ -235,24 +235,6 @@ func TestWorkflowLifecycle(t *testing.T) {
 		t.Fatalf("search must treat %% and _ literally: %+v total=%d %v", list, total, err)
 	}
 
-	aggregates := write.NewAggregateRepository(db)
-	from := started.Truncate(time.Hour)
-	if _, err := aggregates.ComputeHourly(ctx, from, from.Add(time.Hour)); err != nil {
-		t.Fatalf("hourly aggregates: %v", err)
-	}
-	day := time.Date(started.Year(), started.Month(), started.Day(), 0, 0, 0, 0, time.UTC)
-	if _, err := aggregates.ComputeDaily(ctx, day, day.Add(24*time.Hour)); err != nil {
-		t.Fatalf("daily aggregates: %v", err)
-	}
-	var agg write.HourlyAggregateModel
-	if err := db.Where("workflow_id = ?", w.ID).First(&agg).Error; err != nil || agg.RunsTotal != 1 || agg.RunsSuccess != 0 {
-		t.Fatalf("hourly aggregate: %+v %v", agg, err)
-	}
-	t.Cleanup(func() {
-		db.Exec("DELETE FROM hourly_aggregates WHERE workflow_id = ?", w.ID)
-		db.Exec("DELETE FROM daily_aggregates WHERE workflow_id = ?", w.ID)
-	})
-
 	retention := write.NewRunRetention(db)
 	if deleted, err := retention.DeleteRunsBefore(ctx, time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)); err != nil || deleted != 0 {
 		t.Fatalf("retention must keep recent runs: %d %v", deleted, err)
@@ -261,10 +243,10 @@ func TestWorkflowLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	var orphans int64
-	db.Raw("SELECT (SELECT COUNT(*) FROM call_runs WHERE run_id = @id) + (SELECT COUNT(*) FROM rule_results WHERE run_id = @id)",
+	db.Raw("SELECT (SELECT COUNT(*) FROM call_runs WHERE run_id = @id) + (SELECT COUNT(*) FROM rule_runs WHERE run_id = @id)",
 		map[string]any{"id": runID}).Scan(&orphans)
 	if orphans != 0 {
-		t.Fatalf("deleting a run must delete its call runs and rule results, %d left", orphans)
+		t.Fatalf("deleting a run must delete its call runs and rule runs, %d left", orphans)
 	}
 
 	db.Exec("UPDATE workflow_state SET next_run_at = ? WHERE workflow_id = ?", past, w.ID)

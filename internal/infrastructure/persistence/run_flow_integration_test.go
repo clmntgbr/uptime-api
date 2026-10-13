@@ -123,7 +123,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		db.Exec("DELETE FROM rule_results WHERE run_id IN (SELECT id FROM runs WHERE workflow_id = ?)", w.ID)
+		db.Exec("DELETE FROM rule_runs WHERE run_id IN (SELECT id FROM runs WHERE workflow_id = ?)", w.ID)
 		db.Exec("DELETE FROM call_runs WHERE workflow_id = ?", w.ID)
 		db.Exec("DELETE FROM runs WHERE workflow_id = ?", w.ID)
 		db.Exec("DELETE FROM workflows WHERE id = ?", w.ID)
@@ -182,7 +182,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 	var storedBody string
 	db.Raw("SELECT request->>'body' FROM call_runs WHERE workflow_id = ? AND position = 1", w.ID).Scan(&storedBody)
 	if strings.Contains(storedBody, "hunter22") {
-		t.Fatal("secret stored in clear in the call result")
+		t.Fatal("secret stored in clear in the call run")
 	}
 
 	// Overlap: a due pass while the lease is valid is recorded as skipped.

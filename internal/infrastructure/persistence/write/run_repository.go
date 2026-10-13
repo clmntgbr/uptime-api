@@ -54,7 +54,7 @@ func (r *runWriteRepository) Save(ctx context.Context, run *domainrun.Run) error
 	}
 
 	calls := make([]CallRunModel, 0, len(run.Calls))
-	var rules []RuleResultModel
+	var rules []RuleRunModel
 	for _, c := range run.Calls {
 		m, err := callRunModel(run, c)
 		if err != nil {
@@ -66,7 +66,7 @@ func (r *runWriteRepository) Save(ctx context.Context, run *domainrun.Run) error
 			if id == uuid.Nil {
 				id = uuid.New()
 			}
-			rules = append(rules, RuleResultModel{
+			rules = append(rules, RuleRunModel{
 				ID:        id,
 				CallRunID: m.ID,
 				RunID:     run.ID,
@@ -89,7 +89,7 @@ func (r *runWriteRepository) Save(ctx context.Context, run *domainrun.Run) error
 	return nil
 }
 
-func callRunModel(run *domainrun.Run, c domainrun.CallResult) (CallRunModel, error) {
+func callRunModel(run *domainrun.Run, c domainrun.CallRun) (CallRunModel, error) {
 	request, err := marshalJSONB(c.Request)
 	if err != nil {
 		return CallRunModel{}, err
@@ -211,71 +211,6 @@ func (r *runRetention) DeleteRunsBefore(ctx context.Context, cutoff time.Time) (
 			return total, nil
 		}
 	}
-}
-
-type aggregateRepository struct {
-	db *gorm.DB
-}
-
-func NewAggregateRepository(db *gorm.DB) domainrun.AggregateRepository {
-	return &aggregateRepository{db: db}
-}
-
-// Skipped runs are not executions: they count neither for availability nor latency.
-const hourlyAggregateSQL = `
-INSERT INTO hourly_aggregates (workflow_id, bucket_start, runs_total, runs_success, availability, latency_p50_ms, latency_p95_ms, computed_at)
-SELECT
-    workflow_id,
-    date_trunc('hour', started_at) AS bucket_start,
-    COUNT(*) AS runs_total,
-    COUNT(*) FILTER (WHERE status = 'success') AS runs_success,
-    ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'success') / COUNT(*), 3) AS availability,
-    percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_ms) AS latency_p50_ms,
-    percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_ms) AS latency_p95_ms,
-    NOW()
-FROM runs
-WHERE started_at >= @from AND started_at < @to AND status <> 'skipped'
-GROUP BY workflow_id, date_trunc('hour', started_at)
-ON CONFLICT (workflow_id, bucket_start) DO UPDATE SET
-    runs_total = EXCLUDED.runs_total,
-    runs_success = EXCLUDED.runs_success,
-    availability = EXCLUDED.availability,
-    latency_p50_ms = EXCLUDED.latency_p50_ms,
-    latency_p95_ms = EXCLUDED.latency_p95_ms,
-    computed_at = EXCLUDED.computed_at`
-
-// Daily latency percentiles are recomputed from runs while they are still
-// retained; availability is derived from the run counts.
-const dailyAggregateSQL = `
-INSERT INTO daily_aggregates (workflow_id, bucket_start, runs_total, runs_success, availability, latency_p50_ms, latency_p95_ms, computed_at)
-SELECT
-    workflow_id,
-    date_trunc('day', started_at) AS bucket_start,
-    COUNT(*) AS runs_total,
-    COUNT(*) FILTER (WHERE status = 'success') AS runs_success,
-    ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'success') / COUNT(*), 3) AS availability,
-    percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_ms) AS latency_p50_ms,
-    percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_ms) AS latency_p95_ms,
-    NOW()
-FROM runs
-WHERE started_at >= @from AND started_at < @to AND status <> 'skipped'
-GROUP BY workflow_id, date_trunc('day', started_at)
-ON CONFLICT (workflow_id, bucket_start) DO UPDATE SET
-    runs_total = EXCLUDED.runs_total,
-    runs_success = EXCLUDED.runs_success,
-    availability = EXCLUDED.availability,
-    latency_p50_ms = EXCLUDED.latency_p50_ms,
-    latency_p95_ms = EXCLUDED.latency_p95_ms,
-    computed_at = EXCLUDED.computed_at`
-
-func (a *aggregateRepository) ComputeHourly(ctx context.Context, from, to time.Time) (int64, error) {
-	res := a.db.WithContext(ctx).Exec(hourlyAggregateSQL, map[string]any{"from": from.UTC(), "to": to.UTC()})
-	return res.RowsAffected, res.Error
-}
-
-func (a *aggregateRepository) ComputeDaily(ctx context.Context, from, to time.Time) (int64, error) {
-	res := a.db.WithContext(ctx).Exec(dailyAggregateSQL, map[string]any{"from": from.UTC(), "to": to.UTC()})
-	return res.RowsAffected, res.Error
 }
 
 type certificateRepository struct {

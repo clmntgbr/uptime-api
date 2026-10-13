@@ -153,11 +153,6 @@ func (s *scheduler) tick(ctx context.Context, at time.Time) {
 			"timed_out", stats.TimedOut, "publish_failed", stats.PublishFailed, "prepare_failed", stats.PrepareFailed, "lag_ms", stats.Lag.Milliseconds())
 	}
 
-	if at.Minute()%5 == 0 {
-		if err := s.container.Maintain.ComputeAggregates(ctx); err != nil {
-			s.logger.Error("aggregates failed", "error", err)
-		}
-	}
 	if at.Minute() == 7 {
 		s.purgeExpiredRuns(ctx)
 	}

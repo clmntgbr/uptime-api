@@ -53,7 +53,6 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 	)
 	maintain := schedule.NewMaintainResultsHandler(
 		write.NewRunRetention(db),
-		write.NewAggregateRepository(db),
 		clock,
 		time.Duration(env.RetentionDays)*24*time.Hour,
 		logger,

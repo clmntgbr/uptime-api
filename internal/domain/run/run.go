@@ -15,7 +15,7 @@ const (
 	StatusSuccess Status = "success"
 	StatusFailed  Status = "failed"
 	StatusSkipped Status = "skipped"
-	StatusError Status = "error"
+	StatusError   Status = "error"
 )
 
 const (
@@ -55,12 +55,12 @@ type Run struct {
 	FinishedAt time.Time
 	Counts     Counts
 	Variables  map[string]string
-	Calls      []CallResult
+	Calls      []CallRun
 
 	events []event.DomainEvent
 }
 
-type CallResult struct {
+type CallRun struct {
 	ID                 uuid.UUID
 	CallID             *uuid.UUID
 	Name               string
@@ -73,7 +73,7 @@ type CallResult struct {
 	Timings            contract.Timings
 	Network            contract.NetworkInfo
 	TLS                *contract.TLSInfo
-	Rules              []RuleResult
+	Rules              []RuleRun
 	ExtractedVariables map[string]string
 	UsedVariables      []string
 	Error              *contract.CallError
@@ -82,7 +82,7 @@ type CallResult struct {
 	FinishedAt         time.Time
 }
 
-type RuleResult struct {
+type RuleRun struct {
 	ID       uuid.UUID
 	Position int
 	Subject  string

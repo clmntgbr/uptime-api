@@ -26,13 +26,13 @@ type observation struct {
 // evaluate checks one rule. Comparison operators (is, contains, exists...) pass
 // when the sentence is true; threshold operators (exceeds, below, certificate
 // alerts) describe the bad state and fail when the sentence is true.
-func evaluate(rule domainrule.Rule, obs observation) contract.RuleResult {
-	res := contract.RuleResult{
+func evaluate(rule domainrule.Rule, obs observation) contract.RuleRun {
+	res := contract.RuleRun{
 		Subject:  string(rule.Subject),
 		Operator: string(rule.Operator),
 		Text:     rule.Text(),
 	}
-	pass := func(observed, expected string, ok bool) contract.RuleResult {
+	pass := func(observed, expected string, ok bool) contract.RuleRun {
 		res.Observed, res.Expected, res.Passed = observed, expected, ok
 		return res
 	}
@@ -130,7 +130,7 @@ func evaluate(rule domainrule.Rule, obs observation) contract.RuleResult {
 	return pass("", rule.Value, false)
 }
 
-func evaluateJSON(rule domainrule.Rule, obs observation, pass func(string, string, bool) contract.RuleResult) contract.RuleResult {
+func evaluateJSON(rule domainrule.Rule, obs observation, pass func(string, string, bool) contract.RuleRun) contract.RuleRun {
 	v, err := obs.body.jsonPath(rule.Target)
 	found := err == nil
 	observed := "absent"

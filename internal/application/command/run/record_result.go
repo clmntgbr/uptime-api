@@ -36,7 +36,7 @@ func NewRecordResultHandler(
 }
 
 // Handle stores a result from `workflow.results` in one transaction: run, call
-// and rule results, certificates, workflow state (lease released) and the
+// and rule runs, certificates, workflow state (lease released) and the
 // run.recorded.v1 event. A redelivered or late (timed out) result is a no-op.
 func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error {
 	var result contract.Result
@@ -107,7 +107,7 @@ func toRun(result contract.Result) (*domainrun.Run, []certificate.Certificate) {
 	var certs []certificate.Certificate
 	seen := map[string]struct{}{}
 	for _, c := range result.Calls {
-		cr := domainrun.CallResult{
+		cr := domainrun.CallRun{
 			ID:                 uuid.New(),
 			Name:               c.Name,
 			Position:           c.Order,
@@ -130,7 +130,7 @@ func toRun(result contract.Result) (*domainrun.Run, []certificate.Certificate) {
 			cr.CallID = &id
 		}
 		for i, rr := range c.Rules {
-			cr.Rules = append(cr.Rules, domainrun.RuleResult{
+			cr.Rules = append(cr.Rules, domainrun.RuleRun{
 				ID: uuid.New(), Position: i + 1, Subject: rr.Subject, Operator: rr.Operator,
 				Text: rr.Text, Observed: rr.Observed, Expected: rr.Expected, Passed: rr.Passed,
 			})

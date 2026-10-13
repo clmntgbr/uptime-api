@@ -31,29 +31,24 @@ BEGIN
 
     -- api: configuration read/write, results read-only.
     GRANT SELECT, INSERT, UPDATE, DELETE ON users, outbox_events, workflows, calls, rules, variables, workflow_state TO uptime_api;
-    GRANT SELECT ON runs, call_results, rule_results, certificates, hourly_aggregates, daily_aggregates TO uptime_api;
+    GRANT SELECT ON runs, call_runs, rule_runs, certificates TO uptime_api;
 
     -- cli: same as api (imports workflows and global variables).
     GRANT SELECT, INSERT, UPDATE, DELETE ON users, outbox_events, workflows, calls, rules, variables, workflow_state TO uptime_cli;
-    GRANT SELECT ON runs, call_results, rule_results, certificates, hourly_aggregates, daily_aggregates TO uptime_cli;
+    GRANT SELECT ON runs, call_runs, rule_runs, certificates TO uptime_cli;
 
-    -- scheduler: reads configuration, leases workflow_state, records skipped/timeout runs, aggregates.
+    -- scheduler: reads configuration, leases workflow_state, records skipped/timeout runs, deletes expired runs.
     GRANT SELECT ON users, workflows, calls, rules, variables TO uptime_scheduler;
     GRANT SELECT, UPDATE ON workflow_state TO uptime_scheduler;
-    GRANT SELECT, INSERT ON runs, processed_events, outbox_events TO uptime_scheduler;
-    GRANT SELECT, INSERT, UPDATE ON hourly_aggregates, daily_aggregates TO uptime_scheduler;
-    GRANT EXECUTE ON FUNCTION ensure_result_partitions(INTEGER) TO uptime_scheduler;
-    GRANT EXECUTE ON FUNCTION drop_result_partitions_before(TIMESTAMPTZ) TO uptime_scheduler;
+    GRANT SELECT, INSERT, DELETE ON runs, call_runs, rule_runs TO uptime_scheduler;
+    GRANT SELECT, INSERT ON processed_events, outbox_events TO uptime_scheduler;
 
     -- worker: records results, updates state, relays the outbox, dedups handlers.
     GRANT SELECT ON users, workflows TO uptime_worker;
     GRANT SELECT, UPDATE ON workflow_state TO uptime_worker;
-    GRANT SELECT, INSERT ON runs, call_results, rule_results TO uptime_worker;
+    GRANT SELECT, INSERT ON runs, call_runs, rule_runs TO uptime_worker;
     GRANT SELECT, INSERT, UPDATE ON certificates TO uptime_worker;
     GRANT SELECT, INSERT, UPDATE, DELETE ON processed_events, outbox_events TO uptime_worker;
-
-    REVOKE EXECUTE ON FUNCTION ensure_result_partitions(INTEGER) FROM PUBLIC;
-    REVOKE EXECUTE ON FUNCTION drop_result_partitions_before(TIMESTAMPTZ) FROM PUBLIC;
 END;
 $$;
 -- +goose StatementEnd

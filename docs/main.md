@@ -450,7 +450,7 @@ Postgres est la source de vérité, accessible uniquement à `api`, `scheduler` 
 | --- | --- | --- |
 | `runs` | Une passe de workflow : statut, début, fin, déclencheur (planifié, manuel, test), variables non secrètes | Clé primaire sur `id`, index sur `started_at` pour la rétention |
 | `call_runs` | Un call exécuté : requête, réponse, timings, réseau, TLS, erreur, variables extraites | Corps tronqué au-delà de 256 Ko, supprimé avec son run |
-| `rule_results` | Phrase de la règle, valeur observée, valeur attendue, réussite | Lié au call run qui l'a produit, supprimé avec lui |
+| `rule_runs` | Phrase de la règle, valeur observée, valeur attendue, réussite | Lié au call run qui l'a produit, supprimé avec lui |
 
 **Incidents**
 
@@ -471,7 +471,7 @@ Postgres est la source de vérité, accessible uniquement à `api`, `scheduler` 
 | Pro | 30 jours | 7 jours |
 | Équipe | 90 jours | 30 jours |
 
-Les runs de test sont supprimés après 24 heures quelle que soit l'offre. La suppression se fait par lots de 1 000 runs (les call runs et règles suivent par clé étrangère). Un partitionnement mensuel pourra remplacer ces `DELETE` quand le volume l'exigera. Les statuts agrégés (disponibilité par jour, latence médiane et p95 par heure) sont calculés à part par le `scheduler` et conservés plus longtemps, pour tracer des courbes sur des mois sans garder les détails.
+Les runs de test sont supprimés après 24 heures quelle que soit l'offre. La suppression se fait par lots de 1 000 runs (les call runs et règles suivent par clé étrangère). Un partitionnement mensuel pourra remplacer ces `DELETE` quand le volume l'exigera.
 
 **Si la base devient lourde** : TimescaleDB (compression et agrégats continus) reste compatible avec Postgres et suffit largement avant d'envisager ClickHouse.
 

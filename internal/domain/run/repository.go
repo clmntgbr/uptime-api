@@ -11,21 +11,16 @@ import (
 )
 
 type WriteRepository interface {
-	// Save inserts the run with its call and rule results.
+	// Save inserts the run with its call and rule runs.
 	Save(ctx context.Context, r *Run) error
 }
 
 // Retention expires old results.
 type Retention interface {
-	// DeleteRunsBefore deletes the runs started before cutoff, with their call and rule results.
+	// DeleteRunsBefore deletes the runs started before cutoff, with their call and rule runs.
 	DeleteRunsBefore(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
-// AggregateRepository computes availability and latency summaries kept longer than the details.
-type AggregateRepository interface {
-	ComputeHourly(ctx context.Context, from, to time.Time) (int64, error)
-	ComputeDaily(ctx context.Context, from, to time.Time) (int64, error)
-}
 
 type ReadRepository interface {
 	ListByWorkflow(ctx context.Context, userID, workflowID uuid.UUID, q paginate.PaginateQuery) ([]View, int64, error)
@@ -48,10 +43,10 @@ type View struct {
 type DetailView struct {
 	View
 	Variables map[string]string
-	Calls     []CallResultView
+	Calls     []CallRunView
 }
 
-type CallResultView struct {
+type CallRunView struct {
 	ID                 uuid.UUID
 	CallID             *uuid.UUID
 	Name               string
@@ -64,7 +59,7 @@ type CallResultView struct {
 	Timings            contract.Timings
 	Network            contract.NetworkInfo
 	TLS                *contract.TLSInfo
-	Rules              []RuleResult
+	Rules              []RuleRun
 	ExtractedVariables map[string]string
 	UsedVariables      []string
 	Error              *contract.CallError

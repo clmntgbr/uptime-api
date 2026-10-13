@@ -32,7 +32,7 @@ func TestInstrumentRunner_ObservesRunAndExecutedCalls(t *testing.T) {
 		Status:     contract.RunStatusFailed,
 		StartedAt:  start,
 		FinishedAt: start.Add(3 * time.Second),
-		Calls: []contract.CallResult{
+		Calls: []contract.CallRun{
 			{Status: contract.CallStatusSuccess, StartedAt: start, FinishedAt: start.Add(time.Second)},
 			{Status: contract.CallStatusFailed, StartedAt: start.Add(time.Second), FinishedAt: start.Add(3 * time.Second)},
 			{Status: contract.CallStatusSkipped},

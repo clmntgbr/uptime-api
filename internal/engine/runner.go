@@ -101,11 +101,11 @@ func (r *Runner) Run(ctx context.Context, job contract.Job, secrets map[string]s
 		Trigger:    job.Trigger,
 		StartedAt:  started,
 		Variables:  runVariables,
-		Calls:      make([]contract.CallResult, 0, len(calls)),
+		Calls:      make([]contract.CallRun, 0, len(calls)),
 	}
 
 	for _, call := range calls {
-		var cr contract.CallResult
+		var cr contract.CallRun
 		if ctx.Err() != nil {
 			cr = skippedCall(call, r.clock.Now(), "workflow timeout reached")
 		} else {
@@ -134,20 +134,20 @@ func (r *Runner) Run(ctx context.Context, job contract.Job, secrets map[string]s
 	return result
 }
 
-func skippedCall(call contract.JobCall, at time.Time, reason string) contract.CallResult {
-	return contract.CallResult{
+func skippedCall(call contract.JobCall, at time.Time, reason string) contract.CallRun {
+	return contract.CallRun{
 		CallID:     call.ID,
 		Name:       call.Name,
 		Order:      call.Order,
 		Status:     contract.CallStatusSkipped,
 		Reason:     reason,
-		Rules:      []contract.RuleResult{},
+		Rules:      []contract.RuleRun{},
 		StartedAt:  at,
 		FinishedAt: at,
 	}
 }
 
-func (r *Runner) runCall(ctx context.Context, state *run, call contract.JobCall) contract.CallResult {
+func (r *Runner) runCall(ctx context.Context, state *run, call contract.JobCall) contract.CallRun {
 	started := r.clock.Now()
 	state.values[variable.BuiltinTimestamp] = strconv.FormatInt(started.Unix(), 10)
 	state.values[variable.BuiltinUUID] = uuid.NewString()
@@ -157,13 +157,13 @@ func (r *Runner) runCall(ctx context.Context, state *run, call contract.JobCall)
 		return skippedCall(call, started, state.missingReason(missing))
 	}
 
-	cr := contract.CallResult{
+	cr := contract.CallRun{
 		CallID:        call.ID,
 		Name:          call.Name,
 		Order:         call.Order,
 		UsedVariables: used,
 		StartedAt:     started,
-		Rules:         []contract.RuleResult{},
+		Rules:         []contract.RuleRun{},
 	}
 	cr.Request = state.requestInfo(rendered)
 
@@ -242,7 +242,7 @@ func (r *Runner) runCall(ctx context.Context, state *run, call contract.JobCall)
 
 // storeBody keeps the beginning of the body inline and the whole (masked) body
 // in the object store when it does not fit.
-func (r *Runner) storeBody(ctx context.Context, state *run, call contract.JobCall, resp *Response, cr *contract.CallResult) {
+func (r *Runner) storeBody(ctx context.Context, state *run, call contract.JobCall, resp *Response, cr *contract.CallRun) {
 	masked := state.masker.mask(string(resp.Body))
 	limit := InlineBodyBytes
 	if state.budget < limit {

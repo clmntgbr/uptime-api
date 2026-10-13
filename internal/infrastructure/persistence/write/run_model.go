@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Persistence mappings for the result tables and their aggregates.
+// Persistence mappings for the result tables.
 
 type RunModel struct {
 	ID           uuid.UUID    `gorm:"column:id;primaryKey"`
@@ -58,7 +58,7 @@ type CallRunModel struct {
 
 func (CallRunModel) TableName() string { return "call_runs" }
 
-type RuleResultModel struct {
+type RuleRunModel struct {
 	ID        uuid.UUID `gorm:"column:id;primaryKey"`
 	CallRunID uuid.UUID `gorm:"column:call_run_id"`
 	RunID     uuid.UUID `gorm:"column:run_id"`
@@ -71,7 +71,7 @@ type RuleResultModel struct {
 	Passed    bool      `gorm:"column:passed"`
 }
 
-func (RuleResultModel) TableName() string { return "rule_results" }
+func (RuleRunModel) TableName() string { return "rule_runs" }
 
 type CertificateModel struct {
 	ID             uuid.UUID `gorm:"column:id;primaryKey"`
@@ -90,26 +90,3 @@ type CertificateModel struct {
 }
 
 func (CertificateModel) TableName() string { return "certificates" }
-
-type AggregateColumns struct {
-	WorkflowID   uuid.UUID `gorm:"column:workflow_id;primaryKey"`
-	BucketStart  time.Time `gorm:"column:bucket_start;primaryKey"`
-	RunsTotal    int       `gorm:"column:runs_total"`
-	RunsSuccess  int       `gorm:"column:runs_success"`
-	Availability float64   `gorm:"column:availability"`
-	LatencyP50MS *int      `gorm:"column:latency_p50_ms"`
-	LatencyP95MS *int      `gorm:"column:latency_p95_ms"`
-	ComputedAt   time.Time `gorm:"column:computed_at"`
-}
-
-type HourlyAggregateModel struct {
-	AggregateColumns `gorm:"embedded"`
-}
-
-func (HourlyAggregateModel) TableName() string { return "hourly_aggregates" }
-
-type DailyAggregateModel struct {
-	AggregateColumns `gorm:"embedded"`
-}
-
-func (DailyAggregateModel) TableName() string { return "daily_aggregates" }
