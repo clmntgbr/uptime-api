@@ -1,0 +1,24 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: api
+    command: ["./api"]
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: worker
+    command: ["./worker"]
+    env_file:
+      - .env
+    restart: unless-stopped

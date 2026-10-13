@@ -1,0 +1,375 @@
+---
+description: Go API — CQRS + event-driven architecture conventions (merged)
+alwaysApply: true
+---
+
+# Go API guidelines
+
+Go Fiber API. Module path example: `go-api`. Code and comments in **English**.
+
+This file is the single source of truth for architecture conventions. Keep rules generic; use project-specific names only as examples.
+
+## Layers (dependency rule)
+
+```
+cmd/*/di → interfaces/http → application/{command,query,event,registry} → domain
+                ↑                              ↑
+         presenter                   infrastructure (adapters)
+```
+
+- **domain** never imports `infrastructure`, `interfaces`, `application`, or `cmd`
+- **application** depends only on `domain` (and small shared app helpers like `application/messaging` or `application/realtime`) — never concrete adapters
+- Wire concrete implementations only in `cmd/*/di`
+- HTTP handlers call Command/Query handlers directly — no generic `CommandBus` by default
+
+### Provider-specific code at the HTTP boundary
+
+`interfaces/http` may import `infrastructure` only in the two cases below. Everywhere else, depend on a port.
+
+- **Never** type a `<resource>_ports.go` interface on an infrastructure struct. A ports file exists to decouple; using a concrete adapter type there defeats its purpose and drags the vendor into every test. Define a neutral type in `domain/port` and map it in the adapter (example: `port.RealtimeConnection`).
+- **Webhook adapters may speak the provider's dialect.** A provider webhook handler and its signature-verification middleware legitimately import the vendor SDK to deserialize and authenticate the payload — that is the whole job. The constraint is containment: the vendor type must be translated into a command or a domain type inside the handler and must never reach `application` or `domain`.
+
+## Package layout
+
+```
+internal/
+  domain/<aggregate>/     entity.go, events.go, repository.go (Write/Read interfaces)
+  domain/event/           DomainEvent interface
+  domain/paginate/        PaginateQuery / PaginateResponse
+  domain/port/            Outbox, messaging, dedup, realtime, external ports
+  application/command/    sync write use-cases
+  application/query/      read models / views
+  application/event/      async handlers (+ dedup wrappers, realtime publish)
+  application/realtime/   WS event type helpers (entity.action, not *.v1)
+  application/registry/   HandlerRegistry (Register / Dispatch)
+  infrastructure/
+    persistence/write|read|outbox|processed
+    messaging/rabbitmq/   publisher, consumer, topology (retry/DLQ)
+    config|<vendor adapters>/...
+  interfaces/http/
+    handler/              HTTP handlers + *_ports.go (test seams)
+      test/<resource>/    handler HTTP tests (one package per resource)
+    testutil/             shared Fiber/HTTP test helpers + fixtures
+    dto/                  request/response DTOs
+    presenter/            API response shapes
+    validation/           struct tags + Fiber error handler
+cmd/
+  api/                    HTTP server
+  worker/                 outbox relay + main RabbitMQ consumer
+  cli/                    SQL migrations (goose) + schema check
+  <extra>/                optional specialized binaries (scheduler, pipeline workers, ...)
+migrations/               *.sql (schema source of truth)
+```
+
+## CQRS principles
+
+- **Command != async event.** Commands run synchronously in the HTTP request: persist aggregate, return ID (`201`). Publish events after commit via outbox.
+- **Long/heavy work** uses async consumers or dedicated processes (`202 Accepted` + tracking when needed).
+- **No physical read/write DB split** by default — same Postgres; write repos use aggregates, read repos return views.
+- **Version event types** from day one: `user.created.v1`, `order.paid.v1`, ...
+- Prefer **one main worker process** with internal dispatch via `HandlerRegistry`.
+- Prefer **one shared/main queue** initially; split only when throughput, ownership, or scaling requires it.
+
+## Domain events & aggregates
+
+- Aggregates accumulate events in memory; expose `PullEvents()` / `recordEvent()`.
+- `DomainEvent` must expose at least: `EventID()`, `EventType()`, `AggregateID()`, `OccurredAt()`.
+- `eventId` is generated when the event is recorded on the aggregate, not at publish time.
+- Domain entities stay free of DDL/GORM schema tags; persistence models live under `infrastructure/persistence`.
+- The prohibition targets **persistence** tags (`gorm:`, DDL) only. Domain event structs **may** carry `json:` tags: an event's serialized form is part of its published contract, not a storage concern, and the tags keep the wire format stable when a Go field is renamed.
+
+## Commands (write)
+
+- Package: `internal/application/command/<aggregate>/`
+- In one DB transaction: save aggregate + `outbox.StoreEvents(PullEvents())`.
+- Outbox row `id` = domain `eventId`.
+- HTTP handler invokes command handler and returns immediately (do not wait for RabbitMQ).
+
+## Queries (read)
+
+- Package: `internal/application/query/<aggregate>/`
+- Return dedicated views when possible (not write-side aggregates).
+- Read repos may use optimized SQL against the same tables.
+- List endpoints are paginated — see [Pagination](#pagination).
+
+## Pagination
+
+Searchable or unbounded collections use the same query struct, the same response shape, and the same
+normalization order. There is one pagination contract for those endpoints.
+
+**Bare arrays are allowed** when the client needs the complete set in one shot: a catalog (`GET /plans`)
+or a graph/editor resource (`steps`, `connections`, workflow `variables`, step `assertions`, available
+variables for a step). Do not wrap those in `PaginateResponse`.
+
+### Response shape (mandatory for paginated collections)
+
+- Return `paginate.PaginateResponse`, always built with `paginate.NewPaginateResponse(members, total, query)`.
+- Never hand-roll an envelope in a handler (no `fiber.Map{"items": …}`, no `{"success": …, "data": …}`).
+- `total` is the count **before** `LIMIT`/`OFFSET`; `NewPaginateResponse` derives `totalPages` from it.
+- Presenter mappers must allocate with `make([]T, 0, len(views))` so an empty page serializes as `[]`, not `null`.
+
+### Query binding
+
+- Bind `paginate.PaginateQuery` directly, or embed it in an anonymous struct when the endpoint takes extra filters.
+- Never redeclare a field `PaginateQuery` already provides (`page`, `limit`, `sortBy`, `orderBy`, `search`) — an outer field shadows the embedded one and silently splits the value in two.
+- Extra filters are plain fields on the wrapper struct, passed to the application layer alongside the normalized query.
+
+### Normalization order (mandatory)
+
+`Normalize()` runs **before** the application handler is called, never after. Calling it afterwards
+only fixes the numbers echoed in the response while the repository already ran with unclamped values.
+
+To apply a resource-specific default, capture emptiness before normalizing:
+
+```go
+var listQuery struct {
+	paginate.PaginateQuery
+	Method []string `query:"method"`
+}
+if err := c.Bind().Query(&listQuery); err != nil {
+	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+		"message": "Invalid query parameters",
+		"errors":  err.Error(),
+	})
+}
+
+sortBy, orderBy := listQuery.SortBy, listQuery.OrderBy
+listQuery.Normalize()
+if sortBy == "" {
+	listQuery.SortBy = "created_at"
+}
+if orderBy == "" {
+	listQuery.OrderBy = paginate.OrderByDesc
+}
+
+views, total, err := h.listHandler.Handle(c.Context(), query.ListXxxQuery{
+	ProjectID: projectID,
+	Query:     listQuery.PaginateQuery,
+	Methods:   listQuery.Method,
+})
+// …
+return c.Status(fiber.StatusOK).JSON(paginate.NewPaginateResponse(
+	presenter.NewXxxListResponseFromViews(views),
+	int(total),
+	listQuery.PaginateQuery,
+))
+```
+
+### Read repositories
+
+- Prefer the shared GORM `Paginate(db, query)` helper in `infrastructure/persistence/read`; it returns the scoped query and the total. Do not duplicate it in `write`.
+- Offset comes from `query.Offset()` — it is a **method**, not a field. Passing `query.Offset` binds a func value.
+- Raw SQL must use named parameters (`@name`) rather than `?`. Postgres operators containing `?` (`jsonb ?`, `?|`, `?&`) are otherwise rewritten as bind placeholders and produce a syntax error at runtime.
+- Raw SQL is not covered by automated tests: handler tests mock the query handler and there is no integration test suite. Any new or modified `db.Raw` query must be executed manually against a real database (example: `psql` on the `compose.dev.yaml` instance) before merging.
+
+## Payload validation (mandatory with exceptions)
+
+- **All incoming payloads must be validated, always. No exception.**
+- Validate request body always.
+- Path params validated with direct parsing (example: `uuid.Parse(...)`) are acceptable; dedicated path DTOs are optional.
+- Pagination/filter query params normalized via `PaginateQuery.Normalize()` are acceptable; dedicated validator tags are optional for those query structs.
+- Header validation is required only for business-specific headers handled in endpoint logic; authentication/webhook/security headers may be validated in middleware.
+- Perform validation at the HTTP boundary (`interfaces/http`) before calling application handlers.
+- Use explicit DTOs per endpoint; never bind directly to domain entities.
+- Reject invalid payloads with consistent `400` responses and clear field-level errors.
+- Validate event payloads before processing in consumers (schema/version required).
+- Never trust external provider payloads (webhooks, queues, third-party APIs); validate and sanitize first.
+- Always validate through `validation.Struct` / `validation.BindBody`. Never instantiate a local `validator.New()` in a handler: it loses the JSON tag names and the custom validators registered in `validation.init()`, and returning its error raw produces a plain-text `500` instead of a field-level `400`.
+
+## Error envelope
+
+One shape for every error response, on every endpoint including webhooks:
+
+```json
+{ "message": "Human readable summary", "errors": { "field": "reason" }, "code": "MACHINE_CODE" }
+```
+
+- `message` is **mandatory** and is the only key clients can rely on. Never `{"error": …}`, never a bare string, never a nested `{"success": false, "data": {…}}`.
+- `errors` is optional and reserved for **field-level validation** failures; `validation.Struct` fills it. Do not use it to carry a single global error.
+- `code` is optional, for machine-readable business cases (example: `WRONG_ORGANIZATION`).
+- **Never put an internal error string in the response.** `err.Error()` may expose driver, SQL, or provider details. Log it server-side and return a generic `message`. Sentinel errors whose text is a deliberate part of the contract may be surfaced, but only on `4xx`.
+
+## Outbox
+
+- Table `outbox_events`; store in the same transaction as the write.
+- Worker relay polls unpublished rows, publishes envelope to RabbitMQ, then sets `published_at`.
+- Envelope includes `eventId`, `type`, `aggregateId`, `occurredAt`, `payload`.
+
+## Event handlers & registry
+
+- Register handlers in `cmd/worker/di` on `HandlerRegistry`.
+- If the project has specialized consumers, register those handlers in `cmd/<binary>/di`.
+- Multiple handlers per event type are allowed.
+- Handler names used for dedup must be stable strings.
+
+## Realtime (when used)
+
+- Do not publish realtime events directly from HTTP/commands.
+- Preferred path: outbox -> RabbitMQ -> worker handler -> realtime publisher port.
+- WS event `type` should be `entity.action` (example: `user.created`), not domain versioned type.
+
+## Idempotence (`processed_events`)
+
+- Dedup key: `(event_id, handler_name)`.
+- For DB side effects: `MarkProcessed` in the same transaction as the side effect.
+- For external side effects: use provider idempotency keys when available.
+- Use dedup wrappers/helpers when wiring handlers.
+
+## Retry / DLQ (RabbitMQ)
+
+- Classify errors: retryable vs non-retryable.
+- Topology: `queue` -> `queue.retry` (TTL + DLX back to main) -> `queue.dlq`.
+- Never `Nack(requeue=true)` for retries.
+- Invalid envelope / poison messages go to DLQ (avoid tight loops).
+- DLQ is for investigation and replay, do not auto-purge.
+
+## Specialized workers (optional pattern)
+
+Use dedicated binaries/queues when a handler is CPU/IO heavy, has different scaling needs, or a distinct failure profile.
+
+Keep orchestration (enqueue next step, finalize, cleanup, realtime publish) on the main worker when possible.
+
+## Schema & migrations
+
+- DDL lives in `migrations/*.sql` (goose). No GORM `AutoMigrate` for schema ownership.
+- Persistence models must match DB columns; checks must fail on drift.
+- Add a SQL migration for each schema change and update persistence models accordingly.
+
+## Naming
+
+- Use command/query/event packages by domain (`user`, `order`, `billing`, ...), not vendor names.
+- Vendor SDKs/clients live under `infrastructure/<vendor>/`.
+- JSON API/presenter tags are camelCase.
+- Keep external contracts as defined (do not rename third-party payload fields).
+- DI folders: `cmd/<binary>/di` (manual composition).
+
+## HTTP handlers (interfaces/http)
+
+- Handlers call application command/query handlers **directly** — no generic bus.
+- One file per resource: `<resource>_handler.go`.
+- Only four filename suffixes are allowed in the handler package root, all prefixed by the resource: `<resource>_handler.go`, `<resource>_ports.go`, `<resource>_helpers.go` (unexported helpers shared by that resource's methods), `<resource>_test_exports.go`. A file that fits none of these belongs elsewhere.
+- Inject dependencies through **port interfaces** defined in `<resource>_ports.go` (unexported `…Handler` interfaces per command/query port). Concrete application handlers satisfy these interfaces; DI in `cmd/api/di` stays unchanged.
+- Keep production handlers free of test-only logic. Rare cross-package test hooks live in `<resource>_test_exports.go` at the handler package root (suffix `ForTest`, one file per resource when needed — example: `endpoint_test_exports.go`, `billing_webhook_test_exports.go`). Keep these files small; never add business logic.
+- Wire `validation.FiberErrorHandler` in the API app and in tests (`testutil.NewTestApp()`).
+
+### Route registration and auth posture
+
+A route's authentication must be visible from where it is registered, never inferred from registration order.
+
+- Build **one** `protected` group carrying the auth middleware, and pass that router to every setup function that needs it:
+
+```go
+public := app.Group("/api")
+setupPlanRoutes(public, container) // explicitly public
+
+protected := public.Group("", container.AuthenticateMiddleware.Protected())
+setupUserRoutes(protected, container)
+setupWorkflowRoutes(protected, container)
+```
+
+- Never call `api.Use(auth)` inside a per-resource setup function. `Use` applies to the shared group, so N such calls run the middleware N times on every protected request — full JWT verification and user lookup each time — and silently make earlier-registered routes public.
+- A setup function receives an already-scoped router and only registers paths. It never decides its own auth.
+- Map domain/application errors to consistent HTTP status codes at the handler boundary (quota helpers, not-found string checks, etc.).
+- **When adding a new handler or a new HTTP method on an existing handler**, add or extend handler HTTP tests in the **same change** (see [HTTP handler tests](#http-handler-tests)). Do not merge handler-only code without the matching test package updates.
+
+## HTTP handler tests
+
+All handler HTTP tests live under `internal/interfaces/http/handler/test/`, **not** beside production handler files.
+
+**Full guide:** [`docs/handler-tests.md`](../../docs/handler-tests.md) — directory layout, file naming, mocks, scenarios, webhooks, coverage, CI.
+
+### When tests are required
+
+| Change | Required test work |
+|--------|-------------------|
+| **New `*_handler.go`** | Create `test/<resource>/` (or new files in it): `helpers_test.go` if needed, mocks for new ports in `*_ports.go`, scenarios for every public HTTP method. |
+| **New method on existing handler** | Add `Test<Resource>Handler_<Method>_<Scenario>` cases for that method (success + applicable error paths from [Scenarios](#scenarios-per-http-method-when-applicable)). |
+| **Changed handler behavior** | Update or add tests so the affected method stays fully covered. |
+
+Tests are part of the definition of done for any handler change — not a follow-up task.
+
+### Layout
+
+```
+internal/interfaces/http/handler/
+  <resource>_handler.go
+  <resource>_ports.go          # required for mockable handlers
+  test/
+    <resource>/                # package name: <resource>test (e.g. endpointtest)
+      handler_test.go          # and/or split by method/concern
+      helpers_test.go          # mocks, mountRoutes, valid*Body()
+    quota/                     # cross-cutting handler helpers (e.g. quota mapper)
+internal/interfaces/http/testutil/
+  http.go                      # NewTestApp, JSONRequest, middleware helpers
+  fixtures.go                  # stable TestUserID, TestProjectID, …
+```
+
+### Naming
+
+- Test functions: `Test<Resource>Handler_<Method>_<Scenario>`
+- Examples: `TestEndpointHandler_Create_Success`, `TestWorkflowHandler_GetByID_HandlerError_WrongProject`
+
+### Scenarios (per HTTP method, when applicable)
+
+Cover at least:
+
+1. **Success** — happy path, assert status, response shape, and that the mock command/query was called with expected fields.
+2. **Unauthorized** or **MissingActiveProject** — depending on whether the handler requires `httpctx.GetUser()` and/or `GetActiveProjectID()`.
+3. **Invalid input** — malformed JSON, invalid UUID path params, DTO validation failures (`400` + field errors where applicable).
+4. **Handler error (business)** — not found, wrong project, quota exceeded, domain validation errors, special codes (example: `409` + `WRONG_ORGANIZATION` — legacy API code kept for client compatibility; test names use `WrongProject`).
+5. **Handler error (internal)** — unexpected errors from mocked handlers → `500`.
+
+Add focused tests for branches that are hard to reach via DTO validation only (reload failures, multipart edge cases, webhook `Locals` payloads).
+
+### Test style
+
+- **Unit tests at the HTTP boundary**: Fiber `app.Test(req)` with mocked command/query handlers — no real DB, RabbitMQ, or Docker in handler tests.
+- Use `testutil.WithActiveProject`, `WithUserWithoutProject`, `WithLocal` (webhook payloads in `c.Locals`), `JSONRequest`, `MultipartImportRequest`, `DecodeJSON`.
+- Reuse stable UUIDs from `testutil` fixtures; do not duplicate IDs per package.
+- Split large handlers into multiple `_test.go` files by concern (example: `step/create_http_test.go`, `step/create_condition_test.go`).
+- Mocks implement port interfaces in `helpers_test.go` or at the top of the test package.
+
+### Webhook handlers
+
+- Middleware (or test middleware) sets verified payload on `c.Locals("payload", …)` before the handler runs.
+- Test each supported event type, unknown type, handler failure, and invalid payload.
+
+### Coverage
+
+- Target **100% statement coverage** on each `*_handler.go` file when adding or changing handlers.
+- Before replicating the test pattern on a new resource, run `go tool cover -func=coverage.out` on the reference handler and fix uncovered branches — a large test count does not guarantee full coverage.
+- **CI floor:** total handler statement coverage must stay ≥ **95%** (enforced by `MIN_COVERAGE` in `.github/workflows/tests.yml`, and by the Codecov `project` status for flag `handler` in `codecov.yml`).
+- **Patch requirement:** Codecov also enforces `patch` at **100%** with a 0% threshold on flag `handler` — every line a PR adds or changes in `internal/interfaces/http/handler/` must be covered. The 95% floor applies to the project total and does not exempt new code.
+- Run: `go test ./internal/interfaces/http/handler/test/... -race -coverpkg=./internal/interfaces/http/handler/...`
+- Local shortcuts: `make tests`, `make coverage`, `make coverage-html` (via Docker `api` container).
+
+### CI
+
+- Workflow: `.github/workflows/tests.yml` on push/PR to `main` / `master`.
+- Tests with `-race`, coverage artifact, upload to Codecov (`codecov/codecov-action@v7`, flag `handler`).
+- Requires `CODECOV_TOKEN` repository secret for uploads.
+
+## Do not
+
+- Import adapters from the application layer
+- Introduce a generic `CommandBus` / `Dispatch(any)` unless truly required
+- Put DDL in domain entity tags
+- Use `Nack(requeue=true)` for retries
+- Publish realtime directly from API request path
+- Split queues by event type prematurely
+- Skip payload validation at any input boundary
+- Expand scope beyond the request (no drive-by refactors)
+- Put handler tests next to production handler files — use `handler/test/<resource>/` only
+- Inject concrete `*application/...Handler` types into HTTP handlers — use `*_ports.go` interfaces
+- Skip handler HTTP tests when adding or changing an HTTP endpoint — **including a new handler file or a new method on an existing handler**
+- Call the database, message broker, or external APIs in handler unit tests
+- Return `nil` from validation helpers after writing a `400` response — return `validation.ErrValidationFailed` and rely on `FiberErrorHandler`
+- Instantiate a local `validator.New()` in a handler — use `validation.Struct` / `validation.BindBody`
+- Return an error envelope keyed on anything other than `message`, or leak `err.Error()` into a `5xx` response
+- Call `Use(auth)` inside a per-resource route setup, or let a route's auth posture depend on registration order
+- Type a `*_ports.go` interface on an infrastructure struct
+- Add a file to the handler package root that is not `<resource>_{handler,ports,helpers,test_exports}.go`
+- Return an ad-hoc pagination envelope from a handler — use `paginate.NewPaginateResponse`
+- Call `PaginateQuery.Normalize()` after invoking the application handler
+- Redeclare a field already provided by the embedded `PaginateQuery`
+- Use `?` placeholders in raw SQL that also contains a Postgres `?` operator — use named parameters

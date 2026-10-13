@@ -1,0 +1,87 @@
+package main
+
+import (
+	"go-api/cmd/api/di"
+	"go-api/internal/infrastructure/config"
+	"go-api/internal/infrastructure/persistence/schema"
+	"go-api/internal/interfaces/http/validation"
+	"log"
+	"time"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/healthcheck"
+	"github.com/gofiber/fiber/v3/middleware/helmet"
+	"github.com/gofiber/fiber/v3/middleware/limiter"
+	"github.com/gofiber/fiber/v3/middleware/logger"
+)
+
+func main() {
+	env := config.Load()
+	db := config.ConnectDatabase(env)
+
+	if err := schema.AssertModelsMatchDB(db); err != nil {
+		log.Fatalf("schema check failed: %v", err)
+	}
+
+	app := fiber.New(fiber.Config{
+		AppName:       "Go API",
+		ServerHeader:  "Go API",
+		CaseSensitive: true,
+		StrictRouting: true,
+		UnescapePath:  true,
+		BodyLimit:     10 * 1024 * 1024,
+		ErrorHandler:  validation.FiberErrorHandler,
+	})
+
+	app.Use(helmet.New())
+
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     env.CORSAllowedOrigins,
+		AllowMethods:     env.CORSAllowMethods,
+		AllowHeaders:     env.CORSAllowHeaders,
+		AllowCredentials: env.CORSAllowCredentials,
+		MaxAge:           env.CORSMaxAge,
+	}))
+
+	skipHealth := func(c fiber.Ctx) bool {
+		switch c.Path() {
+		case healthcheck.LivenessEndpoint, healthcheck.ReadinessEndpoint, healthcheck.StartupEndpoint:
+			return true
+		default:
+			return false
+		}
+	}
+
+	app.Use(logger.New(logger.Config{
+		Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
+		Next:   skipHealth,
+	}))
+
+	if env.RateLimitMax > 0 {
+		app.Use(limiter.New(limiter.Config{
+			Max:        env.RateLimitMax,
+			Expiration: time.Minute,
+			Next:       skipHealth,
+			LimitReached: func(c fiber.Ctx) error {
+				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+					"message": "Too many requests",
+				})
+			},
+		}))
+	}
+
+	app.Use(func(c fiber.Ctx) error {
+		start := time.Now()
+		err := c.Next()
+		duration := time.Since(start)
+		c.Append("Server-Timing", "app;dur="+duration.String())
+		return err
+	})
+
+	container := di.NewContainer(db, env)
+	setupRoutes(app, container)
+
+	log.Println("Server is running on port", env.Port)
+	log.Fatal(app.Listen(":" + env.Port))
+}
