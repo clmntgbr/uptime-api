@@ -23,12 +23,6 @@ type WorkflowRunner interface {
 	Run(ctx context.Context, job contract.Job, secrets map[string]string) contract.Result
 }
 
-// BodyStore keeps response bodies too large for the database or a Kafka message.
-type BodyStore interface {
-	// Put stores data under key and returns a reference such as s3://bucket/key.
-	Put(ctx context.Context, key string, data []byte, contentType string) (string, error)
-}
-
 // SecretCipher encrypts secret values at rest in the database.
 type SecretCipher interface {
 	Encrypt(plaintext string) (string, error)

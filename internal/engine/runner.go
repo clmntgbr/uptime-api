@@ -1,7 +1,10 @@
 package engine
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -32,13 +35,12 @@ const (
 
 type Runner struct {
 	executor Executor
-	bodies   port.BodyStore
 	clock    port.Clock
 	logger   *slog.Logger
 }
 
-func NewRunner(executor Executor, bodies port.BodyStore, clock port.Clock, logger *slog.Logger) *Runner {
-	return &Runner{executor: executor, bodies: bodies, clock: clock, logger: logger}
+func NewRunner(executor Executor, clock port.Clock, logger *slog.Logger) *Runner {
+	return &Runner{executor: executor, clock: clock, logger: logger}
 }
 
 var _ port.WorkflowRunner = (*Runner)(nil)
@@ -236,37 +238,50 @@ func (r *Runner) runCall(ctx context.Context, state *run, call contract.JobCall)
 	}
 
 	cr.Response = state.responseInfo(resp)
-	r.storeBody(ctx, state, call, resp, &cr)
+	r.storeBody(state, resp, &cr)
 	return cr
 }
 
-// storeBody keeps the beginning of the body inline and the whole (masked) body
-// in the object store when it does not fit.
-func (r *Runner) storeBody(ctx context.Context, state *run, call contract.JobCall, resp *Response, cr *contract.CallRun) {
+// storeBody keeps the body inline. Under the size budget it stays plaintext;
+// above it, the full body is stored as base64(gzip(...)) when that fits,
+// otherwise a truncated plaintext preview is kept.
+func (r *Runner) storeBody(state *run, resp *Response, cr *contract.CallRun) {
 	masked := state.masker.mask(string(resp.Body))
 	limit := InlineBodyBytes
 	if state.budget < limit {
 		limit = state.budget
+	}
+	if limit <= 0 {
+		cr.Response.Truncated = len(masked) > 0
+		return
 	}
 	if len(masked) <= limit {
 		cr.Response.Body = masked
 		state.budget -= len(masked)
 		return
 	}
-
+	if encoded, err := gzipBase64(masked); err == nil && len(encoded) <= limit {
+		cr.Response.Body = encoded
+		cr.Response.BodyEncoding = contract.BodyEncodingGzip
+		state.budget -= len(encoded)
+		return
+	}
 	cr.Response.Body = truncateUTF8(masked, limit)
 	cr.Response.Truncated = true
 	state.budget -= len(cr.Response.Body)
-	if r.bodies == nil {
-		return
+}
+
+func gzipBase64(s string) (string, error) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte(s)); err != nil {
+		_ = zw.Close()
+		return "", err
 	}
-	key := fmt.Sprintf("%s/%s/%s/%d.body", state.job.UserID, state.job.WorkflowID, state.job.RunID, call.Order)
-	ref, err := r.bodies.Put(ctx, key, []byte(masked), resp.Headers.Get("Content-Type"))
-	if err != nil {
-		r.logger.Warn("body upload failed", "run_id", state.job.RunID, "call", call.Name, "error", err)
-		return
+	if err := zw.Close(); err != nil {
+		return "", err
 	}
-	cr.BodyRef = ref
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 type renderedCall struct {

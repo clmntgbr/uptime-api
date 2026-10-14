@@ -157,7 +157,6 @@ func toRun(result contract.Result) (*domainrun.Run, []certificate.Certificate) {
 			ExtractedVariables: c.ExtractedVariables,
 			UsedVariables:      c.UsedVariables,
 			Error:              c.Error,
-			BodyRef:            c.BodyRef,
 			StartedAt:          c.StartedAt,
 			FinishedAt:         c.FinishedAt,
 		}

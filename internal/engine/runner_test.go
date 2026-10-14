@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"crypto/rand"
 	"io"
 	"log/slog"
 	"net/http"
@@ -25,16 +26,6 @@ func (f *fakeExecutor) NewSession() Session { return f }
 func (f *fakeExecutor) Do(_ context.Context, req Request) (*Response, error) {
 	f.requests = append(f.requests, req)
 	return f.handler(req)
-}
-
-type fakeStore struct{ puts map[string][]byte }
-
-func (s *fakeStore) Put(_ context.Context, key string, data []byte, _ string) (string, error) {
-	if s.puts == nil {
-		s.puts = map[string][]byte{}
-	}
-	s.puts[key] = data
-	return "s3://bodies/" + key, nil
 }
 
 type fixedClock struct{ t time.Time }
@@ -69,14 +60,8 @@ func newJob(calls ...contract.JobCall) contract.Job {
 	}
 }
 
-func newRunner(exec Executor, store *fakeStore) *Runner {
-	var bodies interface {
-		Put(context.Context, string, []byte, string) (string, error)
-	}
-	if store != nil {
-		bodies = store
-	}
-	return NewRunner(exec, bodies, fixedClock{time.Now()}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+func newRunner(exec Executor) *Runner {
+	return NewRunner(exec, fixedClock{time.Now()}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 func TestRun_ChainsVariablesAndMasksSecrets(t *testing.T) {
@@ -107,7 +92,7 @@ func TestRun_ChainsVariablesAndMasksSecrets(t *testing.T) {
 		},
 	)
 
-	result := newRunner(exec, nil).Run(context.Background(), job, map[string]string{"password": "hunter22"})
+	result := newRunner(exec).Run(context.Background(), job, map[string]string{"password": "hunter22"})
 
 	if result.Status != contract.RunStatusSuccess || result.Counts.Success != 2 {
 		t.Fatalf("unexpected result %+v", result)
@@ -149,7 +134,7 @@ func TestRun_FailedExtractionSkipsDependents(t *testing.T) {
 		contract.JobCall{Name: "detail", URL: "{{base_url}}/orders/{{first_id}}"},
 		contract.JobCall{Name: "health", URL: "{{base_url}}/health"},
 	)
-	result := newRunner(exec, nil).Run(context.Background(), job, nil)
+	result := newRunner(exec).Run(context.Background(), job, nil)
 
 	if result.Calls[1].Status != contract.CallStatusSkipped || !strings.Contains(result.Calls[1].Reason, `{{first_id}} (not extracted by "list")`) {
 		t.Fatalf("dependent call must be skipped with the reason: %+v", result.Calls[1])
@@ -173,7 +158,7 @@ func TestRun_DefaultRuleAndNetworkError(t *testing.T) {
 		contract.JobCall{Name: "unavailable", URL: "https://api.example.com/"},
 		contract.JobCall{Name: "down", URL: "https://down.example.com/"},
 	)
-	result := newRunner(exec, nil).Run(context.Background(), job, nil)
+	result := newRunner(exec).Run(context.Background(), job, nil)
 
 	first := result.Calls[0]
 	if first.Status != contract.CallStatusFailed || len(first.Rules) != 1 || first.Rules[0].Text != "status is 2xx" || first.Rules[0].Observed != "503" {
@@ -200,7 +185,7 @@ func TestRun_AllRulesEvaluated(t *testing.T) {
 		{ID: "6", Subject: "body", Operator: "not_contains", Value: "error"},
 		{ID: "7", Subject: "certificate", Operator: "expires_within", Value: "14"},
 	}})
-	result := newRunner(exec, nil).Run(context.Background(), job, nil)
+	result := newRunner(exec).Run(context.Background(), job, nil)
 	rules := result.Calls[0].Rules
 
 	want := []bool{false, false, false, true, true, true, false}
@@ -228,7 +213,7 @@ func TestRun_CertificateRule(t *testing.T) {
 		{ID: "1", Subject: "certificate", Operator: "expires_within", Value: "14"},
 		{ID: "2", Subject: "certificate", Operator: "chain_invalid"},
 	}})
-	rules := newRunner(exec, nil).Run(context.Background(), job, nil).Calls[0].Rules
+	rules := newRunner(exec).Run(context.Background(), job, nil).Calls[0].Rules
 	if rules[0].Passed || !strings.HasPrefix(rules[0].Observed, "9 days left") {
 		t.Fatalf("an intermediate expiring in 10 days must trip the 14 days rule: %+v", rules[0])
 	}
@@ -237,32 +222,37 @@ func TestRun_CertificateRule(t *testing.T) {
 	}
 }
 
-func TestRun_LargeBodyGoesToObjectStore(t *testing.T) {
+func TestRun_LargeBodyIsGzipped(t *testing.T) {
 	large := `{"data":"` + strings.Repeat("a", InlineBodyBytes) + `"}`
 	exec := &fakeExecutor{handler: func(req Request) (*Response, error) { return jsonResponse(200, large), nil }}
-	store := &fakeStore{}
 	job := newJob(contract.JobCall{Name: "big", URL: "https://api.example.com/"})
 
-	cr := newRunner(exec, store).Run(context.Background(), job, nil).Calls[0]
-	if !cr.Response.Truncated || len(cr.Response.Body) != InlineBodyBytes || cr.Response.Size != int64(len(large)) {
-		t.Fatalf("body must be truncated inline: truncated=%v len=%d size=%d", cr.Response.Truncated, len(cr.Response.Body), cr.Response.Size)
+	cr := newRunner(exec).Run(context.Background(), job, nil).Calls[0]
+	if cr.Response.Truncated || cr.Response.BodyEncoding != contract.BodyEncodingGzip {
+		t.Fatalf("compressible body must be stored gzipped: truncated=%v encoding=%q", cr.Response.Truncated, cr.Response.BodyEncoding)
 	}
-	if !strings.HasPrefix(cr.BodyRef, "s3://bodies/") || len(store.puts) != 1 {
-		t.Fatalf("full body must be uploaded, ref %q", cr.BodyRef)
+	if cr.Response.Size != int64(len(large)) || len(cr.Response.Body) == 0 || len(cr.Response.Body) > InlineBodyBytes {
+		t.Fatalf("unexpected gzipped body size=%d stored=%d", cr.Response.Size, len(cr.Response.Body))
+	}
+	if cr.Status != contract.CallStatusSuccess {
+		t.Fatalf("gzip storage must not fail the call, got %q", cr.Status)
 	}
 }
 
-func TestRun_LargeBodyWithoutStoreIsTruncated(t *testing.T) {
-	large := `{"data":"` + strings.Repeat("a", InlineBodyBytes) + `"}`
+func TestRun_IncompressibleBodyIsTruncated(t *testing.T) {
+	// Random bytes barely shrink; base64(gzip) stays above the inline limit.
+	raw := make([]byte, InlineBodyBytes+8*1024)
+	if _, err := rand.Read(raw); err != nil {
+		t.Fatal(err)
+	}
+	large := string(raw)
 	exec := &fakeExecutor{handler: func(req Request) (*Response, error) { return jsonResponse(200, large), nil }}
 	job := newJob(contract.JobCall{Name: "big", URL: "https://api.example.com/"})
 
-	cr := newRunner(exec, nil).Run(context.Background(), job, nil).Calls[0]
-	if !cr.Response.Truncated || len(cr.Response.Body) != InlineBodyBytes || cr.BodyRef != "" {
-		t.Fatalf("body must be truncated without ref: truncated=%v len=%d ref=%q", cr.Response.Truncated, len(cr.Response.Body), cr.BodyRef)
-	}
-	if cr.Status != contract.CallStatusSuccess {
-		t.Fatalf("truncation must not fail the call, got %q", cr.Status)
+	cr := newRunner(exec).Run(context.Background(), job, nil).Calls[0]
+	if !cr.Response.Truncated || cr.Response.BodyEncoding != "" || len(cr.Response.Body) == 0 || len(cr.Response.Body) > InlineBodyBytes {
+		t.Fatalf("incompressible body must stay truncated plaintext: truncated=%v encoding=%q len=%d",
+			cr.Response.Truncated, cr.Response.BodyEncoding, len(cr.Response.Body))
 	}
 }
 
@@ -273,7 +263,7 @@ func TestRun_InlineBudgetKeepsResultUnderKafkaLimit(t *testing.T) {
 	for i := range calls {
 		calls[i] = contract.JobCall{Name: uuid.NewString(), URL: "https://api.example.com/"}
 	}
-	result := newRunner(exec, &fakeStore{}).Run(context.Background(), newJob(calls...), nil)
+	result := newRunner(exec).Run(context.Background(), newJob(calls...), nil)
 	total := 0
 	for _, c := range result.Calls {
 		total += len(c.Response.Body)
@@ -288,7 +278,7 @@ func TestRun_RejectsNonHTTPTargets(t *testing.T) {
 	job := newJob(contract.JobCall{Name: "file", URL: "{{target}}"})
 	job.Variables = append(job.Variables, contract.JobVariable{Name: "target", Type: "static", Value: "file:///etc/passwd"})
 
-	cr := newRunner(exec, nil).Run(context.Background(), job, nil).Calls[0]
+	cr := newRunner(exec).Run(context.Background(), job, nil).Calls[0]
 	if cr.Status != contract.CallStatusError || cr.Error.Type != contract.ErrorTypeInvalid || len(exec.requests) != 0 {
 		t.Fatalf("non http scheme must be refused before any request: %+v", cr)
 	}

@@ -64,7 +64,6 @@ type CallRun struct {
 	ExtractedVariables map[string]string `json:"extracted_variables,omitempty"`
 	UsedVariables      []string          `json:"used_variables,omitempty"`
 	Error              *CallError        `json:"error,omitempty"`
-	BodyRef            string            `json:"body_ref,omitempty"`
 	StartedAt          time.Time         `json:"started_at"`
 	FinishedAt         time.Time         `json:"finished_at"`
 }
@@ -80,13 +79,19 @@ type RequestInfo struct {
 }
 
 type ResponseInfo struct {
-	Headers     map[string]string `json:"headers,omitempty"`
-	Body        string            `json:"body,omitempty"`
-	Size        int64             `json:"size"`
-	Truncated   bool              `json:"truncated,omitempty"`
-	Protocol    string            `json:"protocol,omitempty"`
-	Compression string            `json:"compression,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	// Body is plaintext, or base64(gzip(body)) when BodyEncoding is "gzip".
+	Body string `json:"body,omitempty"`
+	// BodyEncoding is empty for plaintext, or "gzip" when Body is base64-gzip.
+	BodyEncoding string `json:"body_encoding,omitempty"`
+	Size         int64  `json:"size"`
+	Truncated    bool   `json:"truncated,omitempty"`
+	Protocol     string `json:"protocol,omitempty"`
+	// Compression is the Content-Encoding observed on the wire (e.g. gzip).
+	Compression string `json:"compression,omitempty"`
 }
+
+const BodyEncodingGzip = "gzip"
 
 type Timings struct {
 	DNS      int64 `json:"dns"`

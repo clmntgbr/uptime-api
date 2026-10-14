@@ -21,7 +21,6 @@ type Retention interface {
 	DeleteRunsBefore(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
-
 type ReadRepository interface {
 	ListByWorkflow(ctx context.Context, userID, workflowID uuid.UUID, q paginate.PaginateQuery) ([]View, int64, error)
 	// FindByID returns nil, nil when the run does not exist for that user.
@@ -63,7 +62,6 @@ type CallRunView struct {
 	ExtractedVariables map[string]string
 	UsedVariables      []string
 	Error              *contract.CallError
-	BodyRef            string
 	StartedAt          *time.Time
 	FinishedAt         *time.Time
 }

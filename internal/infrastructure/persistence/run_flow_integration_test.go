@@ -153,7 +153,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 	}
 
 	exec := execution.NewExecuteJobHandler(opener,
-		engine.NewRunner(httpclient.NewExecutor(httpclient.Config{AllowPrivate: true}), nil, port.SystemClock{}, logger),
+		engine.NewRunner(httpclient.NewExecutor(httpclient.Config{AllowPrivate: true}), port.SystemClock{}, logger),
 		bus, port.SystemClock{}, logger)
 	if err := exec.Handle(ctx, raw); err != nil {
 		t.Fatalf("execute: %v", err)

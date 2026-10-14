@@ -1,6 +1,6 @@
 // Package engine runs a workflow job: variable resolution, HTTP calls through
 // an Executor, extraction, rule evaluation and secret masking. It has no I/O of
-// its own besides the Executor and the BodyStore it is given.
+// its own besides the Executor it is given.
 package engine
 
 import (

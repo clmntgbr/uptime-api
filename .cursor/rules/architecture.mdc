@@ -19,7 +19,7 @@ cmd/*/di → interfaces/http → application/{command,query,event,registry} → 
 
 - **domain** never imports `infrastructure`, `interfaces`, `application`, or `cmd`
 - **application** depends only on `domain` and `contract` (and small shared app helpers like `application/messaging` or `application/realtime`) — never concrete adapters
-- **engine** depends only on `domain` and `contract`; it reaches the network and storage through ports (`engine.Executor`, `port.BodyStore`) wired in `cmd/*/di`
+- **engine** depends only on `domain` and `contract`; it reaches the network through ports (`engine.Executor`) wired in `cmd/*/di`
 - Wire concrete implementations only in `cmd/*/di`
 - HTTP handlers call Command/Query handlers directly — no generic `CommandBus` by default
 
@@ -234,7 +234,7 @@ One shape for every error response, on every endpoint including webhooks:
 - Messages exchanged between binaries (jobs, results) live in `internal/contract`: versioned (`v`), validated with `Validate()` before processing, snake_case JSON. A breaking change requires a new version.
 - Domain events still go through the outbox to the `events` topic; contracts are for work items, not domain events.
 - Secret values never travel in clear on Kafka: seal them for the consumer's public key.
-- Keep messages under `max.message.bytes` (4 MB): large payloads are truncated (or moved to an object store, with the message carrying a reference).
+- Keep messages under `max.message.bytes` (4 MB): large response bodies are gzip+base64 in the message when that fits, otherwise truncated.
 
 ## Specialized workers (optional pattern)
 

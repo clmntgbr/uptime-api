@@ -136,7 +136,6 @@ func callRunView(m write.CallRunModel, rules []domainrun.RuleRun) (domainrun.Cal
 		Position:   m.Position,
 		Status:     domainrun.CallStatus(m.Status),
 		Reason:     deref(m.Reason),
-		BodyRef:    deref(m.BodyRef),
 		Rules:      rules,
 		StartedAt:  m.StartedAt,
 		FinishedAt: m.FinishedAt,

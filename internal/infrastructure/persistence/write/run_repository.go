@@ -143,7 +143,6 @@ func callRunModel(run *domainrun.Run, c domainrun.CallRun) (CallRunModel, error)
 		TLS:                tls,
 		ExtractedVariables: extracted,
 		UsedVariables:      used,
-		BodyRef:            nullableString(c.BodyRef),
 		Truncated:          c.Response.Truncated,
 		StartedAt:          nullableTime(c.StartedAt),
 		FinishedAt:         nullableTime(c.FinishedAt),

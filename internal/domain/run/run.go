@@ -77,7 +77,6 @@ type CallRun struct {
 	ExtractedVariables map[string]string
 	UsedVariables      []string
 	Error              *contract.CallError
-	BodyRef            string
 	StartedAt          time.Time
 	FinishedAt         time.Time
 }
