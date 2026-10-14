@@ -12,23 +12,18 @@ import (
 )
 
 // bindWorkflowDefinition validates the body and maps it to a domain definition.
-// Calls are omitted: they are managed by dedicated endpoints.
+// Calls and statics are omitted: they are managed by dedicated endpoints.
 func bindWorkflowDefinition(c fiber.Ctx) (domainworkflow.Definition, error) {
 	var body dto.WorkflowRequest
 	if err := validation.BindBody(c, &body); err != nil {
 		return domainworkflow.Definition{}, err
 	}
 
-	def := domainworkflow.Definition{
+	return domainworkflow.Definition{
 		Name:     body.Name,
 		Interval: time.Duration(body.IntervalSeconds) * time.Second,
 		Enabled:  body.Enabled == nil || *body.Enabled,
-		Statics:  make([]domainworkflow.StaticVariable, 0, len(body.Statics)),
-	}
-	for _, s := range body.Statics {
-		def.Statics = append(def.Statics, domainworkflow.StaticVariable{Name: s.Name, Value: s.Value})
-	}
-	return def, nil
+	}, nil
 }
 
 // writeWorkflowError maps domain errors; validation messages name the call and

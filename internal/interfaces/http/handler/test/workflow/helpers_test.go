@@ -127,7 +127,6 @@ func validWorkflowBody() map[string]any {
 	return map[string]any{
 		"name":            "Checkout",
 		"intervalSeconds": 300,
-		"statics":         []map[string]any{{"name": "base_url", "value": "https://api.example.com"}},
 	}
 }
 

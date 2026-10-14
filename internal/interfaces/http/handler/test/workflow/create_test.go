@@ -66,11 +66,8 @@ func TestWorkflowHandler_Create_Success(t *testing.T) {
 	if cmd.UserID != testutil.TestUserID || def.Name != "Checkout" || def.Interval != 5*time.Minute || !def.Enabled {
 		t.Fatalf("unexpected command %+v", cmd)
 	}
-	if len(def.Statics) != 1 || def.Statics[0].Name != "base_url" {
-		t.Fatalf("unexpected statics %+v", def.Statics)
-	}
-	if len(def.Calls) != 0 {
-		t.Fatalf("create must not accept calls in the body, got %+v", def.Calls)
+	if len(def.Statics) != 0 || len(def.Calls) != 0 {
+		t.Fatalf("create must not accept statics or calls in the body, got statics=%+v calls=%+v", def.Statics, def.Calls)
 	}
 }
 
@@ -110,9 +107,6 @@ func TestWorkflowHandler_Create_ValidationFailed(t *testing.T) {
 	cases := map[string]func(map[string]any){
 		"interval too low": func(b map[string]any) { b["intervalSeconds"] = 30 },
 		"missing name":     func(b map[string]any) { b["name"] = "" },
-		"static without name": func(b map[string]any) {
-			b["statics"] = []map[string]any{{"name": "", "value": "x"}}
-		},
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

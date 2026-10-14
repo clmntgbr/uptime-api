@@ -133,13 +133,17 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 		return &ValidationError{Message: fmt.Sprintf("a workflow has at most %d calls", MaxCalls)}
 	}
 
-	statics, err := buildStatics(w.Statics, def.Statics)
-	if err != nil {
-		return err
+	// Empty Statics/Calls keep the current lists: HTTP create/update only touch
+	// metadata. Dedicated endpoints (and YAML import) pass the values to replace.
+	statics := w.Statics
+	if len(def.Statics) > 0 {
+		built, err := buildStatics(w.Statics, def.Statics)
+		if err != nil {
+			return err
+		}
+		statics = built
 	}
 
-	// Empty Calls keeps the current list: HTTP create/update only touch metadata.
-	// Dedicated call endpoints (and YAML import) pass the calls to replace.
 	calls := w.Calls
 	if len(def.Calls) > 0 {
 		existingIDs := make(map[string]uuid.UUID, len(w.Calls))
