@@ -1,13 +1,12 @@
 package realtime
 
 const (
-	ActionCreated   = "created"
-	ActionUpdated   = "updated"
-	ActionDeleted   = "deleted"
-	ActionCompleted = "completed"
+	ActionCreated = "created"
+	ActionUpdated = "updated"
+	ActionDeleted = "deleted"
 
-	EntityUser = "user"
-	EntityRun  = "run"
+	EntityUser     = "user"
+	EntityWorkflow = "workflow"
 )
 
 func EventType(entity, action string) string {

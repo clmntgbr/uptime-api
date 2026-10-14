@@ -2,15 +2,14 @@ package di
 
 import (
 	"log"
-	"log/slog"
 
 	commandrun "go-api/internal/application/command/run"
 	"go-api/internal/application/event/dedup"
-	eventrun "go-api/internal/application/event/run"
 	eventuser "go-api/internal/application/event/user"
+	eventworkflow "go-api/internal/application/event/workflow"
 	"go-api/internal/application/registry"
-	domainrun "go-api/internal/domain/run"
 	domainuser "go-api/internal/domain/user"
+	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/infrastructure/centrifugo"
 	"go-api/internal/infrastructure/config"
 	"go-api/internal/infrastructure/messaging/kafka"
@@ -42,6 +41,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	notifier := notification.NewLogNotifier()
 	realtimePublisher := centrifugo.NewPublisher(env)
 	publishUserRealtime := eventuser.NewPublishRealtimeHandler(realtimePublisher)
+	publishWorkflowRealtime := eventworkflow.NewPublishRealtimeHandler(realtimePublisher)
 	reg := registry.NewHandlerRegistry()
 
 	reg.Register(domainuser.EventTypeUserCreated, dedup.With(
@@ -80,12 +80,20 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		publishUserRealtime.OnDeleted,
 	))
 
-	logger := slog.Default()
-	publishRunRealtime := eventrun.NewPublishRunRealtimeHandler(realtimePublisher, logger)
-	reg.Register(domainrun.EventTypeRunRecorded, dedup.With(
+	reg.Register(domainworkflow.EventTypeWorkflowCreated, dedup.With(
 		dedupRepo,
-		"publish_run_realtime",
-		publishRunRealtime.OnRecorded,
+		"publish_workflow_created_realtime",
+		publishWorkflowRealtime.OnCreated,
+	))
+	reg.Register(domainworkflow.EventTypeWorkflowUpdated, dedup.With(
+		dedupRepo,
+		"publish_workflow_updated_realtime",
+		publishWorkflowRealtime.OnUpdated,
+	))
+	reg.Register(domainworkflow.EventTypeWorkflowDeleted, dedup.With(
+		dedupRepo,
+		"publish_workflow_deleted_realtime",
+		publishWorkflowRealtime.OnDeleted,
 	))
 
 	eventsConsumer := kafka.NewConsumer(
