@@ -91,8 +91,10 @@ func (r *workflowWriteRepository) insertChildren(ctx context.Context, w *domainw
 			})
 		}
 	}
-	if err := db.Create(&calls).Error; err != nil {
-		return err
+	if len(calls) > 0 {
+		if err := db.Create(&calls).Error; err != nil {
+			return err
+		}
 	}
 	if len(rules) > 0 {
 		if err := db.Create(&rules).Error; err != nil {

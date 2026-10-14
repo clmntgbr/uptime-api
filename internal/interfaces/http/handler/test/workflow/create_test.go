@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	domaincall "go-api/internal/domain/call"
-	domainrule "go-api/internal/domain/rule"
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/interfaces/http/presenter"
 	"go-api/internal/interfaces/http/testutil"
@@ -71,19 +69,8 @@ func TestWorkflowHandler_Create_Success(t *testing.T) {
 	if len(def.Statics) != 1 || def.Statics[0].Name != "base_url" {
 		t.Fatalf("unexpected statics %+v", def.Statics)
 	}
-	login := def.Calls[0]
-	if len(def.Calls) != 2 || login.Method != "POST" || login.Timeout != 5*time.Second ||
-		login.VerifyTLS == nil || *login.VerifyTLS || login.IPVersion != domaincall.IPv4 {
-		t.Fatalf("unexpected login call %+v", login)
-	}
-	if len(login.Extractions) != 1 || login.Extractions[0].Source != domaincall.ExtractJSON || login.Extractions[0].Expression != "$.access_token" {
-		t.Fatalf("unexpected extractions %+v", login.Extractions)
-	}
-	if len(login.Rules) != 2 || login.Rules[1].Subject != domainrule.SubjectResponseTime || login.Rules[1].Value != "800" {
-		t.Fatalf("rules must be built and normalized: %+v", login.Rules)
-	}
-	if orders := def.Calls[1]; orders.VerifyTLS != nil || len(orders.Rules) != 0 || orders.Timeout != 0 {
-		t.Fatalf("omitted fields must stay unset for domain defaults: %+v", orders)
+	if len(def.Calls) != 0 {
+		t.Fatalf("create must not accept calls in the body, got %+v", def.Calls)
 	}
 }
 
@@ -121,15 +108,10 @@ func TestWorkflowHandler_Create_InvalidJSON(t *testing.T) {
 
 func TestWorkflowHandler_Create_ValidationFailed(t *testing.T) {
 	cases := map[string]func(map[string]any){
-		"missing calls":    func(b map[string]any) { delete(b, "calls") },
 		"interval too low": func(b map[string]any) { b["intervalSeconds"] = 30 },
 		"missing name":     func(b map[string]any) { b["name"] = "" },
-		"bad method":       func(b map[string]any) { b["calls"].([]map[string]any)[0]["method"] = "TRACE" },
-		"bad rule operator": func(b map[string]any) {
-			b["calls"].([]map[string]any)[0]["rules"] = []map[string]any{{"subject": "status", "operator": "huge"}}
-		},
-		"bad extraction": func(b map[string]any) {
-			b["calls"].([]map[string]any)[0]["extractions"] = []map[string]any{{"name": "x", "source": "xml"}}
+		"static without name": func(b map[string]any) {
+			b["statics"] = []map[string]any{{"name": "", "value": "x"}}
 		},
 	}
 	for name, mutate := range cases {
@@ -150,37 +132,17 @@ func TestWorkflowHandler_Create_ValidationFailed(t *testing.T) {
 	}
 }
 
-func TestWorkflowHandler_Create_InvalidRuleValue(t *testing.T) {
-	m := newMocks()
-	body := validWorkflowBody()
-	body["calls"].([]map[string]any)[1]["rules"] = []map[string]any{
-		{"subject": "status", "operator": "is", "value": "200"},
-		{"subject": "status", "operator": "exceeds", "value": "200"},
-	}
-	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
-	assertStatus(t, resp, http.StatusBadRequest)
-
-	out := testutil.DecodeJSONMap(t, resp)
-	errs, _ := out["errors"].(map[string]any)
-	if _, ok := errs["calls[1].rules[1]"]; !ok || len(errs) != 1 {
-		t.Fatalf("expected an error on calls[1].rules[1], got %v", out)
-	}
-	if m.create.calls != 0 {
-		t.Fatal("create must not be called with an invalid rule")
-	}
-}
-
 func TestWorkflowHandler_Create_HandlerError_InvalidWorkflow(t *testing.T) {
 	m := newMocks()
 	m.create.err = fmt.Errorf("create workflow: %w", &domainworkflow.ValidationError{
-		Call: "orders", Variable: "token", Message: "unknown variable", Kind: domainworkflow.ErrUnknownVar,
+		Message: "interval must be a whole number of minutes, at least 1 minute",
 	})
 	resp := doJSON(t, m, true, http.MethodPost, "/workflows", validWorkflowBody())
 	assertStatus(t, resp, http.StatusBadRequest)
 
 	out := testutil.DecodeJSONMap(t, resp)
 	message, _ := out["message"].(string)
-	if out["code"] != "INVALID_WORKFLOW" || !strings.Contains(message, `call "orders"`) || strings.Contains(message, "create workflow") {
+	if out["code"] != "INVALID_WORKFLOW" || !strings.Contains(message, "interval") || strings.Contains(message, "create workflow") {
 		t.Fatalf("unexpected body %v", out)
 	}
 }

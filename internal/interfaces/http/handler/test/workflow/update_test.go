@@ -25,7 +25,7 @@ func TestWorkflowHandler_Update_Success(t *testing.T) {
 	}
 	cmd := m.update.got
 	if m.update.calls != 1 || cmd.UserID != testutil.TestUserID || cmd.WorkflowID != testWorkflowID ||
-		cmd.Definition.Name != "Checkout v2" || len(cmd.Definition.Calls) != 2 {
+		cmd.Definition.Name != "Checkout v2" || len(cmd.Definition.Calls) != 0 {
 		t.Fatalf("unexpected command %+v", cmd)
 	}
 }
@@ -63,7 +63,7 @@ func TestWorkflowHandler_Update_InvalidBody(t *testing.T) {
 func TestWorkflowHandler_Update_ValidationFailed(t *testing.T) {
 	m := newMocks()
 	body := validWorkflowBody()
-	body["calls"] = []map[string]any{}
+	body["intervalSeconds"] = 30
 	resp := doJSON(t, m, true, http.MethodPut, updatePath, body)
 	assertStatus(t, resp, http.StatusBadRequest)
 	if out := testutil.DecodeJSONMap(t, resp); out["errors"] == nil {

@@ -128,28 +128,6 @@ func validWorkflowBody() map[string]any {
 		"name":            "Checkout",
 		"intervalSeconds": 300,
 		"statics":         []map[string]any{{"name": "base_url", "value": "https://api.example.com"}},
-		"calls": []map[string]any{
-			{
-				"name":        "login",
-				"method":      "POST",
-				"url":         "{{base_url}}/login",
-				"headers":     map[string]string{"Content-Type": "application/json"},
-				"body":        `{"user":"demo"}`,
-				"timeoutMs":   5000,
-				"verifyTls":   false,
-				"ipVersion":   "ipv4",
-				"extractions": []map[string]any{{"name": "token", "source": "json", "expression": "$.access_token"}},
-				"rules": []map[string]any{
-					{"subject": "status", "operator": "is", "value": "200"},
-					{"subject": "response_time", "operator": "exceeds", "value": "800 ms"},
-				},
-			},
-			{
-				"name":    "orders",
-				"url":     "{{base_url}}/orders",
-				"headers": map[string]string{"Authorization": "Bearer {{token}}"},
-			},
-		},
 	}
 }
 

@@ -129,8 +129,8 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 	if def.Interval < MinInterval || def.Interval%schedule.Tick != 0 {
 		return &ValidationError{Message: "interval must be a whole number of minutes, at least 1 minute"}
 	}
-	if len(def.Calls) == 0 || len(def.Calls) > MaxCalls {
-		return &ValidationError{Message: fmt.Sprintf("a workflow has between 1 and %d calls", MaxCalls)}
+	if len(def.Calls) > MaxCalls {
+		return &ValidationError{Message: fmt.Sprintf("a workflow has at most %d calls", MaxCalls)}
 	}
 
 	statics, err := buildStatics(w.Statics, def.Statics)
@@ -138,31 +138,36 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 		return err
 	}
 
-	existingIDs := make(map[string]uuid.UUID, len(w.Calls))
-	for _, c := range w.Calls {
-		existingIDs[c.Name] = c.ID
-	}
+	// Empty Calls keeps the current list: HTTP create/update only touch metadata.
+	// Dedicated call endpoints (and YAML import) pass the calls to replace.
+	calls := w.Calls
+	if len(def.Calls) > 0 {
+		existingIDs := make(map[string]uuid.UUID, len(w.Calls))
+		for _, c := range w.Calls {
+			existingIDs[c.Name] = c.ID
+		}
 
-	calls := make([]domaincall.Call, 0, len(def.Calls))
-	callNames := map[string]struct{}{}
-	for i, cd := range def.Calls {
-		id, ok := existingIDs[strings.TrimSpace(cd.Name)]
-		if !ok {
-			id = uuid.New()
-		}
-		call, err := domaincall.New(cd, i+1, id)
-		if err != nil {
-			var cerr *domaincall.ValidationError
-			if errors.As(err, &cerr) {
-				return &ValidationError{Call: cerr.Call, Message: cerr.Message}
+		calls = make([]domaincall.Call, 0, len(def.Calls))
+		callNames := map[string]struct{}{}
+		for i, cd := range def.Calls {
+			id, ok := existingIDs[strings.TrimSpace(cd.Name)]
+			if !ok {
+				id = uuid.New()
 			}
-			return err
+			call, err := domaincall.New(cd, i+1, id)
+			if err != nil {
+				var cerr *domaincall.ValidationError
+				if errors.As(err, &cerr) {
+					return &ValidationError{Call: cerr.Call, Message: cerr.Message}
+				}
+				return err
+			}
+			if _, dup := callNames[call.Name]; dup {
+				return &ValidationError{Call: call.Name, Message: "call names must be unique within a workflow"}
+			}
+			callNames[call.Name] = struct{}{}
+			calls = append(calls, call)
 		}
-		if _, dup := callNames[call.Name]; dup {
-			return &ValidationError{Call: call.Name, Message: "call names must be unique within a workflow"}
-		}
-		callNames[call.Name] = struct{}{}
-		calls = append(calls, call)
 	}
 
 	if err := validateVariables(statics, calls, globalNames); err != nil {
