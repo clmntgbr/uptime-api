@@ -71,7 +71,7 @@ func (h *CallHandler) GetByID(c fiber.Ctx) error {
 	if err != nil {
 		return writeCallError(c, err, "Failed to get call")
 	}
-	return c.Status(fiber.StatusOK).JSON(presenter.NewCallResponseFromView(*view))
+	return c.Status(fiber.StatusOK).JSON(presenter.NewCallDetailResponseFromView(*view))
 }
 
 func (h *CallHandler) Create(c fiber.Ctx) error {

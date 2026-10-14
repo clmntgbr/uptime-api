@@ -22,7 +22,7 @@ func NewGetCallHandler(repo domainworkflow.ReadRepository) *GetCallHandler {
 	return &GetCallHandler{repo: repo}
 }
 
-func (h *GetCallHandler) Handle(ctx context.Context, q GetCallQuery) (*domainworkflow.CallListView, error) {
+func (h *GetCallHandler) Handle(ctx context.Context, q GetCallQuery) (*domainworkflow.CallView, error) {
 	workflow, err := h.repo.FindByID(ctx, q.UserID, q.WorkflowID)
 	if err != nil {
 		return nil, err

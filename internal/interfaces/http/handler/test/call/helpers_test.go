@@ -85,17 +85,33 @@ func (m *mockListHandler) Handle(_ context.Context, q querycall.ListCallsQuery) 
 type mockGetHandler struct {
 	calls int
 	got   querycall.GetCallQuery
-	view  *domainworkflow.CallListView
+	view  *domainworkflow.CallView
 	err   error
 }
 
-func (m *mockGetHandler) Handle(_ context.Context, q querycall.GetCallQuery) (*domainworkflow.CallListView, error) {
+func (m *mockGetHandler) Handle(_ context.Context, q querycall.GetCallQuery) (*domainworkflow.CallView, error) {
 	m.calls++
 	m.got = q
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.view, nil
+}
+
+func sampleCallView() *domainworkflow.CallView {
+	return &domainworkflow.CallView{
+		ID:        testCallID,
+		Name:      "Google health",
+		Method:    "GET",
+		URL:       "https://httpbin.org/json",
+		Headers:   map[string]string{},
+		Query:     map[string]string{},
+		Body:      "",
+		TimeoutMS: 30000,
+		VerifyTLS: true,
+		IPVersion: "any",
+		ProxyURL:  "",
+	}
 }
 
 type mocks struct {

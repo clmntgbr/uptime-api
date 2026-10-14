@@ -2,6 +2,7 @@ package read
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"go-api/internal/domain/paginate"
 	domainschedule "go-api/internal/domain/schedule"
 	domainworkflow "go-api/internal/domain/workflow"
+	"go-api/internal/infrastructure/persistence/dbtype"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -143,11 +145,25 @@ func (r *workflowQueryRepository) ListCalls(ctx context.Context, userID, workflo
 	return views, nil
 }
 
-func (r *workflowQueryRepository) FindCall(ctx context.Context, userID, workflowID, callID uuid.UUID) (*domainworkflow.CallListView, error) {
-	var row callListRow
+type callDetailRow struct {
+	ID        uuid.UUID    `gorm:"column:id"`
+	Name      string       `gorm:"column:name"`
+	Method    string       `gorm:"column:method"`
+	URL       string       `gorm:"column:url"`
+	Headers   dbtype.JSONB `gorm:"column:headers"`
+	Query     dbtype.JSONB `gorm:"column:query"`
+	Body      *string      `gorm:"column:body"`
+	TimeoutMS int          `gorm:"column:timeout_ms"`
+	VerifyTLS bool         `gorm:"column:verify_tls"`
+	IPVersion string       `gorm:"column:ip_version"`
+	ProxyURL  *string      `gorm:"column:proxy_url"`
+}
+
+func (r *workflowQueryRepository) FindCall(ctx context.Context, userID, workflowID, callID uuid.UUID) (*domainworkflow.CallView, error) {
+	var row callDetailRow
 	err := r.db.WithContext(ctx).
 		Table("calls c").
-		Select("c.id, c.name").
+		Select("c.id, c.name, c.method, c.url, c.headers, c.query, c.body, c.timeout_ms, c.verify_tls, c.ip_version, c.proxy_url").
 		Joins("JOIN workflows w ON w.id = c.workflow_id").
 		Where("c.id = ? AND c.workflow_id = ? AND w.user_id = ? AND w.deleted_at IS NULL", callID, workflowID, userID).
 		Take(&row).Error
@@ -157,5 +173,36 @@ func (r *workflowQueryRepository) FindCall(ctx context.Context, userID, workflow
 		}
 		return nil, err
 	}
-	return &domainworkflow.CallListView{ID: row.ID, Name: row.Name}, nil
+
+	headers := map[string]string{}
+	if len(row.Headers) > 0 {
+		if err := json.Unmarshal(row.Headers, &headers); err != nil {
+			return nil, err
+		}
+	}
+	query := map[string]string{}
+	if len(row.Query) > 0 {
+		if err := json.Unmarshal(row.Query, &query); err != nil {
+			return nil, err
+		}
+	}
+
+	view := &domainworkflow.CallView{
+		ID:        row.ID,
+		Name:      row.Name,
+		Method:    row.Method,
+		URL:       row.URL,
+		Headers:   headers,
+		Query:     query,
+		TimeoutMS: row.TimeoutMS,
+		VerifyTLS: row.VerifyTLS,
+		IPVersion: row.IPVersion,
+	}
+	if row.Body != nil {
+		view.Body = *row.Body
+	}
+	if row.ProxyURL != nil {
+		view.ProxyURL = *row.ProxyURL
+	}
+	return view, nil
 }

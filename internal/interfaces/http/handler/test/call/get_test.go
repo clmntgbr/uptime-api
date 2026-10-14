@@ -11,16 +11,18 @@ import (
 
 func TestCallHandler_GetByID_Success(t *testing.T) {
 	m := newMocks()
-	m.get.view = &domainworkflow.CallListView{ID: testCallID, Name: "login"}
+	m.get.view = sampleCallView()
 	resp := doJSON(t, m, true, http.MethodGet, callPath(), nil)
 	assertStatus(t, resp, http.StatusOK)
 
 	if m.get.got.UserID != testutil.TestUserID || m.get.got.WorkflowID != testWorkflowID || m.get.got.CallID != testCallID {
 		t.Fatalf("unexpected query %+v", m.get.got)
 	}
-	var out presenter.CallResponse
+	var out presenter.CallDetailResponse
 	testutil.DecodeJSON(t, resp, &out)
-	if out.ID != testCallID.String() || out.Name != "login" {
+	if out.ID != testCallID.String() || out.Name != "Google health" || out.Method != "GET" ||
+		out.URL != "https://httpbin.org/json" || out.TimeoutMS != 30000 || !out.VerifyTLS ||
+		out.IPVersion != "any" || out.Headers == nil || out.Query == nil {
 		t.Fatalf("unexpected body %+v", out)
 	}
 }

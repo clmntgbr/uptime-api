@@ -26,5 +26,5 @@ type callListHandler interface {
 }
 
 type callGetHandler interface {
-	Handle(ctx context.Context, q querycall.GetCallQuery) (*domainworkflow.CallListView, error)
+	Handle(ctx context.Context, q querycall.GetCallQuery) (*domainworkflow.CallView, error)
 }

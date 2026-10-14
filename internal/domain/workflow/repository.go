@@ -31,7 +31,7 @@ type ReadRepository interface {
 	// the workflow is missing or belongs to another user.
 	ListCalls(ctx context.Context, userID, workflowID uuid.UUID) ([]CallListView, error)
 	// FindCall returns nil, nil when the call or its workflow is missing for that user.
-	FindCall(ctx context.Context, userID, workflowID, callID uuid.UUID) (*CallListView, error)
+	FindCall(ctx context.Context, userID, workflowID, callID uuid.UUID) (*CallView, error)
 }
 
 type ListView struct {
@@ -42,6 +42,21 @@ type ListView struct {
 type CallListView struct {
 	ID   uuid.UUID
 	Name string
+}
+
+// CallView is the detail of one call (without extractions and rules for now).
+type CallView struct {
+	ID        uuid.UUID
+	Name      string
+	Method    string
+	URL       string
+	Headers   map[string]string
+	Query     map[string]string
+	Body      string
+	TimeoutMS int
+	VerifyTLS bool
+	IPVersion string
+	ProxyURL  string
 }
 
 // View is the read model of a workflow with its current scheduling state, without its calls.
