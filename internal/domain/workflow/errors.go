@@ -13,6 +13,8 @@ var (
 	ErrNameConflict  = errors.New("variable name conflict")
 	ErrUnknownVar    = errors.New("unknown variable")
 	ErrVarOutOfOrder = errors.New("variable produced by a later call")
+	ErrRunInProgress = errors.New("a run is already in progress")
+	ErrNoCalls       = errors.New("workflow has no calls")
 )
 
 // ValidationError names the call and the variable at fault, so the message can

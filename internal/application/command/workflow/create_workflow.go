@@ -46,7 +46,11 @@ func (h *CreateWorkflowHandler) Handle(ctx context.Context, cmd CreateWorkflowCo
 	if err != nil {
 		return nil, err
 	}
-	state := schedule.New(w.ID, h.clock.Now(), w.Interval)
+	next, err := domainworkflow.NextRunAt(cmd.Definition, h.clock.Now())
+	if err != nil {
+		return nil, err
+	}
+	state := schedule.New(w.ID, next)
 
 	err = h.repo.WithTransaction(ctx, func(txCtx context.Context) error {
 		if err := h.repo.Save(txCtx, w); err != nil {

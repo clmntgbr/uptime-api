@@ -32,14 +32,23 @@ func (r *stateRepository) WithTransaction(ctx context.Context, fn func(ctx conte
 type dueRow struct {
 	WorkflowStateModel
 	UserID          uuid.UUID `gorm:"column:user_id"`
-	IntervalSeconds int       `gorm:"column:interval_seconds"`
+	IntervalSeconds *int      `gorm:"column:interval_seconds"`
+	ScheduleType    string    `gorm:"column:schedule_type"`
+	Enabled         bool      `gorm:"column:enabled"`
 }
 
+// LockDue selects enabled workflows whose next_run_at has passed, and also any
+// row with an expired lease (including disabled / parked one-shots) so timeouts
+// can be recorded even when the scheduler would not dispatch again.
 const lockDueSQL = `
-SELECT s.*, w.user_id, w.interval_seconds
+SELECT s.*, w.user_id, w.interval_seconds, w.schedule_type, w.enabled
 FROM workflow_state s
 JOIN workflows w ON w.id = s.workflow_id
-WHERE w.enabled AND w.deleted_at IS NULL AND s.next_run_at <= @now
+WHERE w.deleted_at IS NULL
+  AND (
+    (w.enabled AND s.next_run_at <= @now)
+    OR (s.status = 'running' AND s.lease_until IS NOT NULL AND s.lease_until < @now)
+  )
 ORDER BY s.next_run_at
 LIMIT @limit
 FOR UPDATE OF s SKIP LOCKED`
@@ -54,11 +63,16 @@ func (r *stateRepository) LockDue(ctx context.Context, now time.Time, limit int)
 	}
 	out := make([]domainschedule.Due, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, domainschedule.Due{
-			State:    stateDomainFromModel(row.WorkflowStateModel),
-			UserID:   row.UserID,
-			Interval: time.Duration(row.IntervalSeconds) * time.Second,
-		})
+		due := domainschedule.Due{
+			State:        stateDomainFromModel(row.WorkflowStateModel),
+			UserID:       row.UserID,
+			ScheduleType: row.ScheduleType,
+			Enabled:      row.Enabled,
+		}
+		if row.IntervalSeconds != nil {
+			due.Interval = time.Duration(*row.IntervalSeconds) * time.Second
+		}
+		out = append(out, due)
 	}
 	return out, nil
 }

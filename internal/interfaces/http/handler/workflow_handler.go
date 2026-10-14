@@ -1,6 +1,7 @@
 package handler
 
 import (
+	schedulecmd "go-api/internal/application/command/schedule"
 	workflowcmd "go-api/internal/application/command/workflow"
 	queryworkflow "go-api/internal/application/query/workflow"
 	"go-api/internal/domain/paginate"
@@ -18,6 +19,7 @@ type WorkflowHandler struct {
 	listHandler   workflowListHandler
 	getHandler    workflowGetHandler
 	deleteHandler workflowDeleteHandler
+	runHandler    workflowRunHandler
 }
 
 func NewWorkflowHandler(
@@ -26,6 +28,7 @@ func NewWorkflowHandler(
 	listHandler workflowListHandler,
 	getHandler workflowGetHandler,
 	deleteHandler workflowDeleteHandler,
+	runHandler workflowRunHandler,
 ) *WorkflowHandler {
 	return &WorkflowHandler{
 		createHandler: createHandler,
@@ -33,6 +36,7 @@ func NewWorkflowHandler(
 		listHandler:   listHandler,
 		getHandler:    getHandler,
 		deleteHandler: deleteHandler,
+		runHandler:    runHandler,
 	}
 }
 
@@ -157,4 +161,25 @@ func (h *WorkflowHandler) Delete(c fiber.Ctx) error {
 		return writeWorkflowError(c, err, "Failed to delete workflow")
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *WorkflowHandler) Run(c fiber.Ctx) error {
+	user, err := httpctx.GetUser(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "Unauthorized"})
+	}
+
+	workflowID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid workflow id"})
+	}
+
+	runID, err := h.runHandler.Handle(c.Context(), schedulecmd.RunManualCommand{
+		UserID:     user.ID,
+		WorkflowID: workflowID,
+	})
+	if err != nil {
+		return writeWorkflowError(c, err, "Failed to run workflow")
+	}
+	return c.Status(fiber.StatusAccepted).JSON(presenter.NewWorkflowRunResponse(runID.String()))
 }

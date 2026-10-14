@@ -80,6 +80,7 @@ func main() {
 	})
 
 	container := di.NewContainer(db, env)
+	defer container.KafkaProducer.Close()
 	setupRoutes(app, container)
 
 	log.Println("Server is running on port", env.Port)

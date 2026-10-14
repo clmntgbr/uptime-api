@@ -104,7 +104,7 @@ func TestWorkflowLifecycle(t *testing.T) {
 	if err := workflows.Save(ctx, w); err != nil {
 		t.Fatal(err)
 	}
-	if err := states.Save(ctx, domainschedule.New(w.ID, past, w.Interval)); err != nil {
+	if err := states.Save(ctx, domainschedule.New(w.ID, past)); err != nil {
 		t.Fatal(err)
 	}
 

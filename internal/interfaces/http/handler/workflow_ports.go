@@ -3,9 +3,12 @@ package handler
 import (
 	"context"
 
+	schedulecmd "go-api/internal/application/command/schedule"
 	workflowcmd "go-api/internal/application/command/workflow"
 	queryworkflow "go-api/internal/application/query/workflow"
 	domainworkflow "go-api/internal/domain/workflow"
+
+	"github.com/google/uuid"
 )
 
 type workflowCreateHandler interface {
@@ -26,4 +29,8 @@ type workflowGetHandler interface {
 
 type workflowDeleteHandler interface {
 	Handle(ctx context.Context, cmd workflowcmd.DeleteWorkflowCommand) error
+}
+
+type workflowRunHandler interface {
+	Handle(ctx context.Context, cmd schedulecmd.RunManualCommand) (uuid.UUID, error)
 }

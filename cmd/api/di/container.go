@@ -2,10 +2,13 @@ package di
 
 import (
 	"log"
+	"log/slog"
+	"time"
 
 	authcmd "go-api/internal/application/command/auth"
 	callcmd "go-api/internal/application/command/call"
 	identitycmd "go-api/internal/application/command/identity"
+	schedulecmd "go-api/internal/application/command/schedule"
 	usercmd "go-api/internal/application/command/user"
 	workflowcmd "go-api/internal/application/command/workflow"
 	querycall "go-api/internal/application/query/call"
@@ -16,7 +19,9 @@ import (
 	infraClerk "go-api/internal/infrastructure/clerk"
 	"go-api/internal/infrastructure/config"
 	"go-api/internal/infrastructure/crypto"
+	"go-api/internal/infrastructure/messaging/kafka"
 	"go-api/internal/infrastructure/persistence/outbox"
+	"go-api/internal/infrastructure/persistence/processed"
 	"go-api/internal/infrastructure/persistence/read"
 	"go-api/internal/infrastructure/persistence/write"
 	httphandler "go-api/internal/interfaces/http/handler"
@@ -33,6 +38,7 @@ type Container struct {
 	RealtimeHandler        *httphandler.RealtimeHandler
 	WorkflowHandler        *httphandler.WorkflowHandler
 	CallHandler            *httphandler.CallHandler
+	KafkaProducer          *kafka.Producer
 }
 
 func NewContainer(db *gorm.DB, env *config.Config) *Container {
@@ -57,11 +63,35 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	if err != nil {
 		log.Fatalf("invalid SECRETS_ENCRYPTION_KEY: %v", err)
 	}
+	sealer, err := crypto.NewSealer(env.JobSealPublicKey)
+	if err != nil {
+		log.Fatalf("invalid JOB_SEAL_PUBLIC_KEY: %v", err)
+	}
+	producer, err := kafka.NewProducer(env.Kafka)
+	if err != nil {
+		log.Fatalf("failed to create kafka producer: %v", err)
+	}
+
 	workflowWriteRepo := write.NewWorkflowWriteRepository(db)
 	workflowReadRepo := read.NewWorkflowQueryRepository(db)
 	stateRepo := write.NewStateRepository(db)
 	globalVariableRepo := write.NewGlobalVariableRepository(db, cipher)
+	runWriteRepo := write.NewRunWriteRepository(db)
 	clock := port.SystemClock{}
+
+	runManual := schedulecmd.NewRunManualHandler(
+		stateRepo,
+		workflowWriteRepo,
+		globalVariableRepo,
+		runWriteRepo,
+		processed.NewTxClaimer(db),
+		outboxRepo,
+		sealer,
+		kafka.NewWorkflowPublisher(producer),
+		clock,
+		time.Minute,
+		slog.Default(),
+	)
 
 	return &Container{
 		AuthenticateMiddleware: middleware.NewAuthenticateMiddleware(
@@ -84,6 +114,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			queryworkflow.NewListWorkflowsHandler(workflowReadRepo),
 			queryworkflow.NewGetWorkflowHandler(workflowReadRepo),
 			workflowcmd.NewDeleteWorkflowHandler(workflowWriteRepo, outboxRepo),
+			runManual,
 		),
 		CallHandler: httphandler.NewCallHandler(
 			callcmd.NewCreateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
@@ -92,5 +123,6 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			querycall.NewListCallsHandler(workflowReadRepo),
 			querycall.NewGetCallHandler(workflowReadRepo),
 		),
+		KafkaProducer: producer,
 	}
 }

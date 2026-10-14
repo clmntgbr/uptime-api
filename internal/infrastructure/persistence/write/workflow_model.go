@@ -15,7 +15,9 @@ type WorkflowModel struct {
 	ID              uuid.UUID  `gorm:"column:id;primaryKey"`
 	UserID          uuid.UUID  `gorm:"column:user_id"`
 	Name            string     `gorm:"column:name"`
-	IntervalSeconds int        `gorm:"column:interval_seconds"`
+	ScheduleType    string     `gorm:"column:schedule_type"`
+	IntervalSeconds *int       `gorm:"column:interval_seconds"`
+	RunAt           *time.Time `gorm:"column:run_at"`
 	TimeoutMS       int        `gorm:"column:timeout_ms"`
 	Enabled         bool       `gorm:"column:enabled"`
 	CreatedAt       time.Time  `gorm:"column:created_at"`

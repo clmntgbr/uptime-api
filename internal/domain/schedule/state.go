@@ -32,11 +32,15 @@ type State struct {
 	LastStatus           string
 }
 
-func New(workflowID uuid.UUID, now time.Time, interval time.Duration) State {
+// Never is a sentinel next_run_at used after a one-shot (once/at) dispatch so
+// the scheduler never picks the workflow again until the user reschedules it.
+var Never = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+
+func New(workflowID uuid.UUID, nextRunAt time.Time) State {
 	return State{
 		WorkflowID: workflowID,
 		Status:     StatusIdle,
-		NextRunAt:  NextRun(now, interval),
+		NextRunAt:  nextRunAt.UTC(),
 	}
 }
 
@@ -49,9 +53,19 @@ func NextRun(after time.Time, interval time.Duration) time.Time {
 	return after.UTC().Truncate(interval).Add(interval)
 }
 
-// Reschedule moves the next run to the first interval boundary after now.
-func (s *State) Reschedule(now time.Time, interval time.Duration) {
-	s.NextRunAt = NextRun(now, interval)
+// AlignAt truncates runAt to the minute grid. The caller must reject past values.
+func AlignAt(runAt time.Time) time.Time {
+	return runAt.UTC().Truncate(Tick)
+}
+
+// Reschedule moves the next run to nextRunAt (already computed by the caller).
+func (s *State) Reschedule(nextRunAt time.Time) {
+	s.NextRunAt = nextRunAt.UTC()
+}
+
+// ClearSchedule parks the workflow so LockDue never selects it again.
+func (s *State) ClearSchedule() {
+	s.NextRunAt = Never
 }
 
 // Running reports whether a lease is held (valid or expired).

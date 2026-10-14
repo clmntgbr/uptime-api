@@ -46,9 +46,12 @@ services:
       - .env
     environment:
       <<: *centrifugo-env
+      KAFKA_CLIENT_ID: api
     depends_on:
       database:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       centrifugo:
         condition: service_started
     networks: [edge, backend, data]

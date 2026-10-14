@@ -28,7 +28,13 @@ services:
     command: ["./api"]
     env_file: [.env]
     environment:
+      <<: *kafka-client-env
       DATABASE_URL: ${API_DATABASE_URL}
+      KAFKA_CLIENT_ID: api
+      KAFKA_USERNAME: api
+      KAFKA_PASSWORD: ${KAFKA_API_PASSWORD}
+    volumes:
+      - ./deploy/kafka/secrets/ca.pem:/run/secrets/kafka-ca.pem:ro
     networks: [edge, backend, data]
     deploy:
       replicas: 2
@@ -105,6 +111,7 @@ services:
       KAFKA_BOOTSTRAP: kafka:9092
       KAFKA_SECURITY: sasl
       KAFKA_ADMIN_PASSWORD: ${KAFKA_ADMIN_PASSWORD}
+      KAFKA_API_PASSWORD: ${KAFKA_API_PASSWORD}
       KAFKA_SCHEDULER_PASSWORD: ${KAFKA_SCHEDULER_PASSWORD}
       KAFKA_WORKER_PASSWORD: ${KAFKA_WORKER_PASSWORD}
       KAFKA_WORKER_CALLS_PASSWORD: ${KAFKA_WORKER_CALLS_PASSWORD}

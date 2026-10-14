@@ -105,6 +105,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 
 	recordResult := commandrun.NewRecordResultHandler(
 		write.NewStateRepository(db),
+		write.NewWorkflowWriteRepository(db),
 		write.NewRunWriteRepository(db),
 		write.NewCertificateRepository(db),
 		processed.NewTxClaimer(db),

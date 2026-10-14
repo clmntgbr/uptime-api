@@ -86,6 +86,18 @@ func (h *UpdateWorkflowHandler) reschedule(ctx context.Context, w *domainworkflo
 	if state == nil {
 		return fmt.Errorf("schedule state missing for workflow %s", w.ID)
 	}
-	state.Reschedule(h.clock.Now(), w.Interval)
+	if !w.Enabled {
+		state.ClearSchedule()
+		return h.states.Save(ctx, *state)
+	}
+	next, err := domainworkflow.NextRunAt(domainworkflow.Definition{
+		ScheduleType: w.ScheduleType,
+		Interval:     w.Interval,
+		RunAt:        w.RunAt,
+	}, h.clock.Now())
+	if err != nil {
+		return err
+	}
+	state.Reschedule(next)
 	return h.states.Save(ctx, *state)
 }

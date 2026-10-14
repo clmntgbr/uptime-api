@@ -96,16 +96,7 @@ func (w *Workflow) RemoveCall(callID uuid.UUID, globalNames []string) error {
 
 func (w *Workflow) recordCallMutation() {
 	w.UpdatedAt = time.Now().UTC()
-	w.recordEvent(WorkflowUpdated{
-		ID:              uuid.New().String(),
-		WorkflowID:      w.ID.String(),
-		UserID:          w.UserID.String(),
-		Name:            w.Name,
-		IntervalSeconds: int(w.Interval / time.Second),
-		Enabled:         w.Enabled,
-		CallCount:       len(w.Calls),
-		Timestamp:       w.UpdatedAt,
-	})
+	w.recordEvent(w.newUpdatedOrCreatedEvent(false, w.UpdatedAt))
 }
 
 func mapCallError(err error) error {

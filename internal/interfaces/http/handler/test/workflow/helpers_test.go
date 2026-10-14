@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	schedulecmd "go-api/internal/application/command/schedule"
 	workflowcmd "go-api/internal/application/command/workflow"
 	queryworkflow "go-api/internal/application/query/workflow"
 	domainschedule "go-api/internal/domain/schedule"
@@ -18,6 +19,7 @@ import (
 
 var (
 	testWorkflowID = uuid.MustParse("01960000-0000-7000-8000-0000000000a1")
+	testRunID      = uuid.MustParse("01960000-0000-7000-8000-0000000000b1")
 	errDatabase    = errors.New("pq: connection refused on 10.0.0.12")
 )
 
@@ -96,21 +98,48 @@ func (m *mockDeleteHandler) Handle(_ context.Context, cmd workflowcmd.DeleteWork
 	return m.err
 }
 
+type mockRunHandler struct {
+	calls int
+	got   schedulecmd.RunManualCommand
+	runID uuid.UUID
+	err   error
+}
+
+func (m *mockRunHandler) Handle(_ context.Context, cmd schedulecmd.RunManualCommand) (uuid.UUID, error) {
+	m.calls++
+	m.got = cmd
+	if m.err != nil {
+		return uuid.Nil, m.err
+	}
+	if m.runID != uuid.Nil {
+		return m.runID, nil
+	}
+	return testRunID, nil
+}
+
 type mocks struct {
 	create *mockCreateHandler
 	update *mockUpdateHandler
 	list   *mockListHandler
 	get    *mockGetHandler
 	delete *mockDeleteHandler
+	run    *mockRunHandler
 }
 
 func newMocks() mocks {
-	return mocks{create: &mockCreateHandler{}, update: &mockUpdateHandler{}, list: &mockListHandler{}, get: &mockGetHandler{}, delete: &mockDeleteHandler{}}
+	return mocks{
+		create: &mockCreateHandler{},
+		update: &mockUpdateHandler{},
+		list:   &mockListHandler{},
+		get:    &mockGetHandler{},
+		delete: &mockDeleteHandler{},
+		run:    &mockRunHandler{},
+	}
 }
 
 // mountRoutes registers the workflow routes; authenticated adds a user to the context.
 func mountRoutes(m mocks, authenticated bool) *fiber.App {
-	h := handler.NewWorkflowHandler(m.create, m.update, m.list, m.get, m.delete)
+	h := handler.NewWorkflowHandler(m.create, m.update, m.list, m.get, m.delete, m.run)
 	app := testutil.NewTestApp()
 	if authenticated {
 		app.Use(testutil.WithUserWithoutProject(testutil.TestUserID))
@@ -120,12 +149,14 @@ func mountRoutes(m mocks, authenticated bool) *fiber.App {
 	app.Get("/workflows/:id", h.GetByID)
 	app.Put("/workflows/:id", h.Update)
 	app.Delete("/workflows/:id", h.Delete)
+	app.Post("/workflows/:id/runs", h.Run)
 	return app
 }
 
 func validWorkflowBody() map[string]any {
 	return map[string]any{
 		"name":            "Checkout",
+		"scheduleType":    "interval",
 		"intervalSeconds": 300,
 	}
 }
@@ -143,6 +174,7 @@ func sampleView() *domainworkflow.View {
 		ID:              testWorkflowID,
 		UserID:          testutil.TestUserID,
 		Name:            "Checkout",
+		ScheduleType:    domainworkflow.ScheduleInterval,
 		IntervalSeconds: 300,
 		Enabled:         true,
 		Status:          domainschedule.StatusIdle,

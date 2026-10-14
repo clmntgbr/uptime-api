@@ -64,7 +64,9 @@ type View struct {
 	ID              uuid.UUID
 	UserID          uuid.UUID
 	Name            string
+	ScheduleType    ScheduleType
 	IntervalSeconds int
+	RunAt           *time.Time
 	Enabled         bool
 	Status          schedule.Status
 	NextRunAt       *time.Time

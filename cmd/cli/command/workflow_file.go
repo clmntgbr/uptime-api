@@ -71,9 +71,10 @@ func parseWorkflowFile(data []byte) (domainworkflow.Definition, error) {
 		return domainworkflow.Definition{}, err
 	}
 	def := domainworkflow.Definition{
-		Name:     file.Workflow,
-		Interval: interval,
-		Enabled:  file.Enabled == nil || *file.Enabled,
+		Name:         file.Workflow,
+		ScheduleType: domainworkflow.ScheduleInterval,
+		Interval:     interval,
+		Enabled:      file.Enabled == nil || *file.Enabled,
 	}
 	for _, p := range statics {
 		def.Statics = append(def.Statics, domainworkflow.StaticVariable{Name: p.key, Value: p.value})

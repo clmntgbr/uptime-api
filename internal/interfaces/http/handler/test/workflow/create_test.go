@@ -63,7 +63,7 @@ func TestWorkflowHandler_Create_Success(t *testing.T) {
 	}
 	cmd := m.create.got
 	def := cmd.Definition
-	if cmd.UserID != testutil.TestUserID || def.Name != "Checkout" || def.Interval != 5*time.Minute || !def.Enabled {
+	if cmd.UserID != testutil.TestUserID || def.Name != "Checkout" || def.ScheduleType != domainworkflow.ScheduleInterval || def.Interval != 5*time.Minute || !def.Enabled {
 		t.Fatalf("unexpected command %+v", cmd)
 	}
 	if len(def.Statics) != 0 || len(def.Calls) != 0 {
@@ -103,10 +103,53 @@ func TestWorkflowHandler_Create_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestWorkflowHandler_Create_DefaultScheduleTypeInterval(t *testing.T) {
+	m := newMocks()
+	body := map[string]any{"name": "Checkout", "intervalSeconds": 300}
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
+	assertStatus(t, resp, http.StatusCreated)
+	if m.create.got.Definition.ScheduleType != domainworkflow.ScheduleInterval {
+		t.Fatalf("missing scheduleType must default to interval, got %q", m.create.got.Definition.ScheduleType)
+	}
+}
+
+func TestWorkflowHandler_Create_Once_Success(t *testing.T) {
+	m := newMocks()
+	body := map[string]any{"name": "One shot", "scheduleType": "once"}
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
+	assertStatus(t, resp, http.StatusCreated)
+	if m.create.got.Definition.ScheduleType != domainworkflow.ScheduleOnce || m.create.got.Definition.Interval != 0 {
+		t.Fatalf("unexpected once definition %+v", m.create.got.Definition)
+	}
+}
+
+func TestWorkflowHandler_Create_At_Success(t *testing.T) {
+	m := newMocks()
+	runAt := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Minute)
+	body := map[string]any{
+		"name":         "Timed",
+		"scheduleType": "at",
+		"runAt":        runAt.Format(time.RFC3339),
+	}
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
+	assertStatus(t, resp, http.StatusCreated)
+	def := m.create.got.Definition
+	if def.ScheduleType != domainworkflow.ScheduleAt || def.RunAt == nil || !def.RunAt.Equal(runAt) {
+		t.Fatalf("unexpected at definition %+v", def)
+	}
+}
+
 func TestWorkflowHandler_Create_ValidationFailed(t *testing.T) {
+	future := time.Now().UTC().Add(time.Hour).Truncate(time.Minute).Format(time.RFC3339)
 	cases := map[string]func(map[string]any){
-		"interval too low": func(b map[string]any) { b["intervalSeconds"] = 30 },
-		"missing name":     func(b map[string]any) { b["name"] = "" },
+		"interval too low":      func(b map[string]any) { b["intervalSeconds"] = 30 },
+		"missing name":          func(b map[string]any) { b["name"] = "" },
+		"once with interval":    func(b map[string]any) { b["scheduleType"] = "once" },
+		"once with runAt":       func(b map[string]any) { b["scheduleType"] = "once"; delete(b, "intervalSeconds"); b["runAt"] = future },
+		"at without runAt":      func(b map[string]any) { b["scheduleType"] = "at"; delete(b, "intervalSeconds") },
+		"at with interval":      func(b map[string]any) { b["scheduleType"] = "at"; b["runAt"] = future },
+		"interval with runAt":   func(b map[string]any) { b["runAt"] = future },
+		"interval without secs": func(b map[string]any) { delete(b, "intervalSeconds") },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -73,11 +73,13 @@ acl() {
   "${BIN}/kafka-acls.sh" --bootstrap-server "${BOOTSTRAP}" "${COMMAND_CONFIG[@]}" --add --force "$@"
 }
 
+create_user api "${KAFKA_API_PASSWORD:?}"
 create_user scheduler "${KAFKA_SCHEDULER_PASSWORD:?}"
 create_user worker "${KAFKA_WORKER_PASSWORD:?}"
 create_user worker-calls "${KAFKA_WORKER_CALLS_PASSWORD:?}"
 
-# scheduler: write jobs only.
+# api + scheduler: write jobs (manual runs and the tick).
+acl --allow-principal User:api --operation Write --operation Describe --topic workflow.jobs
 acl --allow-principal User:scheduler --operation Write --operation Describe --topic workflow.jobs
 
 # worker-calls: read jobs (+retry), write results, its own retry and dlq.

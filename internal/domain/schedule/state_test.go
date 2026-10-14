@@ -7,6 +7,14 @@ import (
 	"github.com/google/uuid"
 )
 
+func TestAlignAt(t *testing.T) {
+	raw := time.Date(2026, 10, 13, 14, 3, 45, 0, time.UTC)
+	want := time.Date(2026, 10, 13, 14, 3, 0, 0, time.UTC)
+	if got := AlignAt(raw); !got.Equal(want) {
+		t.Fatalf("got %s want %s", got, want)
+	}
+}
+
 func TestNextRun_AlignedOnInterval(t *testing.T) {
 	now := time.Date(2026, 10, 13, 10, 7, 42, 0, time.UTC)
 	cases := map[time.Duration]time.Time{
@@ -28,7 +36,7 @@ func TestNextRun_AlignedOnInterval(t *testing.T) {
 
 func TestState_LeaseLifecycle(t *testing.T) {
 	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
-	s := New(uuid.New(), now, time.Minute)
+	s := New(uuid.New(), NextRun(now, time.Minute))
 	runID := uuid.New()
 	s.Lease(runID, now, 6*time.Minute)
 

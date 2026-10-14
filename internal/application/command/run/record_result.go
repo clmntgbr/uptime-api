@@ -13,12 +13,14 @@ import (
 	"go-api/internal/domain/port"
 	domainrun "go-api/internal/domain/run"
 	domainschedule "go-api/internal/domain/schedule"
+	domainworkflow "go-api/internal/domain/workflow"
 
 	"github.com/google/uuid"
 )
 
 type RecordResultHandler struct {
 	states       domainschedule.Repository
+	workflows    domainworkflow.WriteRepository
 	runs         domainrun.WriteRepository
 	certificates certificate.Repository
 	processed    port.ProcessedEventRepository
@@ -27,12 +29,16 @@ type RecordResultHandler struct {
 
 func NewRecordResultHandler(
 	states domainschedule.Repository,
+	workflows domainworkflow.WriteRepository,
 	runs domainrun.WriteRepository,
 	certificates certificate.Repository,
 	processed port.ProcessedEventRepository,
 	outbox port.OutboxRepository,
 ) *RecordResultHandler {
-	return &RecordResultHandler{states: states, runs: runs, certificates: certificates, processed: processed, outbox: outbox}
+	return &RecordResultHandler{
+		states: states, workflows: workflows, runs: runs,
+		certificates: certificates, processed: processed, outbox: outbox,
+	}
 }
 
 // Handle stores a result from `workflow.results` in one transaction: run, call
@@ -70,8 +76,18 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 		if err := h.certificates.Upsert(txCtx, certs); err != nil {
 			return err
 		}
-		if r.Trigger == contract.TriggerSchedule {
+
+		// Schedule and manual runs both hold a lease; release it on completion.
+		if r.Trigger == contract.TriggerSchedule || r.Trigger == contract.TriggerManual {
+			ownedLease := state.Running() && state.LeaseRunID != nil && *state.LeaseRunID == r.ID
 			state.Complete(r.ID, string(r.Status), r.FinishedAt)
+			// Only the scheduled fire that still owns the lease finishes a one-shot.
+			// A late result from a previous interval run must not disable a rescheduled once/at.
+			if r.Trigger == contract.TriggerSchedule && ownedLease {
+				if err := h.finishOneShot(txCtx, state, r.WorkflowID); err != nil {
+					return err
+				}
+			}
 			if err := h.states.Save(txCtx, *state); err != nil {
 				return err
 			}
@@ -82,6 +98,25 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 		return messaging.Retryable(fmt.Errorf("record run %s: %w", result.RunID, err))
 	}
 	return nil
+}
+
+// finishOneShot parks and disables once/at workflows after their scheduled fire.
+func (h *RecordResultHandler) finishOneShot(ctx context.Context, state *domainschedule.State, workflowID uuid.UUID) error {
+	w, err := h.workflows.GetByID(ctx, workflowID)
+	if err != nil {
+		return err
+	}
+	if w == nil || !w.ScheduleType.IsOneShot() {
+		return nil
+	}
+	state.ClearSchedule()
+	if !w.Disable() {
+		return nil
+	}
+	if err := h.workflows.Update(ctx, w); err != nil {
+		return err
+	}
+	return h.outbox.StoreEvents(ctx, w.PullEvents())
 }
 
 func toRun(result contract.Result) (*domainrun.Run, []certificate.Certificate) {

@@ -1,14 +1,33 @@
 package schedule
 
 import (
+	"fmt"
 	"time"
 
 	"go-api/internal/contract"
+	"go-api/internal/domain/port"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
 
 	"github.com/google/uuid"
 )
+
+func prepareJob(
+	sealer port.JobSealer,
+	w *domainworkflow.Workflow,
+	globals []variable.Global,
+	runID uuid.UUID,
+	trigger string,
+	scheduledAt, deadline, now time.Time,
+) (contract.Job, error) {
+	job, secrets := buildJob(w, globals, runID, trigger, scheduledAt, deadline, now)
+	sealed, err := sealer.Seal(secrets)
+	if err != nil {
+		return contract.Job{}, fmt.Errorf("seal secrets: %w", err)
+	}
+	job.Secrets = sealed
+	return job, nil
+}
 
 // buildJob turns a workflow into a self-contained job. Only the globals the
 // workflow references are included; secret ones are returned apart to be sealed.

@@ -23,7 +23,7 @@ func TestWorkflowHandler_GetByID_Success(t *testing.T) {
 	}
 	var out presenter.WorkflowResponse
 	testutil.DecodeJSON(t, resp, &out)
-	if out.ID != testWorkflowID.String() || out.Name != "Checkout" || out.IntervalSeconds != 300 || !out.Enabled {
+	if out.ID != testWorkflowID.String() || out.Name != "Checkout" || out.ScheduleType != "interval" || out.IntervalSeconds == nil || *out.IntervalSeconds != 300 || !out.Enabled {
 		t.Fatalf("unexpected body %+v", out)
 	}
 }

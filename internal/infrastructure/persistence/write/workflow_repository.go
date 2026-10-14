@@ -48,7 +48,9 @@ func (r *workflowWriteRepository) Update(ctx context.Context, w *domainworkflow.
 		model := workflowModelFromDomain(w)
 		err := db.Model(&WorkflowModel{}).Where("id = ?", w.ID).Updates(map[string]any{
 			"name":             model.Name,
+			"schedule_type":    model.ScheduleType,
 			"interval_seconds": model.IntervalSeconds,
+			"run_at":           model.RunAt,
 			"timeout_ms":       model.TimeoutMS,
 			"enabled":          model.Enabled,
 			"updated_at":       model.UpdatedAt,
@@ -212,33 +214,60 @@ func (r *workflowWriteRepository) hydrate(ctx context.Context, models []Workflow
 
 	out := make([]*domainworkflow.Workflow, 0, len(models))
 	for _, m := range models {
-		out = append(out, &domainworkflow.Workflow{
-			ID:        m.ID,
-			UserID:    m.UserID,
-			Name:      m.Name,
-			Interval:  time.Duration(m.IntervalSeconds) * time.Second,
-			Timeout:   time.Duration(m.TimeoutMS) * time.Millisecond,
-			Enabled:   m.Enabled,
-			Statics:   staticsByWorkflow[m.ID],
-			Calls:     callsByWorkflow[m.ID],
-			CreatedAt: m.CreatedAt,
-			UpdatedAt: m.UpdatedAt,
-		})
+		out = append(out, workflowDomainFromModel(m, staticsByWorkflow[m.ID], callsByWorkflow[m.ID]))
 	}
 	return out, nil
 }
 
-func workflowModelFromDomain(w *domainworkflow.Workflow) *WorkflowModel {
-	return &WorkflowModel{
-		ID:              w.ID,
-		UserID:          w.UserID,
-		Name:            w.Name,
-		IntervalSeconds: int(w.Interval / time.Second),
-		TimeoutMS:       int(w.Timeout / time.Millisecond),
-		Enabled:         w.Enabled,
-		CreatedAt:       w.CreatedAt,
-		UpdatedAt:       w.UpdatedAt,
+func workflowDomainFromModel(m WorkflowModel, statics []domainworkflow.StaticVariable, calls []domaincall.Call) *domainworkflow.Workflow {
+	w := &domainworkflow.Workflow{
+		ID:           m.ID,
+		UserID:       m.UserID,
+		Name:         m.Name,
+		ScheduleType: domainworkflow.ScheduleType(m.ScheduleType),
+		Timeout:      time.Duration(m.TimeoutMS) * time.Millisecond,
+		Enabled:      m.Enabled,
+		Statics:      statics,
+		Calls:        calls,
+		CreatedAt:    m.CreatedAt,
+		UpdatedAt:    m.UpdatedAt,
 	}
+	if w.ScheduleType == "" {
+		w.ScheduleType = domainworkflow.ScheduleInterval
+	}
+	if m.IntervalSeconds != nil {
+		w.Interval = time.Duration(*m.IntervalSeconds) * time.Second
+	}
+	if m.RunAt != nil {
+		t := m.RunAt.UTC()
+		w.RunAt = &t
+	}
+	return w
+}
+
+func workflowModelFromDomain(w *domainworkflow.Workflow) *WorkflowModel {
+	model := &WorkflowModel{
+		ID:           w.ID,
+		UserID:       w.UserID,
+		Name:         w.Name,
+		ScheduleType: string(w.ScheduleType),
+		TimeoutMS:    int(w.Timeout / time.Millisecond),
+		Enabled:      w.Enabled,
+		CreatedAt:    w.CreatedAt,
+		UpdatedAt:    w.UpdatedAt,
+	}
+	if model.ScheduleType == "" {
+		model.ScheduleType = string(domainworkflow.ScheduleInterval)
+	}
+	if w.ScheduleType == domainworkflow.ScheduleInterval || w.ScheduleType == "" {
+		seconds := int(w.Interval / time.Second)
+		model.IntervalSeconds = &seconds
+	}
+	if w.RunAt != nil {
+		t := w.RunAt.UTC()
+		model.RunAt = &t
+	}
+	return model
 }
 
 type extractionJSON struct {

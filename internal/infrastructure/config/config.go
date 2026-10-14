@@ -32,6 +32,7 @@ type Config struct {
 	CentrifugoTokenSecret string
 	CentrifugoPublicWSURL string
 	SecretsEncryptionKey  string
+	JobSealPublicKey      string
 	MetricsAddr           string
 	Kafka                 KafkaConfig
 }
@@ -62,6 +63,7 @@ func Load() *Config {
 		CentrifugoTokenSecret: getEnv("CENTRIFUGO_TOKEN_SECRET"),
 		CentrifugoPublicWSURL: getEnvOrDefault("CENTRIFUGO_PUBLIC_WS_URL", ""),
 		SecretsEncryptionKey:  getEnvOrDefault("SECRETS_ENCRYPTION_KEY", ""),
+		JobSealPublicKey:      getEnvOrDefault("JOB_SEAL_PUBLIC_KEY", ""),
 		MetricsAddr:           getEnvOrDefault("METRICS_ADDR", ":9100"),
 		Kafka:                 loadKafka("worker"),
 	}

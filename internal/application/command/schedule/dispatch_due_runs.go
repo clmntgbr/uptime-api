@@ -72,8 +72,10 @@ func NewDispatchDueRunsHandler(
 }
 
 type pendingJob struct {
-	job    contract.Job
-	jitter time.Duration
+	job         contract.Job
+	jitter      time.Duration
+	scheduledAt time.Time
+	oneShot     bool
 }
 
 // Handle leases every due workflow in one transaction, then publishes the jobs
@@ -95,13 +97,23 @@ func (h *DispatchDueRunsHandler) Handle(ctx context.Context) (DispatchStats, err
 
 		for _, d := range due {
 			state := d.State
-			if lag := now.Sub(state.NextRunAt); lag > stats.Lag {
-				stats.Lag = lag
+			if !state.NextRunAt.Equal(domainschedule.Never) {
+				if lag := now.Sub(state.NextRunAt); lag > stats.Lag {
+					stats.Lag = lag
+				}
 			}
 			scheduledAt := state.NextRunAt
-			state.NextRunAt = domainschedule.NextRun(now, d.Interval)
+			dueToRun := d.Enabled && !state.NextRunAt.After(now)
 
 			if state.LeaseActive(now) {
+				// Interval moves on; one-shot waits until the lease ends to avoid skip spam.
+				if isOneShot(d.ScheduleType) {
+					if state.LeaseUntil != nil {
+						state.NextRunAt = state.LeaseUntil.UTC()
+					}
+				} else {
+					state.NextRunAt = domainschedule.NextRun(now, d.Interval)
+				}
 				if err := h.record(txCtx, domainrun.NewSkipped(state.WorkflowID, d.UserID, now)); err != nil {
 					return err
 				}
@@ -117,6 +129,24 @@ func (h *DispatchDueRunsHandler) Handle(ctx context.Context) (DispatchStats, err
 					return err
 				}
 				stats.TimedOut++
+				// A lost result on a parked/disabled one-shot must still finish it.
+				if isOneShot(d.ScheduleType) && (state.NextRunAt.Equal(domainschedule.Never) || !d.Enabled) {
+					if err := h.disableOneShot(txCtx, state.WorkflowID); err != nil {
+						return err
+					}
+					state.ClearSchedule()
+					if err := h.states.Save(txCtx, state); err != nil {
+						return err
+					}
+					continue
+				}
+			}
+
+			if !dueToRun {
+				if err := h.states.Save(txCtx, state); err != nil {
+					return err
+				}
+				continue
 			}
 
 			w, err := h.workflows.GetByID(txCtx, state.WorkflowID)
@@ -134,17 +164,24 @@ func (h *DispatchDueRunsHandler) Handle(ctx context.Context) (DispatchStats, err
 				// must not block the others: it waits for its next pass.
 				h.logger.Error("job preparation failed", "workflow_id", w.ID, "error", err)
 				stats.PrepareFailed++
+				if !isOneShot(d.ScheduleType) {
+					state.NextRunAt = domainschedule.NextRun(now, d.Interval)
+				}
 				if err := h.states.Save(txCtx, state); err != nil {
 					return err
 				}
 				continue
 			}
 
+			oneShot := isOneShot(d.ScheduleType)
+			advanceSchedule(&state, d, now)
 			state.Lease(runID, now, jitter+w.Timeout+h.cfg.LeaseMargin)
 			if err := h.states.Save(txCtx, state); err != nil {
 				return err
 			}
-			pending = append(pending, pendingJob{job: job, jitter: jitter})
+			pending = append(pending, pendingJob{
+				job: job, jitter: jitter, scheduledAt: scheduledAt, oneShot: oneShot,
+			})
 		}
 		return nil
 	})
@@ -154,6 +191,32 @@ func (h *DispatchDueRunsHandler) Handle(ctx context.Context) (DispatchStats, err
 
 	stats.Dispatched, stats.PublishFailed = h.publish(ctx, pending)
 	return stats, nil
+}
+
+func advanceSchedule(state *domainschedule.State, d domainschedule.Due, now time.Time) {
+	if isOneShot(d.ScheduleType) {
+		state.ClearSchedule()
+		return
+	}
+	state.NextRunAt = domainschedule.NextRun(now, d.Interval)
+}
+
+func isOneShot(scheduleType string) bool {
+	return scheduleType == string(domainworkflow.ScheduleOnce) || scheduleType == string(domainworkflow.ScheduleAt)
+}
+
+func (h *DispatchDueRunsHandler) disableOneShot(ctx context.Context, workflowID uuid.UUID) error {
+	w, err := h.workflows.GetByID(ctx, workflowID)
+	if err != nil {
+		return err
+	}
+	if w == nil || !w.ScheduleType.IsOneShot() || !w.Disable() {
+		return nil
+	}
+	if err := h.workflows.Update(ctx, w); err != nil {
+		return err
+	}
+	return h.outbox.StoreEvents(ctx, w.PullEvents())
 }
 
 func (h *DispatchDueRunsHandler) prepare(
@@ -171,13 +234,7 @@ func (h *DispatchDueRunsHandler) prepare(
 		}
 		globalsByUser[w.UserID] = globals
 	}
-	job, secrets := buildJob(w, globals, runID, contract.TriggerSchedule, scheduledAt, deadline, now)
-	sealed, err := h.sealer.Seal(secrets)
-	if err != nil {
-		return contract.Job{}, fmt.Errorf("seal secrets: %w", err)
-	}
-	job.Secrets = sealed
-	return job, nil
+	return prepareJob(h.sealer, w, globals, runID, contract.TriggerSchedule, scheduledAt, deadline, now)
 }
 
 func (h *DispatchDueRunsHandler) record(ctx context.Context, r *domainrun.Run) error {
@@ -228,7 +285,7 @@ func (h *DispatchDueRunsHandler) publish(ctx context.Context, pending []pendingJ
 			}
 			fails++
 			h.logger.Error("job publish failed", "workflow_id", p.job.WorkflowID, "run_id", p.job.RunID, "error", err)
-			h.release(context.WithoutCancel(ctx), p.job)
+			h.release(context.WithoutCancel(ctx), p)
 		}(p)
 	}
 	wg.Wait()
@@ -237,9 +294,9 @@ func (h *DispatchDueRunsHandler) publish(ctx context.Context, pending []pendingJ
 
 // release frees the lease of a job that could not be published, so the
 // workflow runs again at its next pass instead of waiting for the lease to expire.
-func (h *DispatchDueRunsHandler) release(ctx context.Context, job contract.Job) {
-	workflowID, _ := uuid.Parse(job.WorkflowID)
-	runID, _ := uuid.Parse(job.RunID)
+func (h *DispatchDueRunsHandler) release(ctx context.Context, p pendingJob) {
+	workflowID, _ := uuid.Parse(p.job.WorkflowID)
+	runID, _ := uuid.Parse(p.job.RunID)
 	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
 		state, err := h.states.GetForUpdate(txCtx, workflowID)
 		if err != nil || state == nil {
@@ -248,9 +305,12 @@ func (h *DispatchDueRunsHandler) release(ctx context.Context, job contract.Job) 
 		if !state.ReleaseLease(runID) {
 			return nil
 		}
+		if p.oneShot {
+			state.NextRunAt = p.scheduledAt
+		}
 		return h.states.Save(txCtx, *state)
 	})
 	if err != nil {
-		h.logger.Error("lease release failed", "workflow_id", job.WorkflowID, "run_id", job.RunID, "error", err)
+		h.logger.Error("lease release failed", "workflow_id", p.job.WorkflowID, "run_id", p.job.RunID, "error", err)
 	}
 }

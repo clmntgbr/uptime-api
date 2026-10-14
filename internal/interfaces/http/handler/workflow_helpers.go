@@ -19,11 +19,60 @@ func bindWorkflowDefinition(c fiber.Ctx) (domainworkflow.Definition, error) {
 		return domainworkflow.Definition{}, err
 	}
 
-	return domainworkflow.Definition{
-		Name:     body.Name,
-		Interval: time.Duration(body.IntervalSeconds) * time.Second,
-		Enabled:  body.Enabled == nil || *body.Enabled,
-	}, nil
+	scheduleType := domainworkflow.ScheduleType(body.ScheduleType)
+	if scheduleType == "" {
+		scheduleType = domainworkflow.ScheduleInterval
+	}
+
+	if err := validateScheduleFields(c, scheduleType, body); err != nil {
+		return domainworkflow.Definition{}, err
+	}
+
+	def := domainworkflow.Definition{
+		Name:         body.Name,
+		ScheduleType: scheduleType,
+		Enabled:      body.Enabled == nil || *body.Enabled,
+		RunAt:        body.RunAt,
+	}
+	if scheduleType == domainworkflow.ScheduleInterval && body.IntervalSeconds != nil {
+		def.Interval = time.Duration(*body.IntervalSeconds) * time.Second
+	}
+	return def, nil
+}
+
+func validateScheduleFields(c fiber.Ctx, scheduleType domainworkflow.ScheduleType, body dto.WorkflowRequest) error {
+	errorsMap := map[string]string{}
+	switch scheduleType {
+	case domainworkflow.ScheduleInterval:
+		if body.IntervalSeconds == nil {
+			errorsMap["intervalSeconds"] = "required for schedule type interval"
+		}
+		if body.RunAt != nil {
+			errorsMap["runAt"] = "must be empty for schedule type interval"
+		}
+	case domainworkflow.ScheduleOnce:
+		if body.IntervalSeconds != nil {
+			errorsMap["intervalSeconds"] = "must be empty for schedule type once"
+		}
+		if body.RunAt != nil {
+			errorsMap["runAt"] = "must be empty for schedule type once"
+		}
+	case domainworkflow.ScheduleAt:
+		if body.IntervalSeconds != nil {
+			errorsMap["intervalSeconds"] = "must be empty for schedule type at"
+		}
+		if body.RunAt == nil {
+			errorsMap["runAt"] = "required for schedule type at"
+		}
+	}
+	if len(errorsMap) == 0 {
+		return nil
+	}
+	_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+		"message": "Validation failed",
+		"errors":  errorsMap,
+	})
+	return validation.ErrValidationFailed
 }
 
 // writeWorkflowError maps domain errors; validation messages name the call and
@@ -39,6 +88,16 @@ func writeWorkflowError(c fiber.Ctx, err error, fallback string) error {
 	case errors.Is(err, domainworkflow.ErrNotFound), errors.Is(err, domainworkflow.ErrWrongOwner):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"message": "Workflow not found",
+		})
+	case errors.Is(err, domainworkflow.ErrRunInProgress):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"message": "A run is already in progress",
+			"code":    "RUN_IN_PROGRESS",
+		})
+	case errors.Is(err, domainworkflow.ErrNoCalls):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Workflow has no calls",
+			"code":    "NO_CALLS",
 		})
 	default:
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

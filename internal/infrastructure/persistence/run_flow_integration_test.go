@@ -119,7 +119,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 	if err := workflows.Save(ctx, w); err != nil {
 		t.Fatal(err)
 	}
-	if err := states.Save(ctx, domainschedule.New(w.ID, time.Now().Add(-time.Hour), w.Interval)); err != nil {
+	if err := states.Save(ctx, domainschedule.New(w.ID, time.Now().Add(-time.Hour))); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {

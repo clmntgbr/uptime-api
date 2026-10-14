@@ -30,26 +30,30 @@ type StaticVariable struct {
 
 // Definition is the user input to create or replace a workflow.
 type Definition struct {
-	Name     string
-	Interval time.Duration
-	Enabled  bool
-	Statics  []StaticVariable
-	Calls    []domaincall.Definition
+	Name         string
+	ScheduleType ScheduleType
+	Interval     time.Duration // required for interval; zero otherwise
+	RunAt        *time.Time    // required for at; nil otherwise
+	Enabled      bool
+	Statics      []StaticVariable
+	Calls        []domaincall.Definition
 }
 
-// Workflow is an ordered list of calls run at a regular interval. Calls only
-// see the variables produced before them: no branches, no conditions.
+// Workflow is an ordered list of calls. Scheduling is interval, once, or at a
+// fixed time. Calls only see the variables produced before them.
 type Workflow struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	Name      string
-	Interval  time.Duration
-	Timeout   time.Duration
-	Enabled   bool
-	Statics   []StaticVariable
-	Calls     []domaincall.Call
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	Name         string
+	ScheduleType ScheduleType
+	Interval     time.Duration
+	RunAt        *time.Time
+	Timeout      time.Duration
+	Enabled      bool
+	Statics      []StaticVariable
+	Calls        []domaincall.Call
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 
 	events []event.DomainEvent
 }
@@ -67,39 +71,86 @@ func New(userID uuid.UUID, def Definition, globalNames []string) (*Workflow, err
 	if err := w.apply(def, globalNames); err != nil {
 		return nil, err
 	}
-	w.recordEvent(WorkflowCreated{
-		ID:              uuid.New().String(),
-		WorkflowID:      w.ID.String(),
-		UserID:          userID.String(),
-		Name:            w.Name,
-		IntervalSeconds: int(w.Interval / time.Second),
-		Enabled:         w.Enabled,
-		CallCount:       len(w.Calls),
-		Timestamp:       now,
-	})
+	w.recordEvent(w.newUpdatedOrCreatedEvent(true, now))
 	return w, nil
 }
 
 // Update replaces the definition. Calls keep their ID when their name is kept,
 // so results stay attached to the same call across edits. It reports whether
-// the schedule changed (interval or enablement).
+// the schedule changed (type, interval, runAt or enablement).
 func (w *Workflow) Update(def Definition, globalNames []string) (bool, error) {
-	previousInterval, previousEnabled := w.Interval, w.Enabled
+	previous := scheduleSnapshot(w)
 	if err := w.apply(def, globalNames); err != nil {
 		return false, err
 	}
 	w.UpdatedAt = time.Now().UTC()
-	w.recordEvent(WorkflowUpdated{
+	w.recordEvent(w.newUpdatedOrCreatedEvent(false, w.UpdatedAt))
+	return previous != scheduleSnapshot(w), nil
+}
+
+// Disable turns the workflow off and records WorkflowUpdated. Returns false when
+// it was already disabled.
+func (w *Workflow) Disable() bool {
+	if !w.Enabled {
+		return false
+	}
+	w.Enabled = false
+	w.UpdatedAt = time.Now().UTC()
+	w.recordEvent(w.newUpdatedOrCreatedEvent(false, w.UpdatedAt))
+	return true
+}
+
+type scheduleKey struct {
+	Type     ScheduleType
+	Interval time.Duration
+	RunAt    int64
+	Enabled  bool
+}
+
+func scheduleSnapshot(w *Workflow) scheduleKey {
+	var runAt int64
+	if w.RunAt != nil {
+		runAt = w.RunAt.Unix()
+	}
+	return scheduleKey{Type: w.ScheduleType, Interval: w.Interval, RunAt: runAt, Enabled: w.Enabled}
+}
+
+func (w *Workflow) newUpdatedOrCreatedEvent(created bool, at time.Time) event.DomainEvent {
+	intervalSeconds := 0
+	if w.ScheduleType == ScheduleInterval {
+		intervalSeconds = int(w.Interval / time.Second)
+	}
+	var runAt *time.Time
+	if w.RunAt != nil {
+		t := w.RunAt.UTC()
+		runAt = &t
+	}
+	if created {
+		return WorkflowCreated{
+			ID:              uuid.New().String(),
+			WorkflowID:      w.ID.String(),
+			UserID:          w.UserID.String(),
+			Name:            w.Name,
+			ScheduleType:    string(w.ScheduleType),
+			IntervalSeconds: intervalSeconds,
+			RunAt:           runAt,
+			Enabled:         w.Enabled,
+			CallCount:       len(w.Calls),
+			Timestamp:       at,
+		}
+	}
+	return WorkflowUpdated{
 		ID:              uuid.New().String(),
 		WorkflowID:      w.ID.String(),
 		UserID:          w.UserID.String(),
 		Name:            w.Name,
-		IntervalSeconds: int(w.Interval / time.Second),
+		ScheduleType:    string(w.ScheduleType),
+		IntervalSeconds: intervalSeconds,
+		RunAt:           runAt,
 		Enabled:         w.Enabled,
 		CallCount:       len(w.Calls),
-		Timestamp:       w.UpdatedAt,
-	})
-	return previousInterval != w.Interval || previousEnabled != w.Enabled, nil
+		Timestamp:       at,
+	}
 }
 
 func (w *Workflow) MarkDeleted() {
@@ -126,8 +177,9 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 	if name == "" || len(name) > MaxNameLength {
 		return &ValidationError{Message: fmt.Sprintf("workflow name is required (max %d characters)", MaxNameLength)}
 	}
-	if def.Interval < MinInterval || def.Interval%schedule.Tick != 0 {
-		return &ValidationError{Message: "interval must be a whole number of minutes, at least 1 minute"}
+	scheduleType, interval, runAt, err := normalizeSchedule(def, w.RunAt)
+	if err != nil {
+		return err
 	}
 	if len(def.Calls) > MaxCalls {
 		return &ValidationError{Message: fmt.Sprintf("a workflow has at most %d calls", MaxCalls)}
@@ -179,11 +231,53 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 	}
 
 	w.Name = name
-	w.Interval = def.Interval
+	w.ScheduleType = scheduleType
+	w.Interval = interval
+	w.RunAt = runAt
 	w.Enabled = def.Enabled
 	w.Statics = statics
 	w.Calls = calls
 	return nil
+}
+
+func normalizeSchedule(def Definition, previousRunAt *time.Time) (ScheduleType, time.Duration, *time.Time, error) {
+	typ := def.ScheduleType
+	if typ == "" {
+		typ = ScheduleInterval
+	}
+	switch typ {
+	case ScheduleInterval:
+		if def.Interval < MinInterval || def.Interval%schedule.Tick != 0 {
+			return "", 0, nil, &ValidationError{Message: "interval must be a whole number of minutes, at least 1 minute"}
+		}
+		if def.RunAt != nil {
+			return "", 0, nil, &ValidationError{Message: "runAt is only valid for schedule type at"}
+		}
+		return typ, def.Interval, nil, nil
+	case ScheduleOnce:
+		if def.Interval != 0 {
+			return "", 0, nil, &ValidationError{Message: "intervalSeconds is only valid for schedule type interval"}
+		}
+		if def.RunAt != nil {
+			return "", 0, nil, &ValidationError{Message: "runAt is only valid for schedule type at"}
+		}
+		return typ, 0, nil, nil
+	case ScheduleAt:
+		if def.Interval != 0 {
+			return "", 0, nil, &ValidationError{Message: "intervalSeconds is only valid for schedule type interval"}
+		}
+		if def.RunAt == nil {
+			return "", 0, nil, &ValidationError{Message: "runAt is required for schedule type at"}
+		}
+		at := schedule.AlignAt(*def.RunAt)
+		unchanged := previousRunAt != nil && at.Equal(schedule.AlignAt(*previousRunAt))
+		if !unchanged && !at.After(time.Now().UTC()) {
+			return "", 0, nil, &ValidationError{Message: "runAt must be a future minute"}
+		}
+		return typ, 0, &at, nil
+	default:
+		return "", 0, nil, &ValidationError{Message: "scheduleType must be interval, once or at"}
+	}
 }
 
 func buildStatics(existing, defs []StaticVariable) ([]StaticVariable, error) {

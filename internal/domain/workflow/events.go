@@ -9,14 +9,16 @@ const (
 )
 
 type WorkflowCreated struct {
-	ID              string    `json:"eventId"`
-	WorkflowID      string    `json:"workflowId"`
-	UserID          string    `json:"userId"`
-	Name            string    `json:"name"`
-	IntervalSeconds int       `json:"intervalSeconds"`
-	Enabled         bool      `json:"enabled"`
-	CallCount       int       `json:"callCount"`
-	Timestamp       time.Time `json:"timestamp"`
+	ID              string     `json:"eventId"`
+	WorkflowID      string     `json:"workflowId"`
+	UserID          string     `json:"userId"`
+	Name            string     `json:"name"`
+	ScheduleType    string     `json:"scheduleType"`
+	IntervalSeconds int        `json:"intervalSeconds"`
+	RunAt           *time.Time `json:"runAt,omitempty"`
+	Enabled         bool       `json:"enabled"`
+	CallCount       int        `json:"callCount"`
+	Timestamp       time.Time  `json:"timestamp"`
 }
 
 func (e WorkflowCreated) EventID() string       { return e.ID }
@@ -25,14 +27,16 @@ func (e WorkflowCreated) AggregateID() string   { return e.WorkflowID }
 func (e WorkflowCreated) OccurredAt() time.Time { return e.Timestamp }
 
 type WorkflowUpdated struct {
-	ID              string    `json:"eventId"`
-	WorkflowID      string    `json:"workflowId"`
-	UserID          string    `json:"userId"`
-	Name            string    `json:"name"`
-	IntervalSeconds int       `json:"intervalSeconds"`
-	Enabled         bool      `json:"enabled"`
-	CallCount       int       `json:"callCount"`
-	Timestamp       time.Time `json:"timestamp"`
+	ID              string     `json:"eventId"`
+	WorkflowID      string     `json:"workflowId"`
+	UserID          string     `json:"userId"`
+	Name            string     `json:"name"`
+	ScheduleType    string     `json:"scheduleType"`
+	IntervalSeconds int        `json:"intervalSeconds"`
+	RunAt           *time.Time `json:"runAt,omitempty"`
+	Enabled         bool       `json:"enabled"`
+	CallCount       int        `json:"callCount"`
+	Timestamp       time.Time  `json:"timestamp"`
 }
 
 func (e WorkflowUpdated) EventID() string       { return e.ID }

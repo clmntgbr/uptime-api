@@ -1,6 +1,8 @@
 package presenter
 
 import (
+	"time"
+
 	domainworkflow "go-api/internal/domain/workflow"
 )
 
@@ -28,17 +30,40 @@ func NewWorkflowListResponseFromViews(views []domainworkflow.ListView) []Workflo
 
 // WorkflowResponse is the shape of GET /workflows/:id.
 type WorkflowResponse struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	IntervalSeconds int    `json:"intervalSeconds"`
-	Enabled         bool   `json:"enabled"`
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	ScheduleType    string  `json:"scheduleType"`
+	IntervalSeconds *int    `json:"intervalSeconds,omitempty"`
+	RunAt           *string `json:"runAt,omitempty"`
+	Enabled         bool    `json:"enabled"`
 }
 
 func NewWorkflowResponseFromView(v domainworkflow.View) WorkflowResponse {
-	return WorkflowResponse{
-		ID:              v.ID.String(),
-		Name:            v.Name,
-		IntervalSeconds: v.IntervalSeconds,
-		Enabled:         v.Enabled,
+	out := WorkflowResponse{
+		ID:           v.ID.String(),
+		Name:         v.Name,
+		ScheduleType: string(v.ScheduleType),
+		Enabled:      v.Enabled,
 	}
+	if out.ScheduleType == "" {
+		out.ScheduleType = string(domainworkflow.ScheduleInterval)
+	}
+	if v.ScheduleType == domainworkflow.ScheduleInterval || v.ScheduleType == "" {
+		seconds := v.IntervalSeconds
+		out.IntervalSeconds = &seconds
+	}
+	if v.RunAt != nil {
+		s := v.RunAt.UTC().Format(time.RFC3339)
+		out.RunAt = &s
+	}
+	return out
+}
+
+// WorkflowRunResponse is the shape of POST /workflows/:id/runs.
+type WorkflowRunResponse struct {
+	RunID string `json:"runId"`
+}
+
+func NewWorkflowRunResponse(runID string) WorkflowRunResponse {
+	return WorkflowRunResponse{RunID: runID}
 }

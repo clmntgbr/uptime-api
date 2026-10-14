@@ -7,11 +7,14 @@ import (
 	"github.com/google/uuid"
 )
 
-// Due is a workflow whose next_run_at has passed, locked for the current transaction.
+// Due is a workflow locked for the current transaction: either due to run, or
+// holding an expired lease that must be cleaned up.
 type Due struct {
-	State    State
-	UserID   uuid.UUID
-	Interval time.Duration
+	State        State
+	UserID       uuid.UUID
+	Interval     time.Duration
+	ScheduleType string
+	Enabled      bool
 }
 
 type Repository interface {

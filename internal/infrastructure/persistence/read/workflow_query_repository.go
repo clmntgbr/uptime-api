@@ -28,7 +28,9 @@ type workflowRow struct {
 	ID              uuid.UUID  `gorm:"column:id"`
 	UserID          uuid.UUID  `gorm:"column:user_id"`
 	Name            string     `gorm:"column:name"`
-	IntervalSeconds int        `gorm:"column:interval_seconds"`
+	ScheduleType    string     `gorm:"column:schedule_type"`
+	IntervalSeconds *int       `gorm:"column:interval_seconds"`
+	RunAt           *time.Time `gorm:"column:run_at"`
 	Enabled         bool       `gorm:"column:enabled"`
 	CreatedAt       time.Time  `gorm:"column:created_at"`
 	UpdatedAt       time.Time  `gorm:"column:updated_at"`
@@ -90,7 +92,7 @@ func (r *workflowQueryRepository) FindByID(ctx context.Context, userID, id uuid.
 	var row workflowRow
 	err := r.db.WithContext(ctx).
 		Table("workflows w").
-		Select("w.id, w.user_id, w.name, w.interval_seconds, w.enabled, w.created_at, w.updated_at, s.status, s.next_run_at, s.last_run_at, s.last_status").
+		Select("w.id, w.user_id, w.name, w.schedule_type, w.interval_seconds, w.run_at, w.enabled, w.created_at, w.updated_at, s.status, s.next_run_at, s.last_run_at, s.last_status").
 		Joins("LEFT JOIN workflow_state s ON s.workflow_id = w.id").
 		Where("w.id = ? AND w.user_id = ? AND w.deleted_at IS NULL", id, userID).
 		Take(&row).Error
@@ -102,15 +104,22 @@ func (r *workflowQueryRepository) FindByID(ctx context.Context, userID, id uuid.
 	}
 
 	view := &domainworkflow.View{
-		ID:              row.ID,
-		UserID:          row.UserID,
-		Name:            row.Name,
-		IntervalSeconds: row.IntervalSeconds,
-		Enabled:         row.Enabled,
-		NextRunAt:       row.NextRunAt,
-		LastRunAt:       row.LastRunAt,
-		CreatedAt:       row.CreatedAt,
-		UpdatedAt:       row.UpdatedAt,
+		ID:           row.ID,
+		UserID:       row.UserID,
+		Name:         row.Name,
+		ScheduleType: domainworkflow.ScheduleType(row.ScheduleType),
+		Enabled:      row.Enabled,
+		RunAt:        row.RunAt,
+		NextRunAt:    row.NextRunAt,
+		LastRunAt:    row.LastRunAt,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+	}
+	if view.ScheduleType == "" {
+		view.ScheduleType = domainworkflow.ScheduleInterval
+	}
+	if row.IntervalSeconds != nil {
+		view.IntervalSeconds = *row.IntervalSeconds
 	}
 	if row.Status != nil {
 		view.Status = domainschedule.Status(*row.Status)
