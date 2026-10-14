@@ -143,10 +143,18 @@ func callRunModel(run *domainrun.Run, c domainrun.CallRun) (CallRunModel, error)
 		TLS:                tls,
 		ExtractedVariables: extracted,
 		UsedVariables:      used,
+		BodyRef:            nullableString(c.BodyRef),
+		BodyHash:           nullableString(c.BodyHash),
+		BodyEncoding:       nullableString(c.BodyEncoding),
 		Truncated:          c.Response.Truncated,
 		StartedAt:          nullableTime(c.StartedAt),
 		FinishedAt:         nullableTime(c.FinishedAt),
 	}
+	keys, err := marshalJSONBOr(c.ResponseKeys, "[]")
+	if err != nil {
+		return CallRunModel{}, err
+	}
+	m.ResponseKeys = keys
 	if c.HTTPStatus != 0 {
 		status := c.HTTPStatus
 		m.HTTPStatus = &status

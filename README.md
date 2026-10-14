@@ -83,7 +83,7 @@ Supported domain events: `user.created.v1`, `user.updated.v1`, `user.deleted.v1`
 - Handlers are wrapped with dedup on `(event_id, handler_name)` via `processed_events`.
 - Kafka topology per topic: `<topic>` → `<topic>.retry` (`not_before` header, separate consumer group) → `<topic>.dlq` after 5 attempts or on non-retryable errors.
 - Offsets are committed up to the oldest record still in flight, so parallel processing never loses a record.
-- Topics are created by `kafka-init` (`deploy/kafka/topics.sh`); auto-creation is disabled.
+- Topics are created by `kc` (`deploy/kafka/topics.sh`); auto-creation is disabled.
 
 ## Getting Started
 

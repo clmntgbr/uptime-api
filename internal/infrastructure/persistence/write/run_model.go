@@ -50,6 +50,10 @@ type CallRunModel struct {
 	UsedVariables      dbtype.JSONB `gorm:"column:used_variables"`
 	ErrorType          *string      `gorm:"column:error_type"`
 	ErrorMessage       *string      `gorm:"column:error_message"`
+	BodyRef            *string      `gorm:"column:body_ref"`
+	BodyHash           *string      `gorm:"column:body_hash"`
+	BodyEncoding       *string      `gorm:"column:body_encoding"`
+	ResponseKeys       dbtype.JSONB `gorm:"column:response_keys"`
 	Truncated          bool         `gorm:"column:truncated"`
 	StartedAt          *time.Time   `gorm:"column:started_at"`
 	FinishedAt         *time.Time   `gorm:"column:finished_at"`

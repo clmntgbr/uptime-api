@@ -64,8 +64,15 @@ type CallRun struct {
 	ExtractedVariables map[string]string `json:"extracted_variables,omitempty"`
 	UsedVariables      []string          `json:"used_variables,omitempty"`
 	Error              *CallError        `json:"error,omitempty"`
-	StartedAt          time.Time         `json:"started_at"`
-	FinishedAt         time.Time         `json:"finished_at"`
+	// BodyRef is the claim-check object key (s3://bucket/…). Empty when the
+	// full body fits in Response.Body.
+	BodyRef string `json:"body_ref,omitempty"`
+	// BodyHash is the SHA-256 hex of the full masked body when offloaded.
+	BodyHash string `json:"body_hash,omitempty"`
+	// BodyEncoding is the compression used in the object store (zstd).
+	BodyEncoding string    `json:"body_encoding,omitempty"`
+	StartedAt    time.Time `json:"started_at"`
+	FinishedAt   time.Time `json:"finished_at"`
 }
 
 type RequestInfo struct {
@@ -80,18 +87,20 @@ type RequestInfo struct {
 
 type ResponseInfo struct {
 	Headers map[string]string `json:"headers,omitempty"`
-	// Body is plaintext, or base64(gzip(body)) when BodyEncoding is "gzip".
+	// Body is the full plaintext body when small, otherwise a short preview.
 	Body string `json:"body,omitempty"`
-	// BodyEncoding is empty for plaintext, or "gzip" when Body is base64-gzip.
-	BodyEncoding string `json:"body_encoding,omitempty"`
-	Size         int64  `json:"size"`
-	Truncated    bool   `json:"truncated,omitempty"`
-	Protocol     string `json:"protocol,omitempty"`
+	Size int64  `json:"size"`
+	// Truncated is true when Body is only a preview (full body in object store
+	// or preview-only after an upload failure).
+	Truncated bool   `json:"truncated,omitempty"`
+	Protocol  string `json:"protocol,omitempty"`
 	// Compression is the Content-Encoding observed on the wire (e.g. gzip).
 	Compression string `json:"compression,omitempty"`
+	// Keys are JSON paths found in the body, for later path search.
+	Keys []string `json:"keys,omitempty"`
 }
 
-const BodyEncodingGzip = "gzip"
+const BodyEncodingZstd = "zstd"
 
 type Timings struct {
 	DNS      int64 `json:"dns"`

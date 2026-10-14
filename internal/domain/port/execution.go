@@ -23,6 +23,14 @@ type WorkflowRunner interface {
 	Run(ctx context.Context, job contract.Job, secrets map[string]string) contract.Result
 }
 
+// BodyStore keeps full response bodies (claim-check): Kafka and Postgres only
+// carry a preview, size, hash and the returned object key.
+type BodyStore interface {
+	// Put stores compressed bytes under key and returns a durable reference
+	// (example: s3://bucket/user/workflow/run/1.zst).
+	Put(ctx context.Context, key string, data []byte, contentType string) (string, error)
+}
+
 // SecretCipher encrypts secret values at rest in the database.
 type SecretCipher interface {
 	Encrypt(plaintext string) (string, error)

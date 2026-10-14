@@ -50,7 +50,7 @@ services:
     depends_on:
       database:
         condition: service_healthy
-      kafka-init:
+      kc:
         condition: service_completed_successfully
       centrifugo:
         condition: service_started
@@ -67,7 +67,7 @@ services:
     depends_on:
       database:
         condition: service_healthy
-      kafka-init:
+      kc:
         condition: service_completed_successfully
     networks: [backend, data, heartbeat]
 
@@ -83,7 +83,7 @@ services:
     depends_on:
       database:
         condition: service_healthy
-      kafka-init:
+      kc:
         condition: service_completed_successfully
       centrifugo:
         condition: service_started
@@ -100,10 +100,17 @@ services:
       JOB_SEAL_PUBLIC_KEY: ${JOB_SEAL_PUBLIC_KEY}
       JOB_SEAL_PRIVATE_KEY: ${JOB_SEAL_PRIVATE_KEY}
       SSRF_ALLOW_PRIVATE: ${SSRF_ALLOW_PRIVATE:-false}
+      STORAGE_ENDPOINT: ${STORAGE_INTERNAL_ENDPOINT:-http://minio:9000}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-devuser}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-devpassword}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-bodies}
     depends_on:
-      kafka-init:
+      kc:
         condition: service_completed_successfully
-    networks: [egress]
+      mc:
+        condition: service_completed_successfully
+    networks: [egress, backend]
 
   database:
     container_name: datastore
@@ -156,8 +163,8 @@ services:
     networks: [backend, egress]
     restart: unless-stopped
 
-  kafka-init:
-    container_name: kafka-init
+  kc:
+    container_name: kc
     image: apache/kafka:3.9.0
     entrypoint: ["/bin/bash", "/scripts/topics.sh"]
     environment:

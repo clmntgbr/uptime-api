@@ -1,10 +1,7 @@
 package engine
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -24,10 +21,8 @@ import (
 )
 
 const (
-	// InlineBodyBytes is the part of a response body kept in the result (and the database).
-	InlineBodyBytes = 256 * 1024
-	// InlineBudgetBytes caps the inline bodies of a whole run, so that the
-	// result message stays under the 4 MB Kafka limit with 20 calls.
+	// InlineBudgetBytes caps previews of a whole run so the Kafka result stays
+	// under max.message.bytes with 20 calls.
 	InlineBudgetBytes = 2 * 1024 * 1024
 	// RequestBodyBytes is the part of a request body kept in the result.
 	RequestBodyBytes = 16 * 1024
@@ -35,12 +30,13 @@ const (
 
 type Runner struct {
 	executor Executor
+	bodies   port.BodyStore
 	clock    port.Clock
 	logger   *slog.Logger
 }
 
-func NewRunner(executor Executor, clock port.Clock, logger *slog.Logger) *Runner {
-	return &Runner{executor: executor, clock: clock, logger: logger}
+func NewRunner(executor Executor, bodies port.BodyStore, clock port.Clock, logger *slog.Logger) *Runner {
+	return &Runner{executor: executor, bodies: bodies, clock: clock, logger: logger}
 }
 
 var _ port.WorkflowRunner = (*Runner)(nil)
@@ -238,50 +234,8 @@ func (r *Runner) runCall(ctx context.Context, state *run, call contract.JobCall)
 	}
 
 	cr.Response = state.responseInfo(resp)
-	r.storeBody(state, resp, &cr)
+	r.storeBody(ctx, state, call, resp, &cr)
 	return cr
-}
-
-// storeBody keeps the body inline. Under the size budget it stays plaintext;
-// above it, the full body is stored as base64(gzip(...)) when that fits,
-// otherwise a truncated plaintext preview is kept.
-func (r *Runner) storeBody(state *run, resp *Response, cr *contract.CallRun) {
-	masked := state.masker.mask(string(resp.Body))
-	limit := InlineBodyBytes
-	if state.budget < limit {
-		limit = state.budget
-	}
-	if limit <= 0 {
-		cr.Response.Truncated = len(masked) > 0
-		return
-	}
-	if len(masked) <= limit {
-		cr.Response.Body = masked
-		state.budget -= len(masked)
-		return
-	}
-	if encoded, err := gzipBase64(masked); err == nil && len(encoded) <= limit {
-		cr.Response.Body = encoded
-		cr.Response.BodyEncoding = contract.BodyEncodingGzip
-		state.budget -= len(encoded)
-		return
-	}
-	cr.Response.Body = truncateUTF8(masked, limit)
-	cr.Response.Truncated = true
-	state.budget -= len(cr.Response.Body)
-}
-
-func gzipBase64(s string) (string, error) {
-	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
-	if _, err := zw.Write([]byte(s)); err != nil {
-		_ = zw.Close()
-		return "", err
-	}
-	if err := zw.Close(); err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 type renderedCall struct {

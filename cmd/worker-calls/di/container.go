@@ -1,6 +1,7 @@
 package di
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -12,6 +13,7 @@ import (
 	"go-api/internal/infrastructure/httpclient"
 	"go-api/internal/infrastructure/messaging/kafka"
 	"go-api/internal/infrastructure/observability"
+	"go-api/internal/infrastructure/storage"
 )
 
 type Container struct {
@@ -28,13 +30,17 @@ func NewContainer(env *config.WorkerCallsConfig, logger *slog.Logger) (*Containe
 	if err != nil {
 		return nil, fmt.Errorf("kafka producer: %w", err)
 	}
+	bodies, err := storage.NewS3Store(context.Background(), env.Storage)
+	if err != nil {
+		return nil, fmt.Errorf("body store: %w", err)
+	}
 	if env.AllowPrivateIPs {
 		logger.Warn("SSRF protection disabled: private destinations are allowed")
 	}
 
 	executor := httpclient.NewExecutor(httpclient.Config{UserAgent: env.UserAgent, AllowPrivate: env.AllowPrivateIPs})
 	clock := port.SystemClock{}
-	runner := observability.InstrumentRunner(engine.NewRunner(executor, clock, logger))
+	runner := observability.InstrumentRunner(engine.NewRunner(executor, bodies, clock, logger))
 	handler := execution.NewExecuteJobHandler(opener, runner, kafka.NewWorkflowPublisher(producer), clock, logger)
 
 	consumer := kafka.NewConsumer(

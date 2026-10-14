@@ -9,6 +9,7 @@ type WorkerCallsConfig struct {
 	AllowPrivateIPs   bool
 	MetricsAddr       string
 	Kafka             KafkaConfig
+	Storage           StorageConfig
 }
 
 // LoadWorkerCalls reads the worker-calls configuration. It deliberately has no
@@ -25,5 +26,6 @@ func LoadWorkerCalls() *WorkerCallsConfig {
 		AllowPrivateIPs:   getEnvBoolOrDefault("SSRF_ALLOW_PRIVATE", false),
 		MetricsAddr:       getEnvOrDefault("METRICS_ADDR", ":9100"),
 		Kafka:             loadKafka("worker-calls"),
+		Storage:           loadStorage(true),
 	}
 }

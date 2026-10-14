@@ -130,18 +130,26 @@ func runView(m write.RunModel) domainrun.View {
 
 func callRunView(m write.CallRunModel, rules []domainrun.RuleRun) (domainrun.CallRunView, error) {
 	v := domainrun.CallRunView{
-		ID:         m.ID,
-		CallID:     m.CallID,
-		Name:       m.Name,
-		Position:   m.Position,
-		Status:     domainrun.CallStatus(m.Status),
-		Reason:     deref(m.Reason),
-		Rules:      rules,
-		StartedAt:  m.StartedAt,
-		FinishedAt: m.FinishedAt,
+		ID:           m.ID,
+		CallID:       m.CallID,
+		Name:         m.Name,
+		Position:     m.Position,
+		Status:       domainrun.CallStatus(m.Status),
+		Reason:       deref(m.Reason),
+		BodyRef:      deref(m.BodyRef),
+		BodyHash:     deref(m.BodyHash),
+		BodyEncoding: deref(m.BodyEncoding),
+		Rules:        rules,
+		StartedAt:    m.StartedAt,
+		FinishedAt:   m.FinishedAt,
 	}
 	if v.Rules == nil {
 		v.Rules = []domainrun.RuleRun{}
+	}
+	if len(m.ResponseKeys) > 0 {
+		if err := json.Unmarshal(m.ResponseKeys, &v.ResponseKeys); err != nil {
+			return domainrun.CallRunView{}, err
+		}
 	}
 	if m.HTTPStatus != nil {
 		v.HTTPStatus = *m.HTTPStatus

@@ -175,7 +175,7 @@ Un workflow ne s'exécute jamais deux fois en parallèle : si le bail est encore
 **Paramètres**
 
 - Timeout par défaut de 30 s par call (maximum configurable de 60 s) et de 5 minutes par workflow. Redirections suivies jusqu'à 5, cookies conservés entre les calls d'un même run.
-- Corps limité : jusqu'à 256 Ko en clair dans le résultat ; au-delà le corps complet est stocké en `gzip` (base64) s'il tient dans cette limite, sinon un aperçu tronqué avec `truncated: true`.
+- Corps (claim-check) : aperçu des premiers Ko en base / Kafka, corps complet compressé en **zstd** dans MinIO/S3 (`body_ref`, `body_hash`, `body_encoding`). Les chemins JSON (`response.keys` / `response_keys`) sont indexés pour la recherche de path.
 - Version d'IP au choix (IPv4, IPv6 ou les deux), vérification TLS activable ou non, proxy optionnel.
 - Intervalle minimal : 1 minute (offre payante), 5 minutes (offre gratuite).
 
@@ -239,7 +239,7 @@ La phase 1 tient en 9 containers sur 4 réseaux Docker. Règle de base : les wor
 | `centrifugo` | Centrifugo | Notifications temps réel vers le front | `edge`, `backend` | Non |
 | `postgres` | PostgreSQL | Source de vérité | `data` | Non |
 
-Les gros corps de réponse sont gzippés dans le message Kafka / Postgres (pas de stockage objet).
+Un stockage objet compatible S3 (MinIO en local) reçoit les corps zstd ; Postgres ne garde que l'aperçu, la taille, le hash et la clé.
 
 **Réseaux**
 
@@ -381,7 +381,7 @@ Les topics de workflows ont 12 partitions, les autres 6. Les topics sont créés
 - **Transaction unique dans le `worker`** : résultat, état du workflow et état d'incident sont écrits dans la même transaction Postgres, puis l'offset est validé. Les demandes de notification sont d'abord inscrites dans la table `notifications` avec le statut `pending`, puis publiées ; si le `worker` plante entre les deux, le message est relu, les écritures sont ignorées (idempotence) et les `pending` sont republiées.
 - **Retries** : une erreur transitoire (base indisponible, par exemple) est retentée 3 fois sur place avec un délai croissant, puis le message part sur `*.retry` avec un en-tête `attempt` et une heure `not_before` ; le consumer de retry met la partition en pause jusqu'à cette heure. Après 5 tentatives, ou immédiatement pour un message invalide (poison), il part en `*.dlq` avec une alerte interne.
 - **Rééquilibrages** : adhésion statique (`group.instance.id`) et assignation coopérative, pour qu'un déploiement ne provoque pas de tempête de rééquilibrages. `max.poll.interval.ms` est fixé à 10 minutes, au-dessus de la durée maximale d'un workflow (5 minutes).
-- **Taille** : `max.message.bytes` à 4 Mo. Les gros corps de réponse sont gzippés (base64) dans le message ; s'ils restent trop gros, seul un aperçu tronqué est conservé.
+- **Taille** : `max.message.bytes` à 4 Mo. Les gros corps passent par claim-check (zstd → objet store) ; le message ne porte que l'aperçu et la référence.
 - **Schémas** : JSON versionné (champ `v`) au MVP, avec un contrat par topic. Protobuf et un registre de schémas pourront suivre.
 - **Client Go** : franz-go, qui gère la pause des partitions, la validation manuelle des offsets et l'assignation coopérative.
 
@@ -408,7 +408,10 @@ Les topics de workflows ont 12 partitions, les autres 6. Les topics sont créés
       "rules": [
         {"text": "temps de réponse dépasse 800 ms", "observed": "1240 ms", "passed": false}
       ],
-      "response": {"body_encoding": "gzip", "body": "...", "size": 512000}
+      "response": {"body": "{\"data\":…", "size": 512000, "truncated": true, "keys": ["data"]},
+      "body_ref": "s3://bodies/…/1.zst",
+      "body_hash": "…",
+      "body_encoding": "zstd"
     }
   ],
   "emitted_at": "2026-10-13T16:30:00Z"

@@ -153,7 +153,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 	}
 
 	exec := execution.NewExecuteJobHandler(opener,
-		engine.NewRunner(httpclient.NewExecutor(httpclient.Config{AllowPrivate: true}), port.SystemClock{}, logger),
+		engine.NewRunner(httpclient.NewExecutor(httpclient.Config{AllowPrivate: true}), nil, port.SystemClock{}, logger),
 		bus, port.SystemClock{}, logger)
 	if err := exec.Handle(ctx, raw); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -163,7 +163,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 		t.Fatalf("run must succeed: %+v", result.Calls)
 	}
 
-	record := commandrun.NewRecordResultHandler(states, runs, write.NewCertificateRepository(db), claimer, outboxRepo)
+	record := commandrun.NewRecordResultHandler(states, workflows, runs, write.NewCertificateRepository(db), claimer, outboxRepo)
 	payload, _ := json.Marshal(result)
 	for i := 0; i < 2; i++ {
 		if err := record.Handle(ctx, payload); err != nil {
