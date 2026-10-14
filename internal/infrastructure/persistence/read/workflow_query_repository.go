@@ -118,3 +118,44 @@ func (r *workflowQueryRepository) FindByID(ctx context.Context, userID, id uuid.
 	}
 	return view, nil
 }
+
+type callListRow struct {
+	ID   uuid.UUID `gorm:"column:id"`
+	Name string    `gorm:"column:name"`
+}
+
+func (r *workflowQueryRepository) ListCalls(ctx context.Context, userID, workflowID uuid.UUID) ([]domainworkflow.CallListView, error) {
+	var rows []callListRow
+	err := r.db.WithContext(ctx).
+		Table("calls c").
+		Select("c.id, c.name").
+		Joins("JOIN workflows w ON w.id = c.workflow_id").
+		Where("c.workflow_id = ? AND w.user_id = ? AND w.deleted_at IS NULL", workflowID, userID).
+		Order("c.position").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	views := make([]domainworkflow.CallListView, 0, len(rows))
+	for _, row := range rows {
+		views = append(views, domainworkflow.CallListView{ID: row.ID, Name: row.Name})
+	}
+	return views, nil
+}
+
+func (r *workflowQueryRepository) FindCall(ctx context.Context, userID, workflowID, callID uuid.UUID) (*domainworkflow.CallListView, error) {
+	var row callListRow
+	err := r.db.WithContext(ctx).
+		Table("calls c").
+		Select("c.id, c.name").
+		Joins("JOIN workflows w ON w.id = c.workflow_id").
+		Where("c.id = ? AND c.workflow_id = ? AND w.user_id = ? AND w.deleted_at IS NULL", callID, workflowID, userID).
+		Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &domainworkflow.CallListView{ID: row.ID, Name: row.Name}, nil
+}

@@ -27,9 +27,19 @@ type ReadRepository interface {
 	FindByID(ctx context.Context, userID, id uuid.UUID) (*View, error)
 	// List returns one page of the user's workflows and the total before pagination.
 	List(ctx context.Context, userID uuid.UUID, q paginate.PaginateQuery) ([]ListView, int64, error)
+	// ListCalls returns the calls of a workflow ordered by position. Empty when
+	// the workflow is missing or belongs to another user.
+	ListCalls(ctx context.Context, userID, workflowID uuid.UUID) ([]CallListView, error)
+	// FindCall returns nil, nil when the call or its workflow is missing for that user.
+	FindCall(ctx context.Context, userID, workflowID, callID uuid.UUID) (*CallListView, error)
 }
 
 type ListView struct {
+	ID   uuid.UUID
+	Name string
+}
+
+type CallListView struct {
 	ID   uuid.UUID
 	Name string
 }

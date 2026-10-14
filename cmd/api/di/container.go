@@ -4,9 +4,11 @@ import (
 	"log"
 
 	authcmd "go-api/internal/application/command/auth"
+	callcmd "go-api/internal/application/command/call"
 	identitycmd "go-api/internal/application/command/identity"
 	usercmd "go-api/internal/application/command/user"
 	workflowcmd "go-api/internal/application/command/workflow"
+	querycall "go-api/internal/application/query/call"
 	queryuser "go-api/internal/application/query/user"
 	queryworkflow "go-api/internal/application/query/workflow"
 	"go-api/internal/domain/port"
@@ -30,6 +32,7 @@ type Container struct {
 	UserHandler            *httphandler.UserHandler
 	RealtimeHandler        *httphandler.RealtimeHandler
 	WorkflowHandler        *httphandler.WorkflowHandler
+	CallHandler            *httphandler.CallHandler
 }
 
 func NewContainer(db *gorm.DB, env *config.Config) *Container {
@@ -81,6 +84,13 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			queryworkflow.NewListWorkflowsHandler(workflowReadRepo),
 			queryworkflow.NewGetWorkflowHandler(workflowReadRepo),
 			workflowcmd.NewDeleteWorkflowHandler(workflowWriteRepo, outboxRepo),
+		),
+		CallHandler: httphandler.NewCallHandler(
+			callcmd.NewCreateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			callcmd.NewUpdateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			callcmd.NewDeleteCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			querycall.NewListCallsHandler(workflowReadRepo),
+			querycall.NewGetCallHandler(workflowReadRepo),
 		),
 	}
 }

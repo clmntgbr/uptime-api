@@ -7,6 +7,7 @@ import (
 
 var (
 	ErrNotFound      = errors.New("workflow not found")
+	ErrCallNotFound  = errors.New("call not found")
 	ErrWrongOwner    = errors.New("workflow belongs to another user")
 	ErrInvalid       = errors.New("invalid workflow")
 	ErrNameConflict  = errors.New("variable name conflict")
