@@ -29,6 +29,21 @@ type Extraction struct {
 	Expression string
 }
 
+// NormalizeExtraction validates and normalizes an extraction declaration.
+// When Source is empty, status is assumed if Expression is empty, otherwise json.
+func NormalizeExtraction(e Extraction) (Extraction, error) {
+	e.Name = strings.TrimSpace(e.Name)
+	e.Expression = strings.TrimSpace(e.Expression)
+	if e.Source == "" {
+		if e.Expression == "" {
+			e.Source = ExtractStatus
+		} else {
+			e.Source = ExtractJSON
+		}
+	}
+	return normalizeExtraction(e)
+}
+
 func normalizeExtraction(e Extraction) (Extraction, error) {
 	e.Name = strings.TrimSpace(e.Name)
 	e.Expression = strings.TrimSpace(e.Expression)

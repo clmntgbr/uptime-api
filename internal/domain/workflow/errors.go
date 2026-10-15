@@ -6,15 +6,17 @@ import (
 )
 
 var (
-	ErrNotFound      = errors.New("workflow not found")
-	ErrCallNotFound  = errors.New("call not found")
-	ErrWrongOwner    = errors.New("workflow belongs to another user")
-	ErrInvalid       = errors.New("invalid workflow")
-	ErrNameConflict  = errors.New("variable name conflict")
-	ErrUnknownVar    = errors.New("unknown variable")
-	ErrVarOutOfOrder = errors.New("variable produced by a later call")
-	ErrRunInProgress = errors.New("a run is already in progress")
-	ErrNoCalls       = errors.New("workflow has no calls")
+	ErrNotFound         = errors.New("workflow not found")
+	ErrCallNotFound     = errors.New("call not found")
+	ErrVariableNotFound = errors.New("variable not found")
+	ErrWrongOwner       = errors.New("workflow belongs to another user")
+	ErrInvalid          = errors.New("invalid workflow")
+	ErrNameConflict     = errors.New("variable name conflict")
+	ErrUnknownVar       = errors.New("unknown variable")
+	ErrVarOutOfOrder    = errors.New("variable produced by a later call")
+	ErrRunInProgress    = errors.New("a run is already in progress")
+	ErrNoCalls          = errors.New("workflow has no calls")
+	ErrVariableInUse    = errors.New("variable is used by a call")
 )
 
 // ValidationError names the call and the variable at fault, so the message can

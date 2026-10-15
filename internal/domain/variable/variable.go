@@ -42,7 +42,21 @@ var (
 	ErrReservedName  = errors.New("reserved variable name")
 	ErrValueTooLarge = errors.New("variable value exceeds 4 KB")
 	ErrNotFound      = errors.New("variable not found")
+	ErrAlreadyExists = errors.New("variable already exists")
 )
+
+// Available is a variable usable when rendering a given call: globals, workflow
+// statics, or extractions from earlier calls.
+type Available struct {
+	Name     string
+	Type     Type
+	Path     string // extraction expression for TypeCall (JSONPath, header, …)
+	Source   string // extraction source for TypeCall
+	CallID   uuid.UUID
+	CallName string
+	Secret   bool
+	Value    string // static value; empty for call; cleartext for global (mask at HTTP)
+}
 
 // Builtins are always available and cannot be redefined.
 func Builtins() []string {

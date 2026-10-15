@@ -35,6 +35,22 @@ func (r *globalVariableRepository) globals(ctx context.Context) *gorm.DB {
 	return DBWithContext(ctx, r.db).Model(&VariableModel{}).Where("type = ?", string(variable.TypeGlobal))
 }
 
+func (r *globalVariableRepository) FindByID(ctx context.Context, userID, id uuid.UUID) (*variable.Global, error) {
+	var model VariableModel
+	err := r.globals(ctx).Where("user_id = ? AND id = ?", userID, id).First(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	g, err := r.toDomain(model)
+	if err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
 func (r *globalVariableRepository) FindByName(ctx context.Context, userID uuid.UUID, name string) (*variable.Global, error) {
 	var model VariableModel
 	err := r.globals(ctx).Where("user_id = ? AND name = ?", userID, name).First(&model).Error
@@ -72,9 +88,9 @@ func (r *globalVariableRepository) Save(ctx context.Context, g *variable.Global)
 	}).Error
 }
 
-func (r *globalVariableRepository) Delete(ctx context.Context, userID uuid.UUID, name string) error {
+func (r *globalVariableRepository) Delete(ctx context.Context, userID, id uuid.UUID) error {
 	return DBWithContext(ctx, r.db).
-		Where("type = ? AND user_id = ? AND name = ?", string(variable.TypeGlobal), userID, name).
+		Where("type = ? AND user_id = ? AND id = ?", string(variable.TypeGlobal), userID, id).
 		Delete(&VariableModel{}).Error
 }
 

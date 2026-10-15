@@ -8,10 +8,12 @@ import (
 
 type GlobalRepository interface {
 	WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+	// FindByID returns nil, nil when the variable does not exist for that user.
+	FindByID(ctx context.Context, userID, id uuid.UUID) (*Global, error)
 	// FindByName returns nil, nil when the variable does not exist.
 	FindByName(ctx context.Context, userID uuid.UUID, name string) (*Global, error)
 	Save(ctx context.Context, v *Global) error
-	Delete(ctx context.Context, userID uuid.UUID, name string) error
+	Delete(ctx context.Context, userID, id uuid.UUID) error
 	// ListByUser returns every global of the user with secret values decrypted.
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]Global, error)
 	// Names returns the global names of the user, without reading any value.

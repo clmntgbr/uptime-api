@@ -10,9 +10,11 @@ import (
 	identitycmd "go-api/internal/application/command/identity"
 	schedulecmd "go-api/internal/application/command/schedule"
 	usercmd "go-api/internal/application/command/user"
+	variablecmd "go-api/internal/application/command/variable"
 	workflowcmd "go-api/internal/application/command/workflow"
 	querycall "go-api/internal/application/query/call"
 	queryuser "go-api/internal/application/query/user"
+	queryvariable "go-api/internal/application/query/variable"
 	queryworkflow "go-api/internal/application/query/workflow"
 	"go-api/internal/domain/port"
 	"go-api/internal/infrastructure/centrifugo"
@@ -38,6 +40,7 @@ type Container struct {
 	RealtimeHandler        *httphandler.RealtimeHandler
 	WorkflowHandler        *httphandler.WorkflowHandler
 	CallHandler            *httphandler.CallHandler
+	VariableHandler        *httphandler.VariableHandler
 	KafkaProducer          *kafka.Producer
 }
 
@@ -122,6 +125,24 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			callcmd.NewDeleteCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
 			querycall.NewListCallsHandler(workflowReadRepo),
 			querycall.NewGetCallHandler(workflowReadRepo),
+		),
+		VariableHandler: httphandler.NewVariableHandler(
+			variablecmd.NewCreateGlobalHandler(globalVariableRepo, workflowWriteRepo),
+			variablecmd.NewUpdateGlobalHandler(globalVariableRepo),
+			variablecmd.NewDeleteGlobalVariableHandler(globalVariableRepo, workflowWriteRepo),
+			queryvariable.NewListGlobalsHandler(globalVariableRepo),
+			queryvariable.NewGetGlobalHandler(globalVariableRepo),
+			variablecmd.NewCreateStaticHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			variablecmd.NewUpdateStaticHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			variablecmd.NewDeleteStaticHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			queryvariable.NewListStaticsHandler(workflowWriteRepo),
+			queryvariable.NewGetStaticHandler(workflowWriteRepo),
+			variablecmd.NewCreateCallVariableHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			variablecmd.NewUpdateCallVariableHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			variablecmd.NewDeleteCallVariableHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			queryvariable.NewListCallVariablesHandler(workflowWriteRepo),
+			queryvariable.NewGetCallVariableHandler(workflowWriteRepo),
+			queryvariable.NewListAvailableHandler(workflowWriteRepo, globalVariableRepo),
 		),
 		KafkaProducer: producer,
 	}

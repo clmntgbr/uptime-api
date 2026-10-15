@@ -15,7 +15,7 @@ var ErrVariableInUse = errors.New("variable is used by a workflow")
 
 type DeleteGlobalVariableCommand struct {
 	UserID uuid.UUID
-	Name   string
+	ID     uuid.UUID
 }
 
 type DeleteGlobalVariableHandler struct {
@@ -31,7 +31,7 @@ func NewDeleteGlobalVariableHandler(repo variable.GlobalRepository, workflows do
 // would otherwise skip their calls on every run.
 func (h *DeleteGlobalVariableHandler) Handle(ctx context.Context, cmd DeleteGlobalVariableCommand) error {
 	return h.repo.WithTransaction(ctx, func(txCtx context.Context) error {
-		existing, err := h.repo.FindByName(txCtx, cmd.UserID, cmd.Name)
+		existing, err := h.repo.FindByID(txCtx, cmd.UserID, cmd.ID)
 		if err != nil {
 			return err
 		}
@@ -43,10 +43,10 @@ func (h *DeleteGlobalVariableHandler) Handle(ctx context.Context, cmd DeleteGlob
 			return err
 		}
 		for _, w := range workflows {
-			if w.UsesVariable(cmd.Name) {
+			if w.UsesVariable(existing.Name) {
 				return fmt.Errorf("%w: %q", ErrVariableInUse, w.Name)
 			}
 		}
-		return h.repo.Delete(txCtx, cmd.UserID, cmd.Name)
+		return h.repo.Delete(txCtx, cmd.UserID, cmd.ID)
 	})
 }
