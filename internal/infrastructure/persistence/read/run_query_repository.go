@@ -112,6 +112,36 @@ func (r *runQueryRepository) FindByID(ctx context.Context, userID, runID uuid.UU
 	return detail, nil
 }
 
+func (r *runQueryRepository) LatestResponseKeysForCall(ctx context.Context, userID, workflowID, callID uuid.UUID) ([]string, error) {
+	var model write.CallRunModel
+	err := r.db.WithContext(ctx).
+		Model(&write.CallRunModel{}).
+		Select("call_runs.response_keys").
+		Joins("JOIN runs ON runs.id = call_runs.run_id").
+		Where("runs.user_id = ? AND call_runs.workflow_id = ? AND call_runs.call_id = ?", userID, workflowID, callID).
+		Where("jsonb_array_length(call_runs.response_keys) > 0").
+		Order("call_runs.finished_at DESC NULLS LAST").
+		Limit(1).
+		Take(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	if len(model.ResponseKeys) == 0 {
+		return []string{}, nil
+	}
+	var keys []string
+	if err := json.Unmarshal(model.ResponseKeys, &keys); err != nil {
+		return nil, err
+	}
+	if keys == nil {
+		return []string{}, nil
+	}
+	return keys, nil
+}
+
 func runView(m write.RunModel) domainrun.View {
 	return domainrun.View{
 		ID:         m.ID,

@@ -63,6 +63,7 @@ func setupWorkflowRoutes(api fiber.Router, container *di.Container) {
 	api.Delete("/workflows/:id/calls/:callId", container.CallHandler.Delete)
 
 	api.Get("/workflows/:id/calls/:callId/available-variables", container.VariableHandler.ListAvailable)
+	api.Get("/workflows/:id/calls/:callId/response-keys", container.VariableHandler.ListResponseKeys)
 	api.Get("/workflows/:id/calls/:callId/variables", container.VariableHandler.ListCallVariables)
 	api.Post("/workflows/:id/calls/:callId/variables", container.VariableHandler.CreateCallVariable)
 	api.Get("/workflows/:id/calls/:callId/variables/:name", container.VariableHandler.GetCallVariable)

@@ -27,7 +27,8 @@ type VariableHandler struct {
 	deleteCall    variableDeleteCallHandler
 	listCall      variableListCallHandler
 	getCall       variableGetCallHandler
-	listAvailable variableListAvailableHandler
+	listAvailable     variableListAvailableHandler
+	listResponseKeys  variableListResponseKeysHandler
 }
 
 func NewVariableHandler(
@@ -47,6 +48,7 @@ func NewVariableHandler(
 	listCall variableListCallHandler,
 	getCall variableGetCallHandler,
 	listAvailable variableListAvailableHandler,
+	listResponseKeys variableListResponseKeysHandler,
 ) *VariableHandler {
 	return &VariableHandler{
 		createGlobal: createGlobal, updateGlobal: updateGlobal, deleteGlobal: deleteGlobal,
@@ -55,6 +57,7 @@ func NewVariableHandler(
 		listStatics: listStatics, getStatic: getStatic,
 		createCall: createCall, updateCall: updateCall, deleteCall: deleteCall,
 		listCall: listCall, getCall: getCall, listAvailable: listAvailable,
+		listResponseKeys: listResponseKeys,
 	}
 }
 
@@ -363,4 +366,27 @@ func (h *VariableHandler) ListAvailable(c fiber.Ctx) error {
 		return writeVariableError(c, err, "Failed to list available variables")
 	}
 	return c.Status(fiber.StatusOK).JSON(presenter.NewAvailableVariableListResponse(views))
+}
+
+// ListResponseKeys returns JSON paths from the latest run of this call, for
+// path autocomplete when declaring a call variable.
+func (h *VariableHandler) ListResponseKeys(c fiber.Ctx) error {
+	user, err := httpctx.GetUser(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "Unauthorized"})
+	}
+	workflowID, callID, err := parseWorkflowAndCallIDs(c)
+	if err != nil {
+		return err
+	}
+	keys, err := h.listResponseKeys.Handle(c.Context(), queryvariable.ListResponseKeysQuery{
+		UserID: user.ID, WorkflowID: workflowID, CallID: callID,
+	})
+	if err != nil {
+		return writeVariableError(c, err, "Failed to list response keys")
+	}
+	if keys == nil {
+		keys = []string{}
+	}
+	return c.Status(fiber.StatusOK).JSON(keys)
 }

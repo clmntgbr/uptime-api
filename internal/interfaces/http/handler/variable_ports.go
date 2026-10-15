@@ -73,3 +73,7 @@ type variableGetCallHandler interface {
 type variableListAvailableHandler interface {
 	Handle(ctx context.Context, q queryvariable.ListAvailableQuery) ([]variable.Available, error)
 }
+
+type variableListResponseKeysHandler interface {
+	Handle(ctx context.Context, q queryvariable.ListResponseKeysQuery) ([]string, error)
+}

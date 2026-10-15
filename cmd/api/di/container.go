@@ -78,6 +78,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	globalVariableRepo := write.NewGlobalVariableRepository(db, cipher)
 	workflowWriteRepo := write.NewWorkflowWriteRepository(db, cipher)
 	workflowReadRepo := read.NewWorkflowQueryRepository(db)
+	runReadRepo := read.NewRunQueryRepository(db)
 	stateRepo := write.NewStateRepository(db)
 	runWriteRepo := write.NewRunWriteRepository(db)
 	clock := port.SystemClock{}
@@ -143,6 +144,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			queryvariable.NewListCallVariablesHandler(workflowWriteRepo),
 			queryvariable.NewGetCallVariableHandler(workflowWriteRepo),
 			queryvariable.NewListAvailableHandler(workflowWriteRepo, globalVariableRepo),
+			queryvariable.NewListResponseKeysHandler(workflowReadRepo, runReadRepo),
 		),
 		KafkaProducer: producer,
 	}

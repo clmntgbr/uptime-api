@@ -116,6 +116,50 @@ func TestVariableHandler_DeleteCallVariable_InUse(t *testing.T) {
 	assertStatus(t, doJSON(t, m, true, http.MethodDelete, callVarsPath()+"/token", nil), http.StatusConflict)
 }
 
+func TestVariableHandler_ListResponseKeys_Success(t *testing.T) {
+	m := newMocks()
+	m.listResponseKeys.out = []string{"access_token", "user", "user.id", "items[0].id"}
+	resp := doJSON(t, m, true, http.MethodGet, responseKeysPath(), nil)
+	assertStatus(t, resp, http.StatusOK)
+	var out []string
+	testutil.DecodeJSON(t, resp, &out)
+	if len(out) != 4 || out[0] != "access_token" || m.listResponseKeys.got.CallID != testCallID {
+		t.Fatalf("unexpected %+v query=%+v", out, m.listResponseKeys.got)
+	}
+}
+
+func TestVariableHandler_ListResponseKeys_Empty(t *testing.T) {
+	m := newMocks()
+	resp := doJSON(t, m, true, http.MethodGet, responseKeysPath(), nil)
+	assertStatus(t, resp, http.StatusOK)
+	var out []string
+	testutil.DecodeJSON(t, resp, &out)
+	if out == nil || len(out) != 0 {
+		t.Fatalf("expected empty array, got %#v", out)
+	}
+}
+
+func TestVariableHandler_ListResponseKeys_Unauthorized(t *testing.T) {
+	assertStatus(t, doJSON(t, newMocks(), false, http.MethodGet, responseKeysPath(), nil), http.StatusUnauthorized)
+}
+
+func TestVariableHandler_ListResponseKeys_CallNotFound(t *testing.T) {
+	m := newMocks()
+	m.listResponseKeys.err = domainworkflow.ErrCallNotFound
+	assertStatus(t, doJSON(t, m, true, http.MethodGet, responseKeysPath(), nil), http.StatusNotFound)
+}
+
+func TestVariableHandler_ListResponseKeys_InvalidCallID(t *testing.T) {
+	path := "/workflows/" + testWorkflowID.String() + "/calls/bad/response-keys"
+	assertStatus(t, doJSON(t, newMocks(), true, http.MethodGet, path, nil), http.StatusBadRequest)
+}
+
+func TestVariableHandler_ListResponseKeys_HandlerError(t *testing.T) {
+	m := newMocks()
+	m.listResponseKeys.err = errDatabase
+	assertStatus(t, doJSON(t, m, true, http.MethodGet, responseKeysPath(), nil), http.StatusInternalServerError)
+}
+
 func TestVariableHandler_ListAvailable_Success(t *testing.T) {
 	m := newMocks()
 	m.listAvailable.out = []variable.Available{

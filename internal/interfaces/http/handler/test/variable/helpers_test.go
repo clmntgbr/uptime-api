@@ -261,6 +261,22 @@ func (m *mockListAvailable) Handle(_ context.Context, q queryvariable.ListAvaila
 	return m.out, m.err
 }
 
+type mockListResponseKeys struct {
+	calls int
+	got   queryvariable.ListResponseKeysQuery
+	out   []string
+	err   error
+}
+
+func (m *mockListResponseKeys) Handle(_ context.Context, q queryvariable.ListResponseKeysQuery) ([]string, error) {
+	m.calls++
+	m.got = q
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.out, nil
+}
+
 type mocks struct {
 	createGlobal  *mockCreateGlobal
 	updateGlobal  *mockUpdateGlobal
@@ -275,9 +291,10 @@ type mocks struct {
 	createCall    *mockCreateCall
 	updateCall    *mockUpdateCall
 	deleteCall    *mockDeleteCall
-	listCall      *mockListCall
-	getCall       *mockGetCall
-	listAvailable *mockListAvailable
+	listCall         *mockListCall
+	getCall          *mockGetCall
+	listAvailable    *mockListAvailable
+	listResponseKeys *mockListResponseKeys
 }
 
 func newMocks() mocks {
@@ -288,6 +305,7 @@ func newMocks() mocks {
 		listStatics: &mockListStatics{}, getStatic: &mockGetStatic{},
 		createCall: &mockCreateCall{}, updateCall: &mockUpdateCall{}, deleteCall: &mockDeleteCall{},
 		listCall: &mockListCall{}, getCall: &mockGetCall{}, listAvailable: &mockListAvailable{},
+		listResponseKeys: &mockListResponseKeys{},
 	}
 }
 
@@ -296,6 +314,7 @@ func mountRoutes(m mocks, authenticated bool) *fiber.App {
 		m.createGlobal, m.updateGlobal, m.deleteGlobal, m.listGlobals, m.getGlobal,
 		m.createStatic, m.updateStatic, m.deleteStatic, m.listStatics, m.getStatic,
 		m.createCall, m.updateCall, m.deleteCall, m.listCall, m.getCall, m.listAvailable,
+		m.listResponseKeys,
 	)
 	app := testutil.NewTestApp()
 	if authenticated {
@@ -314,6 +333,7 @@ func mountRoutes(m mocks, authenticated bool) *fiber.App {
 	app.Delete("/workflows/:id/variables/:name", h.DeleteStatic)
 
 	app.Get("/workflows/:id/calls/:callId/available-variables", h.ListAvailable)
+	app.Get("/workflows/:id/calls/:callId/response-keys", h.ListResponseKeys)
 	app.Get("/workflows/:id/calls/:callId/variables", h.ListCallVariables)
 	app.Post("/workflows/:id/calls/:callId/variables", h.CreateCallVariable)
 	app.Get("/workflows/:id/calls/:callId/variables/:name", h.GetCallVariable)
@@ -336,6 +356,10 @@ func callVarsPath() string {
 
 func availablePath() string {
 	return "/workflows/" + testWorkflowID.String() + "/calls/" + testCallID.String() + "/available-variables"
+}
+
+func responseKeysPath() string {
+	return "/workflows/" + testWorkflowID.String() + "/calls/" + testCallID.String() + "/response-keys"
 }
 
 func doJSON(t *testing.T, m mocks, authenticated bool, method, path string, body any) *http.Response {

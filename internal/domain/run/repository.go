@@ -25,6 +25,9 @@ type ReadRepository interface {
 	ListByWorkflow(ctx context.Context, userID, workflowID uuid.UUID, q paginate.PaginateQuery) ([]View, int64, error)
 	// FindByID returns nil, nil when the run does not exist for that user.
 	FindByID(ctx context.Context, userID, runID uuid.UUID) (*DetailView, error)
+	// LatestResponseKeysForCall returns JSON paths from the most recent call_run
+	// that recorded keys for that call. Empty slice when none yet.
+	LatestResponseKeysForCall(ctx context.Context, userID, workflowID, callID uuid.UUID) ([]string, error)
 }
 
 type View struct {
