@@ -28,14 +28,26 @@ func TestRender(t *testing.T) {
 }
 
 func TestValidateName(t *testing.T) {
-	for _, ok := range []string{"token", "_x", "api_key2"} {
+	for _, ok := range []string{"token", "_x", "api_key2", "order-id", "a-b"} {
 		if err := ValidateName(ok); err != nil {
 			t.Errorf("%q: %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"", "2fa", "a-b", "run_id", "uuid"} {
+	for _, bad := range []string{"", "2fa", "-ab", "order id", "run_id", "uuid"} {
 		if err := ValidateName(bad); err == nil {
 			t.Errorf("%q must be rejected", bad)
 		}
+	}
+}
+
+func TestRender_HyphenatedName(t *testing.T) {
+	out, missing := Render("/orders/{{order-id}}", func(name string) (string, bool) {
+		if name == "order-id" {
+			return "42", true
+		}
+		return "", false
+	})
+	if out != "/orders/42" || len(missing) != 0 {
+		t.Fatalf("got %q missing %v", out, missing)
 	}
 }

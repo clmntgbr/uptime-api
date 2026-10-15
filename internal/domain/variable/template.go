@@ -6,7 +6,7 @@ import (
 )
 
 // placeholder matches `{{name}}`, tolerating inner spaces: `{{ name }}`.
-var placeholder = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
+var placeholder = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_-]*)\s*\}\}`)
 
 // References returns the distinct variable names used in s, in order of appearance.
 func References(s string) []string {

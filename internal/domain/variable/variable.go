@@ -36,7 +36,7 @@ const (
 )
 
 var (
-	namePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	namePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 
 	ErrInvalidName   = errors.New("invalid variable name")
 	ErrReservedName  = errors.New("reserved variable name")
@@ -73,7 +73,7 @@ func IsBuiltin(name string) bool {
 
 func ValidateName(name string) error {
 	if len(name) == 0 || len(name) > MaxNameLength || !namePattern.MatchString(name) {
-		return fmt.Errorf("%w %q: use letters, digits and underscores, starting with a letter or underscore (max %d)",
+		return fmt.Errorf("%w %q: use letters, digits, underscores and hyphens, starting with a letter or underscore (max %d)",
 			ErrInvalidName, name, MaxNameLength)
 	}
 	if IsBuiltin(name) {
