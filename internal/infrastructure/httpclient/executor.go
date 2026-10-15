@@ -27,6 +27,7 @@ import (
 type Config struct {
 	UserAgent    string
 	AllowPrivate bool
+	// MaxBodyBytes is the hard read limit (body_too_large). Defaults to engine.MaxBodyBytes (50 MiB).
 	MaxBodyBytes int64
 	MaxRedirects int
 	// RootCAs overrides the system roots (tests).

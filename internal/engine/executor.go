@@ -14,8 +14,11 @@ import (
 
 const (
 	MaxRedirects = 5
+	// MaxBodyKeysBytes is the largest body for which response_keys are collected.
+	// Larger bodies still succeed and are claim-checked to object storage; keys are skipped.
+	MaxBodyKeysBytes = 5 * 1024 * 1024
 	// MaxBodyBytes is the most the executor reads from a response; beyond, the call fails with body_too_large.
-	MaxBodyBytes = 5 * 1024 * 1024
+	MaxBodyBytes = 50 * 1024 * 1024
 )
 
 // Executor creates one Session per run, so cookies are kept between the calls of a run only.

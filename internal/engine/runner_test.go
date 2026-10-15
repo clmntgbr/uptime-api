@@ -143,7 +143,7 @@ func TestRun_ChainsVariablesAndMasksSecrets(t *testing.T) {
 	if !containsAll(login.Response.Keys, "access_token", "user", "user.id") {
 		t.Fatalf("login response keys missing paths: %v", login.Response.Keys)
 	}
-	if !containsAll(orders.Response.Keys, "items", "items[]", "items[].id", "echo") {
+	if !containsAll(orders.Response.Keys, "items", "items[]", "items[].id", "items[0]", "items[0].id", "echo") {
 		t.Fatalf("orders response keys missing paths: %v", orders.Response.Keys)
 	}
 }
@@ -180,6 +180,50 @@ func TestRun_LargeBodyClaimCheck(t *testing.T) {
 	}
 	if !containsAll(cr.Response.Keys, "data") {
 		t.Fatalf("keys must include data: %v", cr.Response.Keys)
+	}
+}
+
+func TestRun_TruncatedBodyStillCollectsAllKeys(t *testing.T) {
+	// Pad pushes "tail" past the preview window; keys must still come from the full body.
+	pad := strings.Repeat("x", BodyPreviewBytes*2)
+	body := `{"pad":"` + pad + `","tail":{"nested":true},"items":[{"id":1},{"id":2}]}`
+	exec := &fakeExecutor{handler: func(req Request) (*Response, error) { return jsonResponse(200, body), nil }}
+	store := &fakeStore{}
+	job := newJob(contract.JobCall{Name: "big", URL: "https://api.example.com/"})
+
+	cr := newRunner(exec, store).Run(context.Background(), job, nil).Calls[0]
+	if !cr.Response.Truncated {
+		t.Fatal("expected truncated preview")
+	}
+	if !containsAll(cr.Response.Keys,
+		"pad", "tail", "tail.nested",
+		"items", "items[]", "items[].id",
+		"items[0]", "items[0].id", "items[1]", "items[1].id",
+	) {
+		t.Fatalf("keys must cover the full body, got %v", cr.Response.Keys)
+	}
+}
+
+func TestRun_OversizedBodySkipsKeysButUploads(t *testing.T) {
+	// Above MaxBodyKeysBytes: call succeeds, no keys, body still claim-checked to S3.
+	pad := strings.Repeat("y", MaxBodyKeysBytes+1024)
+	body := `{"pad":"` + pad + `","keep":true}`
+	exec := &fakeExecutor{handler: func(req Request) (*Response, error) { return jsonResponse(200, body), nil }}
+	store := &fakeStore{}
+	job := newJob(contract.JobCall{Name: "huge", URL: "https://api.example.com/"})
+
+	cr := newRunner(exec, store).Run(context.Background(), job, nil).Calls[0]
+	if cr.Status != contract.CallStatusSuccess || cr.Error != nil {
+		t.Fatalf("oversized body must not fail the call: status=%s err=%v", cr.Status, cr.Error)
+	}
+	if len(cr.Response.Keys) != 0 {
+		t.Fatalf("keys must be skipped above MaxBodyKeysBytes, got %v", cr.Response.Keys)
+	}
+	if !cr.Response.Truncated || cr.BodyRef == "" || cr.BodyEncoding != contract.BodyEncodingZstd {
+		t.Fatalf("must still claim-check: truncated=%v ref=%q encoding=%q", cr.Response.Truncated, cr.BodyRef, cr.BodyEncoding)
+	}
+	if len(store.puts) != 1 {
+		t.Fatalf("expected 1 S3 put, got %d", len(store.puts))
 	}
 }
 
@@ -323,12 +367,47 @@ func TestRun_CertificateRule(t *testing.T) {
 }
 
 func TestCollectJSONPaths(t *testing.T) {
-	got := collectJSONPaths(`{"user":{"id":1},"items":[{"sku":"a"}]}`)
-	if !containsAll(got, "user", "user.id", "items", "items[]", "items[].sku") {
+	got := collectJSONPaths(`{"user":{"id":1},"items":[{"sku":"a"},{"sku":"b","extra":true}]}`)
+	if !containsAll(got,
+		"user", "user.id",
+		"items", "items[]", "items[].sku", "items[].extra",
+		"items[0]", "items[0].sku",
+		"items[1]", "items[1].sku", "items[1].extra",
+	) {
 		t.Fatalf("unexpected paths: %v", got)
 	}
 	if collectJSONPaths("not-json") != nil {
 		t.Fatal("non-json must yield no keys")
+	}
+
+	nested := collectJSONPaths(`{"items":[{"tags":["x","y"]}]}`)
+	if !containsAll(nested, "items[]", "items[].tags", "items[].tags[]", "items[0].tags[0]", "items[0].tags[1]") {
+		t.Fatalf("nested paths missing: %v", nested)
+	}
+	for _, p := range nested {
+		if strings.Contains(p, "[]") && strings.ContainsAny(p, "0123456789") && strings.Contains(p, "[") {
+			// Reject hybrids like items[].tags[0] (schema [] mixed with [N]).
+			hasIndex := false
+			for i := 0; i < len(p)-1; i++ {
+				if p[i] == '[' && p[i+1] >= '0' && p[i+1] <= '9' {
+					hasIndex = true
+					break
+				}
+			}
+			if hasIndex {
+				t.Fatalf("hybrid schema+index path not allowed: %q", p)
+			}
+		}
+	}
+
+	// Every array index is kept (no key-count cap).
+	elems := make([]string, 0, 300)
+	for i := 0; i < 300; i++ {
+		elems = append(elems, `{"id":1}`)
+	}
+	wide := collectJSONPaths(`{"a":[` + strings.Join(elems, ",") + `],"meta":{"total":1}}`)
+	if !containsAll(wide, "a[]", "a[].id", "a[0].id", "a[299].id", "meta", "meta.total") {
+		t.Fatalf("all indices and siblings required: missing from %d keys", len(wide))
 	}
 }
 

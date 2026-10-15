@@ -17,15 +17,17 @@ import (
 const (
 	// BodyPreviewBytes is the plaintext preview kept in Kafka / Postgres.
 	BodyPreviewBytes = 4 * 1024
-	// MaxResponseKeys caps JSON paths collected for later search.
-	MaxResponseKeys = 256
 	// MaxResponseKeyDepth limits how deep we walk a JSON document.
 	MaxResponseKeyDepth = 8
 )
 
 func (r *Runner) storeBody(ctx context.Context, state *run, call contract.JobCall, resp *Response, cr *contract.CallRun) {
 	masked := state.masker.mask(string(resp.Body))
-	cr.Response.Keys = collectJSONPaths(masked)
+	// Keys from the full masked body (never the preview). Skipped when the body
+	// is too large to walk safely; the call still succeeds and claim-checks to S3.
+	if len(masked) <= MaxBodyKeysBytes {
+		cr.Response.Keys = collectJSONPaths(masked)
+	}
 
 	limit := BodyPreviewBytes
 	if state.budget < limit {
@@ -85,8 +87,10 @@ func zstdCompress(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// collectJSONPaths walks a JSON document and returns dotted paths for search
-// (example: data, data.items, data.items[].id). Non-JSON bodies yield nil.
+// collectJSONPaths walks a JSON document and returns dotted paths for search.
+// Schema paths (`items[].id`) come first, then indexed paths (`items[0].id`, …)
+// for every array element. There is no key-count cap: keys are taken from the
+// full body even when the stored preview is truncated. Non-JSON bodies yield nil.
 func collectJSONPaths(body string) []string {
 	var root any
 	if err := json.Unmarshal([]byte(body), &root); err != nil {
@@ -94,13 +98,25 @@ func collectJSONPaths(body string) []string {
 	}
 	seen := map[string]struct{}{}
 	var out []string
-	walkJSONPaths(root, "", 0, seen, &out)
+	walkJSONPaths(root, "", 0, false, seen, &out)
+	walkJSONPaths(root, "", 0, true, seen, &out)
 	sort.Strings(out)
 	return out
 }
 
-func walkJSONPaths(node any, prefix string, depth int, seen map[string]struct{}, out *[]string) {
-	if len(*out) >= MaxResponseKeys || depth > MaxResponseKeyDepth {
+func addJSONPath(path string, seen map[string]struct{}, out *[]string) {
+	if _, ok := seen[path]; ok {
+		return
+	}
+	seen[path] = struct{}{}
+	*out = append(*out, path)
+}
+
+// walkJSONPaths walks node. When indexed is false, only schema forms (items[])
+// are emitted. When true, only concrete indices (items[0], items[1], …) are
+// emitted.
+func walkJSONPaths(node any, prefix string, depth int, indexed bool, seen map[string]struct{}, out *[]string) {
+	if depth > MaxResponseKeyDepth {
 		return
 	}
 	switch v := node.(type) {
@@ -111,31 +127,33 @@ func walkJSONPaths(node any, prefix string, depth int, seen map[string]struct{},
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if len(*out) >= MaxResponseKeys {
-				return
-			}
 			path := k
 			if prefix != "" {
 				path = prefix + "." + k
 			}
-			if _, ok := seen[path]; !ok {
-				seen[path] = struct{}{}
-				*out = append(*out, path)
-			}
-			walkJSONPaths(v[k], path, depth+1, seen, out)
+			addJSONPath(path, seen, out)
+			walkJSONPaths(v[k], path, depth+1, indexed, seen, out)
 		}
 	case []any:
-		path := "[]"
-		if prefix != "" {
-			path = prefix + "[]"
-		}
-		if _, ok := seen[path]; !ok {
-			seen[path] = struct{}{}
-			*out = append(*out, path)
-		}
-		if len(v) == 0 || len(*out) >= MaxResponseKeys {
+		if !indexed {
+			generic := "[]"
+			if prefix != "" {
+				generic = prefix + "[]"
+			}
+			addJSONPath(generic, seen, out)
+			// Union of keys across elements under the schema path.
+			for _, elem := range v {
+				walkJSONPaths(elem, generic, depth+1, false, seen, out)
+			}
 			return
 		}
-		walkJSONPaths(v[0], path, depth+1, seen, out)
+		for i, elem := range v {
+			path := fmt.Sprintf("[%d]", i)
+			if prefix != "" {
+				path = fmt.Sprintf("%s[%d]", prefix, i)
+			}
+			addJSONPath(path, seen, out)
+			walkJSONPaths(elem, path, depth+1, true, seen, out)
+		}
 	}
 }
