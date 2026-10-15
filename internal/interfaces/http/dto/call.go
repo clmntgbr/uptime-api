@@ -20,6 +20,7 @@ type CallExtractionRequest struct {
 	Name       string `json:"name" validate:"required,max=64"`
 	Source     string `json:"source" validate:"required,oneof=json header status regex"`
 	Expression string `json:"expression" validate:"max=512"`
+	Secret     bool   `json:"secret"`
 }
 
 type CallRuleRequest struct {

@@ -63,6 +63,7 @@ func bindCallDefinition(c fiber.Ctx) (domaincall.Definition, error) {
 			Name:       e.Name,
 			Source:     domaincall.ExtractionSource(e.Source),
 			Expression: e.Expression,
+			Secret:     e.Secret,
 		})
 	}
 

@@ -40,7 +40,7 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 
 	dispatch := schedule.NewDispatchDueRunsHandler(
 		write.NewStateRepository(db),
-		write.NewWorkflowWriteRepository(db),
+		write.NewWorkflowWriteRepository(db, cipher),
 		write.NewGlobalVariableRepository(db, cipher),
 		write.NewRunWriteRepository(db),
 		processed.NewTxClaimer(db),

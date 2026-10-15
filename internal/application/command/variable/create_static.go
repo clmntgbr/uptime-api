@@ -16,6 +16,7 @@ type CreateStaticCommand struct {
 	WorkflowID uuid.UUID
 	Name       string
 	Value      string
+	Secret     bool
 }
 
 type CreateStaticHandler struct {
@@ -43,7 +44,7 @@ func (h *CreateStaticHandler) Handle(ctx context.Context, cmd CreateStaticComman
 		if err != nil {
 			return err
 		}
-		s, err := w.AddStatic(cmd.Name, cmd.Value, globals)
+		s, err := w.AddStatic(cmd.Name, cmd.Value, cmd.Secret, globals)
 		if err != nil {
 			return err
 		}

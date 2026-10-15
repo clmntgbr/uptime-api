@@ -16,6 +16,7 @@ type UpdateStaticCommand struct {
 	WorkflowID uuid.UUID
 	Name       string
 	Value      string
+	Secret     bool
 }
 
 type UpdateStaticHandler struct {
@@ -43,7 +44,7 @@ func (h *UpdateStaticHandler) Handle(ctx context.Context, cmd UpdateStaticComman
 		if err != nil {
 			return err
 		}
-		s, err := w.UpdateStatic(cmd.Name, cmd.Value, globals)
+		s, err := w.UpdateStatic(cmd.Name, cmd.Value, cmd.Secret, globals)
 		if err != nil {
 			return err
 		}

@@ -12,6 +12,7 @@ import (
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/infrastructure/centrifugo"
 	"go-api/internal/infrastructure/config"
+	"go-api/internal/infrastructure/crypto"
 	"go-api/internal/infrastructure/messaging/kafka"
 	"go-api/internal/infrastructure/notification"
 	"go-api/internal/infrastructure/persistence/outbox"
@@ -32,6 +33,10 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	producer, err := kafka.NewProducer(env.Kafka)
 	if err != nil {
 		log.Fatalf("failed to create kafka producer: %v", err)
+	}
+	cipher, err := crypto.NewAESCipher(env.SecretsEncryptionKey)
+	if err != nil {
+		log.Fatalf("invalid SECRETS_ENCRYPTION_KEY: %v", err)
 	}
 
 	outboxRepo := outbox.NewRepository(db)
@@ -105,7 +110,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 
 	recordResult := commandrun.NewRecordResultHandler(
 		write.NewStateRepository(db),
-		write.NewWorkflowWriteRepository(db),
+		write.NewWorkflowWriteRepository(db, cipher),
 		write.NewRunWriteRepository(db),
 		write.NewCertificateRepository(db),
 		processed.NewTxClaimer(db),

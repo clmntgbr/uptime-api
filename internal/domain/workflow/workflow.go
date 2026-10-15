@@ -23,9 +23,10 @@ const (
 )
 
 type StaticVariable struct {
-	ID    uuid.UUID
-	Name  string
-	Value string
+	ID     uuid.UUID
+	Name   string
+	Value  string
+	Secret bool
 }
 
 // Definition is the user input to create or replace a workflow.

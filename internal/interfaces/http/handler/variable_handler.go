@@ -197,7 +197,7 @@ func (h *VariableHandler) CreateStatic(c fiber.Ctx) error {
 		return err
 	}
 	s, err := h.createStatic.Handle(c.Context(), cmdvariable.CreateStaticCommand{
-		UserID: user.ID, WorkflowID: workflowID, Name: body.Name, Value: body.Value,
+		UserID: user.ID, WorkflowID: workflowID, Name: body.Name, Value: body.Value, Secret: body.Secret,
 	})
 	if err != nil {
 		return writeVariableError(c, err, "Failed to create variable")
@@ -219,7 +219,7 @@ func (h *VariableHandler) UpdateStatic(c fiber.Ctx) error {
 		return err
 	}
 	s, err := h.updateStatic.Handle(c.Context(), cmdvariable.UpdateStaticCommand{
-		UserID: user.ID, WorkflowID: workflowID, Name: name, Value: body.Value,
+		UserID: user.ID, WorkflowID: workflowID, Name: name, Value: body.Value, Secret: body.Secret,
 	})
 	if err != nil {
 		return writeVariableError(c, err, "Failed to update variable")
@@ -297,7 +297,7 @@ func (h *VariableHandler) CreateCallVariable(c fiber.Ctx) error {
 	}
 	ext, err := h.createCall.Handle(c.Context(), cmdvariable.CreateCallVariableCommand{
 		UserID: user.ID, WorkflowID: workflowID, CallID: callID,
-		Name: body.Name, Path: body.Path, Source: body.Source,
+		Name: body.Name, Path: body.Path, Source: body.Source, Secret: body.Secret,
 	})
 	if err != nil {
 		return writeVariableError(c, err, "Failed to create variable")
@@ -320,7 +320,7 @@ func (h *VariableHandler) UpdateCallVariable(c fiber.Ctx) error {
 	}
 	ext, err := h.updateCall.Handle(c.Context(), cmdvariable.UpdateCallVariableCommand{
 		UserID: user.ID, WorkflowID: workflowID, CallID: callID,
-		Name: name, Path: body.Path, Source: body.Source,
+		Name: name, Path: body.Path, Source: body.Source, Secret: body.Secret,
 	})
 	if err != nil {
 		return writeVariableError(c, err, "Failed to update variable")

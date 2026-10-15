@@ -114,7 +114,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workflows := write.NewWorkflowWriteRepository(db)
+	workflows := write.NewWorkflowWriteRepository(db, cipher)
 	states := write.NewStateRepository(db)
 	if err := workflows.Save(ctx, w); err != nil {
 		t.Fatal(err)

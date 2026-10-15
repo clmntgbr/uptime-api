@@ -75,10 +75,10 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		log.Fatalf("failed to create kafka producer: %v", err)
 	}
 
-	workflowWriteRepo := write.NewWorkflowWriteRepository(db)
+	globalVariableRepo := write.NewGlobalVariableRepository(db, cipher)
+	workflowWriteRepo := write.NewWorkflowWriteRepository(db, cipher)
 	workflowReadRepo := read.NewWorkflowQueryRepository(db)
 	stateRepo := write.NewStateRepository(db)
-	globalVariableRepo := write.NewGlobalVariableRepository(db, cipher)
 	runWriteRepo := write.NewRunWriteRepository(db)
 	clock := port.SystemClock{}
 

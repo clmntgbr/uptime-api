@@ -99,7 +99,7 @@ func TestWorkflowLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	past := time.Now().UTC().Add(-time.Hour)
-	workflows := write.NewWorkflowWriteRepository(db)
+	workflows := write.NewWorkflowWriteRepository(db, cipher)
 	states := write.NewStateRepository(db)
 	if err := workflows.Save(ctx, w); err != nil {
 		t.Fatal(err)

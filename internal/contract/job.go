@@ -75,6 +75,7 @@ type JobExtraction struct {
 	Name       string `json:"name"`
 	Source     string `json:"source"`
 	Expression string `json:"expression,omitempty"`
+	Secret     bool   `json:"secret,omitempty"`
 }
 
 type JobRule struct {

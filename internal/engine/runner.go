@@ -332,7 +332,7 @@ func (s *run) extractAll(call contract.JobCall, resp *Response, b *body) map[str
 			continue
 		}
 		s.values[e.Name] = value
-		if isSecretLikeName(e.Name) {
+		if e.Secret || isSecretLikeName(e.Name) {
 			s.masker.add(value)
 		}
 		out[e.Name] = s.masker.mask(value)

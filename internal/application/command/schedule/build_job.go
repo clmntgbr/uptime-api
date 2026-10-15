@@ -66,6 +66,10 @@ func buildJob(w *domainworkflow.Workflow, globals []variable.Global, runID uuid.
 		job.Variables = append(job.Variables, contract.JobVariable{Name: g.Name, Type: string(variable.TypeGlobal), Value: g.Value})
 	}
 	for _, s := range w.Statics {
+		if s.Secret {
+			secrets[s.Name] = s.Value
+			continue
+		}
 		job.Variables = append(job.Variables, contract.JobVariable{Name: s.Name, Type: string(variable.TypeStatic), Value: s.Value})
 	}
 
@@ -85,7 +89,9 @@ func buildJob(w *domainworkflow.Workflow, globals []variable.Global, runID uuid.
 			ProxyURL:  c.ProxyURL,
 		}
 		for _, e := range c.Extractions {
-			jc.Extractions = append(jc.Extractions, contract.JobExtraction{Name: e.Name, Source: string(e.Source), Expression: e.Expression})
+			jc.Extractions = append(jc.Extractions, contract.JobExtraction{
+				Name: e.Name, Source: string(e.Source), Expression: e.Expression, Secret: e.Secret,
+			})
 		}
 		for _, r := range c.Rules {
 			jc.Rules = append(jc.Rules, contract.JobRule{

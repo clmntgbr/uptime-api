@@ -27,6 +27,8 @@ type Extraction struct {
 	Name       string
 	Source     ExtractionSource
 	Expression string
+	// Secret marks the extracted value as secret (masked in results, sealed when reused).
+	Secret bool
 }
 
 // NormalizeExtraction validates and normalizes an extraction declaration.

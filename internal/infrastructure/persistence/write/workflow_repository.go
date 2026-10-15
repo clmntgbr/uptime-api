@@ -7,6 +7,7 @@ import (
 	"time"
 
 	domaincall "go-api/internal/domain/call"
+	"go-api/internal/domain/port"
 	domainrule "go-api/internal/domain/rule"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
@@ -17,11 +18,12 @@ import (
 )
 
 type workflowWriteRepository struct {
-	db *gorm.DB
+	db     *gorm.DB
+	cipher port.SecretCipher
 }
 
-func NewWorkflowWriteRepository(db *gorm.DB) domainworkflow.WriteRepository {
-	return &workflowWriteRepository{db: db}
+func NewWorkflowWriteRepository(db *gorm.DB, cipher port.SecretCipher) domainworkflow.WriteRepository {
+	return &workflowWriteRepository{db: db, cipher: cipher}
 }
 
 func (r *workflowWriteRepository) WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
@@ -110,13 +112,22 @@ func (r *workflowWriteRepository) insertChildren(ctx context.Context, w *domainw
 	workflowID := w.ID
 	statics := make([]VariableModel, 0, len(w.Statics))
 	for _, s := range w.Statics {
+		value := s.Value
+		if s.Secret {
+			encrypted, err := r.cipher.Encrypt(s.Value)
+			if err != nil {
+				return err
+			}
+			value = encrypted
+		}
 		statics = append(statics, VariableModel{
 			ID:         s.ID,
 			UserID:     w.UserID,
 			WorkflowID: &workflowID,
 			Type:       string(variable.TypeStatic),
 			Name:       s.Name,
-			Value:      s.Value,
+			Value:      value,
+			Secret:     s.Secret,
 			CreatedAt:  now,
 			UpdatedAt:  now,
 		})
@@ -207,8 +218,16 @@ func (r *workflowWriteRepository) hydrate(ctx context.Context, models []Workflow
 	}
 	staticsByWorkflow := map[uuid.UUID][]domainworkflow.StaticVariable{}
 	for _, s := range statics {
+		value := s.Value
+		if s.Secret {
+			decrypted, err := r.cipher.Decrypt(s.Value)
+			if err != nil {
+				return nil, err
+			}
+			value = decrypted
+		}
 		staticsByWorkflow[*s.WorkflowID] = append(staticsByWorkflow[*s.WorkflowID], domainworkflow.StaticVariable{
-			ID: s.ID, Name: s.Name, Value: s.Value,
+			ID: s.ID, Name: s.Name, Value: value, Secret: s.Secret,
 		})
 	}
 
@@ -274,6 +293,7 @@ type extractionJSON struct {
 	Name       string `json:"name"`
 	Source     string `json:"source"`
 	Expression string `json:"expression,omitempty"`
+	Secret     bool   `json:"secret,omitempty"`
 }
 
 func callModelFromDomain(workflowID uuid.UUID, c domaincall.Call, now time.Time) (CallModel, error) {
@@ -287,7 +307,9 @@ func callModelFromDomain(workflowID uuid.UUID, c domaincall.Call, now time.Time)
 	}
 	extractions := make([]extractionJSON, 0, len(c.Extractions))
 	for _, e := range c.Extractions {
-		extractions = append(extractions, extractionJSON{Name: e.Name, Source: string(e.Source), Expression: e.Expression})
+		extractions = append(extractions, extractionJSON{
+			Name: e.Name, Source: string(e.Source), Expression: e.Expression, Secret: e.Secret,
+		})
 	}
 	extractionsJSON, err := json.Marshal(extractions)
 	if err != nil {
@@ -335,7 +357,7 @@ func callDomainFromModel(m CallModel, rules []domainrule.Rule) (domaincall.Call,
 	extractions := make([]domaincall.Extraction, 0, len(raw))
 	for _, e := range raw {
 		extractions = append(extractions, domaincall.Extraction{
-			Name: e.Name, Source: domaincall.ExtractionSource(e.Source), Expression: e.Expression,
+			Name: e.Name, Source: domaincall.ExtractionSource(e.Source), Expression: e.Expression, Secret: e.Secret,
 		})
 	}
 	return domaincall.Call{

@@ -36,8 +36,8 @@ func NewContainer() (*Container, error) {
 		cipher = aes
 	}
 
-	workflows := write.NewWorkflowWriteRepository(db)
 	globals := write.NewGlobalVariableRepository(db, cipher)
+	workflows := write.NewWorkflowWriteRepository(db, cipher)
 	outboxRepo := outbox.NewRepository(db)
 
 	return &Container{

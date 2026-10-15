@@ -41,10 +41,15 @@ func NewGlobalVariableListResponse(globals []variable.Global) []VariableResponse
 }
 
 func NewStaticVariableResponse(s domainworkflow.StaticVariable) VariableResponse {
+	value := s.Value
+	if s.Secret {
+		value = variable.MaskedValue
+	}
 	return VariableResponse{
-		Name:  s.Name,
-		Type:  string(variable.TypeStatic),
-		Value: s.Value,
+		Name:   s.Name,
+		Type:   string(variable.TypeStatic),
+		Value:  value,
+		Secret: s.Secret,
 	}
 }
 
@@ -62,6 +67,7 @@ func NewCallVariableResponse(e domaincall.Extraction) VariableResponse {
 		Type:   string(variable.TypeCall),
 		Path:   e.Expression,
 		Source: string(e.Source),
+		Secret: e.Secret,
 	}
 }
 

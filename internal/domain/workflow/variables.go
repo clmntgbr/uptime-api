@@ -11,7 +11,7 @@ import (
 )
 
 // AddStatic declares a workflow-scoped variable (no extraction path).
-func (w *Workflow) AddStatic(name, value string, globalNames []string) (StaticVariable, error) {
+func (w *Workflow) AddStatic(name, value string, secret bool, globalNames []string) (StaticVariable, error) {
 	name = strings.TrimSpace(name)
 	if err := variable.ValidateName(name); err != nil {
 		return StaticVariable{}, &ValidationError{Variable: name, Message: err.Error()}
@@ -25,7 +25,7 @@ func (w *Workflow) AddStatic(name, value string, globalNames []string) (StaticVa
 		}
 	}
 	next := append(append([]StaticVariable{}, w.Statics...), StaticVariable{
-		ID: uuid.New(), Name: name, Value: value,
+		ID: uuid.New(), Name: name, Value: value, Secret: secret,
 	})
 	if err := validateVariables(next, w.Calls, globalNames); err != nil {
 		return StaticVariable{}, err
@@ -35,8 +35,8 @@ func (w *Workflow) AddStatic(name, value string, globalNames []string) (StaticVa
 	return w.Statics[len(w.Statics)-1], nil
 }
 
-// UpdateStatic replaces the value of an existing static variable.
-func (w *Workflow) UpdateStatic(name, value string, globalNames []string) (StaticVariable, error) {
+// UpdateStatic replaces the value/secret of an existing static variable.
+func (w *Workflow) UpdateStatic(name, value string, secret bool, globalNames []string) (StaticVariable, error) {
 	name = strings.TrimSpace(name)
 	index := -1
 	for i, s := range w.Statics {
@@ -53,6 +53,7 @@ func (w *Workflow) UpdateStatic(name, value string, globalNames []string) (Stati
 	}
 	next := append([]StaticVariable{}, w.Statics...)
 	next[index].Value = value
+	next[index].Secret = secret
 	if err := validateVariables(next, w.Calls, globalNames); err != nil {
 		return StaticVariable{}, err
 	}
@@ -238,7 +239,7 @@ func (w *Workflow) AvailableVariables(callID uuid.UUID, globals []variable.Globa
 	}
 	for _, s := range w.Statics {
 		out = append(out, variable.Available{
-			Name: s.Name, Type: variable.TypeStatic, Value: s.Value,
+			Name: s.Name, Type: variable.TypeStatic, Value: s.Value, Secret: s.Secret,
 		})
 	}
 	for i := 0; i < index; i++ {
@@ -251,6 +252,7 @@ func (w *Workflow) AvailableVariables(callID uuid.UUID, globals []variable.Globa
 				Source:   string(e.Source),
 				CallID:   c.ID,
 				CallName: c.Name,
+				Secret:   e.Secret,
 			})
 		}
 	}

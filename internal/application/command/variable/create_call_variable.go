@@ -19,6 +19,7 @@ type CreateCallVariableCommand struct {
 	Name       string
 	Path       string
 	Source     string
+	Secret     bool
 }
 
 type CreateCallVariableHandler struct {
@@ -50,6 +51,7 @@ func (h *CreateCallVariableHandler) Handle(ctx context.Context, cmd CreateCallVa
 			Name:       cmd.Name,
 			Source:     domaincall.ExtractionSource(cmd.Source),
 			Expression: cmd.Path,
+			Secret:     cmd.Secret,
 		}, globals)
 		if err != nil {
 			return err
