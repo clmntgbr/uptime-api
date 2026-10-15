@@ -11,8 +11,12 @@ import (
 )
 
 type WriteRepository interface {
-	// Save inserts the run with its call and rule runs.
+	// Save upserts the run and its call/rule runs (final result or full insert).
 	Save(ctx context.Context, r *Run) error
+	// EnsureRunning creates the run as status=running when missing.
+	EnsureRunning(ctx context.Context, r *Run) error
+	// UpsertCallRun inserts or replaces one call_run by (run_id, position).
+	UpsertCallRun(ctx context.Context, run *Run, call CallRun) error
 }
 
 // Retention expires old results.

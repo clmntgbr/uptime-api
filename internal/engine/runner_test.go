@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -79,6 +80,58 @@ func newRunner(exec Executor, store *fakeStore) *Runner {
 		bodies = store
 	}
 	return NewRunner(exec, bodies, fixedClock{time.Now()}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+type progressCapture struct {
+	progresses []contract.CallProgress
+	err        error
+}
+
+func (p *progressCapture) PublishResult(context.Context, contract.Result) error { return nil }
+
+func (p *progressCapture) PublishCallProgress(_ context.Context, progress contract.CallProgress) error {
+	if p.err != nil {
+		return p.err
+	}
+	p.progresses = append(p.progresses, progress)
+	return nil
+}
+
+func TestRun_PublishesCallProgress(t *testing.T) {
+	exec := &fakeExecutor{handler: func(Request) (*Response, error) {
+		return jsonResponse(200, `{}`), nil
+	}}
+	pub := &progressCapture{}
+	job := newJob(
+		contract.JobCall{Name: "a", URL: "{{base_url}}/a"},
+		contract.JobCall{Name: "b", URL: "{{base_url}}/b"},
+	)
+	result := newRunner(exec, nil).WithProgressPublisher(pub).Run(context.Background(), job, nil)
+	if result.Counts.Success != 2 {
+		t.Fatalf("unexpected result %+v", result)
+	}
+	if len(pub.progresses) != 2 {
+		t.Fatalf("expected 2 progress messages, got %d", len(pub.progresses))
+	}
+	if pub.progresses[0].Call.Name != "a" || pub.progresses[1].Call.Name != "b" {
+		t.Fatalf("unexpected progress order %+v", pub.progresses)
+	}
+	if pub.progresses[0].Type != contract.CallProgressType || pub.progresses[0].RunID != job.RunID {
+		t.Fatalf("unexpected progress envelope %+v", pub.progresses[0])
+	}
+}
+
+func TestRun_ProgressPublishFailureDoesNotAbort(t *testing.T) {
+	exec := &fakeExecutor{handler: func(Request) (*Response, error) {
+		return jsonResponse(200, `{}`), nil
+	}}
+	pub := &progressCapture{err: errors.New("broker down")}
+	result := newRunner(exec, nil).WithProgressPublisher(pub).Run(context.Background(), newJob(
+		contract.JobCall{Name: "a", URL: "{{base_url}}/a"},
+	), nil)
+	if result.Status != contract.RunStatusSuccess {
+		t.Fatalf("progress publish must not fail the run: %+v", result)
+	}
 }
 
 func TestRun_ChainsVariablesAndMasksSecrets(t *testing.T) {

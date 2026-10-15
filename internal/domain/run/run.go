@@ -12,6 +12,7 @@ import (
 type Status string
 
 const (
+	StatusRunning Status = "running"
 	StatusSuccess Status = "success"
 	StatusFailed  Status = "failed"
 	StatusSkipped Status = "skipped"
@@ -97,10 +98,29 @@ type RuleRun struct {
 }
 
 func (r *Run) Duration() time.Duration {
-	if r.FinishedAt.Before(r.StartedAt) {
+	if r.FinishedAt.IsZero() || r.FinishedAt.Before(r.StartedAt) {
 		return 0
 	}
 	return r.FinishedAt.Sub(r.StartedAt)
+}
+
+// Progressed records a realtime-oriented event for one finished call.
+func (r *Run) Progressed(call CallRun) {
+	callID := ""
+	if call.CallID != nil {
+		callID = call.CallID.String()
+	}
+	r.events = append(r.events, RunProgressed{
+		ID:         uuid.New().String(),
+		RunID:      r.ID.String(),
+		WorkflowID: r.WorkflowID.String(),
+		UserID:     r.UserID.String(),
+		CallID:     callID,
+		CallName:   call.Name,
+		Position:   call.Position,
+		Status:     string(call.Status),
+		Timestamp:  time.Now().UTC(),
+	})
 }
 
 // Recorded finalizes a run built from an execution result and records the event.

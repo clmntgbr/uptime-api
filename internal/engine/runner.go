@@ -33,10 +33,17 @@ type Runner struct {
 	bodies   port.BodyStore
 	clock    port.Clock
 	logger   *slog.Logger
+	progress port.ResultPublisher // optional; nil skips progressive publishes
 }
 
 func NewRunner(executor Executor, bodies port.BodyStore, clock port.Clock, logger *slog.Logger) *Runner {
 	return &Runner{executor: executor, bodies: bodies, clock: clock, logger: logger}
+}
+
+// WithProgressPublisher streams each finished call to workflow.results before the final Result.
+func (r *Runner) WithProgressPublisher(progress port.ResultPublisher) *Runner {
+	r.progress = progress
+	return r
 }
 
 var _ port.WorkflowRunner = (*Runner)(nil)
@@ -120,6 +127,7 @@ func (r *Runner) Run(ctx context.Context, job contract.Job, secrets map[string]s
 			result.Counts.Skipped++
 		}
 		result.Calls = append(result.Calls, cr)
+		r.publishProgress(ctx, job, cr)
 	}
 
 	result.FinishedAt = r.clock.Now()
@@ -130,6 +138,27 @@ func (r *Runner) Run(ctx context.Context, job contract.Job, secrets map[string]s
 	}
 	result.EmittedAt = r.clock.Now()
 	return result
+}
+
+func (r *Runner) publishProgress(ctx context.Context, job contract.Job, cr contract.CallRun) {
+	if r.progress == nil {
+		return
+	}
+	progress := contract.CallProgress{
+		V:          contract.CallProgressVersion,
+		ID:         uuid.NewString(),
+		Type:       contract.CallProgressType,
+		UserID:     job.UserID,
+		WorkflowID: job.WorkflowID,
+		RunID:      job.RunID,
+		Trigger:    job.Trigger,
+		Call:       cr,
+		EmittedAt:  r.clock.Now(),
+	}
+	if err := r.progress.PublishCallProgress(ctx, progress); err != nil {
+		r.logger.Warn("call progress publish failed; final result still records the call",
+			"run_id", job.RunID, "call", cr.Name, "error", err)
+	}
 }
 
 func skippedCall(call contract.JobCall, at time.Time, reason string) contract.CallRun {

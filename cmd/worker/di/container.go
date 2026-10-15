@@ -5,9 +5,11 @@ import (
 
 	commandrun "go-api/internal/application/command/run"
 	"go-api/internal/application/event/dedup"
+	eventrun "go-api/internal/application/event/run"
 	eventuser "go-api/internal/application/event/user"
 	eventworkflow "go-api/internal/application/event/workflow"
 	"go-api/internal/application/registry"
+	domainrun "go-api/internal/domain/run"
 	domainuser "go-api/internal/domain/user"
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/infrastructure/centrifugo"
@@ -47,6 +49,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	realtimePublisher := centrifugo.NewPublisher(env)
 	publishUserRealtime := eventuser.NewPublishRealtimeHandler(realtimePublisher)
 	publishWorkflowRealtime := eventworkflow.NewPublishRealtimeHandler(realtimePublisher)
+	publishRunRealtime := eventrun.NewPublishRealtimeHandler(realtimePublisher)
 	reg := registry.NewHandlerRegistry()
 
 	reg.Register(domainuser.EventTypeUserCreated, dedup.With(
@@ -101,6 +104,17 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		publishWorkflowRealtime.OnDeleted,
 	))
 
+	reg.Register(domainrun.EventTypeRunProgressed, dedup.With(
+		dedupRepo,
+		"publish_run_progressed_realtime",
+		publishRunRealtime.OnProgressed,
+	))
+	reg.Register(domainrun.EventTypeRunRecorded, dedup.With(
+		dedupRepo,
+		"publish_run_recorded_realtime",
+		publishRunRealtime.OnRecorded,
+	))
+
 	eventsConsumer := kafka.NewConsumer(
 		env.Kafka,
 		kafka.DefaultConsumerOptions(env.WorkerEventsGroup, kafka.TopicEvents, env.WorkerConcurrency, true),
@@ -108,18 +122,23 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		producer,
 	)
 
+	stateRepo := write.NewStateRepository(db)
+	runWriteRepo := write.NewRunWriteRepository(db)
+	claimer := processed.NewTxClaimer(db)
 	recordResult := commandrun.NewRecordResultHandler(
-		write.NewStateRepository(db),
+		stateRepo,
 		write.NewWorkflowWriteRepository(db, cipher),
-		write.NewRunWriteRepository(db),
+		runWriteRepo,
 		write.NewCertificateRepository(db),
-		processed.NewTxClaimer(db),
+		claimer,
 		outboxRepo,
 	)
+	recordProgress := commandrun.NewRecordCallProgressHandler(stateRepo, runWriteRepo, claimer, outboxRepo)
+	resultsRouter := commandrun.NewResultsRouter(recordResult, recordProgress)
 	resultsConsumer := kafka.NewConsumer(
 		env.Kafka,
 		kafka.DefaultConsumerOptions(env.WorkerResultsGroup, kafka.TopicWorkflowResults, env.WorkerConcurrency, true),
-		kafka.PayloadHandler(recordResult.Handle),
+		kafka.PayloadHandler(resultsRouter.Handle),
 		producer,
 	)
 

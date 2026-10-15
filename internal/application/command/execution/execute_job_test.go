@@ -38,6 +38,10 @@ func (p *stubPublisher) PublishResult(context.Context, contract.Result) error {
 	return p.err
 }
 
+func (p *stubPublisher) PublishCallProgress(context.Context, contract.CallProgress) error {
+	return nil
+}
+
 type clockAt time.Time
 
 func (c clockAt) Now() time.Time { return time.Time(c) }

@@ -7,6 +7,7 @@ const (
 
 	EntityUser     = "user"
 	EntityWorkflow = "workflow"
+	EntityRun      = "run"
 )
 
 func EventType(entity, action string) string {

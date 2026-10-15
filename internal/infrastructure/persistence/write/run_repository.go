@@ -3,6 +3,7 @@ package write
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"go-api/internal/domain/certificate"
@@ -28,6 +29,130 @@ func (r *runWriteRepository) Save(ctx context.Context, run *domainrun.Run) error
 	if err != nil {
 		return err
 	}
+	model := runModelFromDomain(run, variables)
+	err = db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"status", "reason", "started_at", "finished_at", "duration_ms",
+			"calls_total", "calls_success", "calls_failed", "calls_error", "calls_skipped",
+			"variables", "recorded_at",
+		}),
+	}).Create(&model).Error
+	if err != nil {
+		return err
+	}
+	for _, c := range run.Calls {
+		if err := r.upsertCallRun(db, run, c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *runWriteRepository) EnsureRunning(ctx context.Context, run *domainrun.Run) error {
+	db := DBWithContext(ctx, r.db)
+	variables, err := marshalJSONB(run.Variables)
+	if err != nil {
+		return err
+	}
+	if variables == nil {
+		variables = dbtype.JSONB([]byte("{}"))
+	}
+	model := RunModel{
+		ID:         run.ID,
+		WorkflowID: run.WorkflowID,
+		UserID:     run.UserID,
+		Trigger:    run.Trigger,
+		Status:     string(domainrun.StatusRunning),
+		StartedAt:  run.StartedAt.UTC(),
+		FinishedAt: nil,
+		DurationMS: 0,
+		Variables:  variables,
+		RecordedAt: time.Now().UTC(),
+	}
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoNothing: true,
+	}).Create(&model).Error
+}
+
+func (r *runWriteRepository) UpsertCallRun(ctx context.Context, run *domainrun.Run, call domainrun.CallRun) error {
+	return r.upsertCallRun(DBWithContext(ctx, r.db), run, call)
+}
+
+func (r *runWriteRepository) upsertCallRun(db *gorm.DB, run *domainrun.Run, call domainrun.CallRun) error {
+	m, err := callRunModel(run, call)
+	if err != nil {
+		return err
+	}
+
+	var existing CallRunModel
+	err = db.Where("run_id = ? AND position = ?", run.ID, call.Position).Take(&existing).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := db.Create(&m).Error; err != nil {
+			return err
+		}
+	} else {
+		m.ID = existing.ID
+		if err := db.Model(&CallRunModel{}).Where("id = ?", existing.ID).Updates(map[string]any{
+			"call_id":             m.CallID,
+			"name":                m.Name,
+			"status":              m.Status,
+			"reason":              m.Reason,
+			"http_status":         m.HTTPStatus,
+			"request":             m.Request,
+			"response":            m.Response,
+			"timings":             m.Timings,
+			"network":             m.Network,
+			"tls":                 m.TLS,
+			"extracted_variables": m.ExtractedVariables,
+			"used_variables":      m.UsedVariables,
+			"error_type":          m.ErrorType,
+			"error_message":       m.ErrorMessage,
+			"body_ref":            m.BodyRef,
+			"body_hash":           m.BodyHash,
+			"body_encoding":       m.BodyEncoding,
+			"response_keys":       m.ResponseKeys,
+			"truncated":           m.Truncated,
+			"started_at":          m.StartedAt,
+			"finished_at":         m.FinishedAt,
+		}).Error; err != nil {
+			return err
+		}
+		if err := db.Where("call_run_id = ?", existing.ID).Delete(&RuleRunModel{}).Error; err != nil {
+			return err
+		}
+	}
+
+	if len(call.Rules) == 0 {
+		return nil
+	}
+	rules := make([]RuleRunModel, 0, len(call.Rules))
+	for _, rr := range call.Rules {
+		id := rr.ID
+		if id == uuid.Nil {
+			id = uuid.New()
+		}
+		rules = append(rules, RuleRunModel{
+			ID:        id,
+			CallRunID: m.ID,
+			RunID:     run.ID,
+			Position:  rr.Position,
+			Subject:   rr.Subject,
+			Operator:  rr.Operator,
+			Text:      rr.Text,
+			Observed:  rr.Observed,
+			Expected:  rr.Expected,
+			Passed:    rr.Passed,
+		})
+	}
+	return db.CreateInBatches(&rules, 500).Error
+}
+
+func runModelFromDomain(run *domainrun.Run, variables dbtype.JSONB) RunModel {
 	model := RunModel{
 		ID:           run.ID,
 		WorkflowID:   run.WorkflowID,
@@ -36,7 +161,6 @@ func (r *runWriteRepository) Save(ctx context.Context, run *domainrun.Run) error
 		Status:       string(run.Status),
 		Reason:       nullableString(run.Reason),
 		StartedAt:    run.StartedAt.UTC(),
-		FinishedAt:   run.FinishedAt.UTC(),
 		DurationMS:   int(run.Duration() / time.Millisecond),
 		CallsTotal:   run.Counts.Total(),
 		CallsSuccess: run.Counts.Success,
@@ -46,47 +170,11 @@ func (r *runWriteRepository) Save(ctx context.Context, run *domainrun.Run) error
 		Variables:    variables,
 		RecordedAt:   time.Now().UTC(),
 	}
-	if err := db.Create(&model).Error; err != nil {
-		return err
+	if !run.FinishedAt.IsZero() {
+		t := run.FinishedAt.UTC()
+		model.FinishedAt = &t
 	}
-	if len(run.Calls) == 0 {
-		return nil
-	}
-
-	calls := make([]CallRunModel, 0, len(run.Calls))
-	var rules []RuleRunModel
-	for _, c := range run.Calls {
-		m, err := callRunModel(run, c)
-		if err != nil {
-			return err
-		}
-		calls = append(calls, m)
-		for _, rr := range c.Rules {
-			id := rr.ID
-			if id == uuid.Nil {
-				id = uuid.New()
-			}
-			rules = append(rules, RuleRunModel{
-				ID:        id,
-				CallRunID: m.ID,
-				RunID:     run.ID,
-				Position:  rr.Position,
-				Subject:   rr.Subject,
-				Operator:  rr.Operator,
-				Text:      rr.Text,
-				Observed:  rr.Observed,
-				Expected:  rr.Expected,
-				Passed:    rr.Passed,
-			})
-		}
-	}
-	if err := db.CreateInBatches(&calls, 100).Error; err != nil {
-		return err
-	}
-	if len(rules) > 0 {
-		return db.CreateInBatches(&rules, 500).Error
-	}
-	return nil
+	return model
 }
 
 func callRunModel(run *domainrun.Run, c domainrun.CallRun) (CallRunModel, error) {

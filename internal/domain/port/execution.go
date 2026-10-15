@@ -15,6 +15,7 @@ type JobPublisher interface {
 // ResultPublisher publishes run results on `workflow.results`.
 type ResultPublisher interface {
 	PublishResult(ctx context.Context, result contract.Result) error
+	PublishCallProgress(ctx context.Context, progress contract.CallProgress) error
 }
 
 // WorkflowRunner executes a job end to end and returns its result. It never

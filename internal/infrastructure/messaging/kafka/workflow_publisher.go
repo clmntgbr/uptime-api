@@ -42,3 +42,13 @@ func (p *WorkflowPublisher) PublishResult(ctx context.Context, result contract.R
 		"type": contract.ResultType, "run_id": result.RunID,
 	})
 }
+
+func (p *WorkflowPublisher) PublishCallProgress(ctx context.Context, progress contract.CallProgress) error {
+	body, err := json.Marshal(progress)
+	if err != nil {
+		return err
+	}
+	return p.producer.Produce(ctx, TopicWorkflowResults, []byte(progress.WorkflowID), body, map[string]string{
+		"type": contract.CallProgressType, "run_id": progress.RunID,
+	})
+}

@@ -53,6 +53,10 @@ func (c *capture) PublishResult(_ context.Context, r contract.Result) error {
 	return nil
 }
 
+func (c *capture) PublishCallProgress(context.Context, contract.CallProgress) error {
+	return nil
+}
+
 func (c *capture) jobFor(workflowID uuid.UUID) *contract.Job {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -40,8 +40,9 @@ func NewContainer(env *config.WorkerCallsConfig, logger *slog.Logger) (*Containe
 
 	executor := httpclient.NewExecutor(httpclient.Config{UserAgent: env.UserAgent, AllowPrivate: env.AllowPrivateIPs})
 	clock := port.SystemClock{}
-	runner := observability.InstrumentRunner(engine.NewRunner(executor, bodies, clock, logger))
-	handler := execution.NewExecuteJobHandler(opener, runner, kafka.NewWorkflowPublisher(producer), clock, logger)
+	publisher := kafka.NewWorkflowPublisher(producer)
+	runner := observability.InstrumentRunner(engine.NewRunner(executor, bodies, clock, logger).WithProgressPublisher(publisher))
+	handler := execution.NewExecuteJobHandler(opener, runner, publisher, clock, logger)
 
 	consumer := kafka.NewConsumer(
 		env.Kafka,

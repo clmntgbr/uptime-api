@@ -17,9 +17,9 @@ type RunModel struct {
 	Trigger      string       `gorm:"column:trigger"`
 	Status       string       `gorm:"column:status"`
 	Reason       *string      `gorm:"column:reason"`
-	StartedAt    time.Time    `gorm:"column:started_at"`
-	FinishedAt   time.Time    `gorm:"column:finished_at"`
-	DurationMS   int          `gorm:"column:duration_ms"`
+	StartedAt    time.Time  `gorm:"column:started_at"`
+	FinishedAt   *time.Time `gorm:"column:finished_at"`
+	DurationMS   int        `gorm:"column:duration_ms"`
 	CallsTotal   int          `gorm:"column:calls_total"`
 	CallsSuccess int          `gorm:"column:calls_success"`
 	CallsFailed  int          `gorm:"column:calls_failed"`

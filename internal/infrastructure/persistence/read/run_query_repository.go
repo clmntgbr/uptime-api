@@ -143,19 +143,22 @@ func (r *runQueryRepository) LatestResponseKeysForCall(ctx context.Context, user
 }
 
 func runView(m write.RunModel) domainrun.View {
-	return domainrun.View{
+	v := domainrun.View{
 		ID:         m.ID,
 		WorkflowID: m.WorkflowID,
 		Trigger:    m.Trigger,
 		Status:     domainrun.Status(m.Status),
 		Reason:     deref(m.Reason),
 		StartedAt:  m.StartedAt,
-		FinishedAt: m.FinishedAt,
 		DurationMS: m.DurationMS,
 		Counts: domainrun.Counts{
 			Success: m.CallsSuccess, Failed: m.CallsFailed, Error: m.CallsError, Skipped: m.CallsSkipped,
 		},
 	}
+	if m.FinishedAt != nil {
+		v.FinishedAt = *m.FinishedAt
+	}
+	return v
 }
 
 func callRunView(m write.CallRunModel, rules []domainrun.RuleRun) (domainrun.CallRunView, error) {
