@@ -63,7 +63,10 @@ func (r *workflowWriteRepository) Update(ctx context.Context, w *domainworkflow.
 		if err := db.Where("workflow_id = ?", w.ID).Delete(&CallModel{}).Error; err != nil {
 			return err
 		}
-		if err := db.Where("workflow_id = ? AND type = ?", w.ID, string(variable.TypeStatic)).Delete(&VariableModel{}).Error; err != nil {
+		// Call variables also cascade-delete with calls; drop workflow-scoped rows explicitly.
+		if err := db.Where("workflow_id = ? AND type IN ?", w.ID, []string{
+			string(variable.TypeStatic), string(variable.TypeCall),
+		}).Delete(&VariableModel{}).Error; err != nil {
 			return err
 		}
 		return r.insertChildren(ctx, w)
@@ -106,11 +109,8 @@ func (r *workflowWriteRepository) insertChildren(ctx context.Context, w *domainw
 		}
 	}
 
-	if len(w.Statics) == 0 {
-		return nil
-	}
 	workflowID := w.ID
-	statics := make([]VariableModel, 0, len(w.Statics))
+	vars := make([]VariableModel, 0, len(w.Statics))
 	for _, s := range w.Statics {
 		value := s.Value
 		if s.Secret {
@@ -120,7 +120,7 @@ func (r *workflowWriteRepository) insertChildren(ctx context.Context, w *domainw
 			}
 			value = encrypted
 		}
-		statics = append(statics, VariableModel{
+		vars = append(vars, VariableModel{
 			ID:         s.ID,
 			UserID:     w.UserID,
 			WorkflowID: &workflowID,
@@ -132,7 +132,34 @@ func (r *workflowWriteRepository) insertChildren(ctx context.Context, w *domainw
 			UpdatedAt:  now,
 		})
 	}
-	return db.Create(&statics).Error
+	for _, c := range w.Calls {
+		callID := c.ID
+		for _, e := range c.Extractions {
+			id := e.ID
+			if id == uuid.Nil {
+				id = uuid.New()
+			}
+			source := string(e.Source)
+			vars = append(vars, VariableModel{
+				ID:         id,
+				UserID:     w.UserID,
+				WorkflowID: &workflowID,
+				CallID:     &callID,
+				Type:       string(variable.TypeCall),
+				Name:       e.Name,
+				Value:      "",
+				Secret:     e.Secret,
+				Source:     &source,
+				Path:       nullableString(e.Expression),
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			})
+		}
+	}
+	if len(vars) == 0 {
+		return nil
+	}
+	return db.Create(&vars).Error
 }
 
 // Delete is a soft delete: calls, rules, variables and past runs are kept.
@@ -167,7 +194,7 @@ func (r *workflowWriteRepository) ListByUser(ctx context.Context, userID uuid.UU
 	return r.hydrate(ctx, models)
 }
 
-// hydrate loads calls, rules and static variables of the given workflows.
+// hydrate loads calls, rules and variables (static + call) of the given workflows.
 func (r *workflowWriteRepository) hydrate(ctx context.Context, models []WorkflowModel) ([]*domainworkflow.Workflow, error) {
 	if len(models) == 0 {
 		return nil, nil
@@ -203,32 +230,50 @@ func (r *workflowWriteRepository) hydrate(ctx context.Context, models []Workflow
 		}
 	}
 
-	var statics []VariableModel
-	if err := db.Where("workflow_id IN ? AND type = ?", ids, string(variable.TypeStatic)).Order("name").Find(&statics).Error; err != nil {
+	var vars []VariableModel
+	if err := db.Where("workflow_id IN ? AND type IN ?", ids, []string{
+		string(variable.TypeStatic), string(variable.TypeCall),
+	}).Order("created_at, name").Find(&vars).Error; err != nil {
 		return nil, err
+	}
+
+	extractionsByCall := map[uuid.UUID][]domaincall.Extraction{}
+	staticsByWorkflow := map[uuid.UUID][]domainworkflow.StaticVariable{}
+	for _, v := range vars {
+		switch v.Type {
+		case string(variable.TypeStatic):
+			value := v.Value
+			if v.Secret {
+				decrypted, err := r.cipher.Decrypt(v.Value)
+				if err != nil {
+					return nil, err
+				}
+				value = decrypted
+			}
+			staticsByWorkflow[*v.WorkflowID] = append(staticsByWorkflow[*v.WorkflowID], domainworkflow.StaticVariable{
+				ID: v.ID, Name: v.Name, Value: value, Secret: v.Secret,
+			})
+		case string(variable.TypeCall):
+			if v.CallID == nil {
+				continue
+			}
+			extractionsByCall[*v.CallID] = append(extractionsByCall[*v.CallID], domaincall.Extraction{
+				ID:         v.ID,
+				Name:       v.Name,
+				Source:     domaincall.ExtractionSource(derefString(v.Source)),
+				Expression: derefString(v.Path),
+				Secret:     v.Secret,
+			})
+		}
 	}
 
 	callsByWorkflow := map[uuid.UUID][]domaincall.Call{}
 	for _, c := range calls {
-		call, err := callDomainFromModel(c, rulesByCall[c.ID])
+		call, err := callDomainFromModel(c, rulesByCall[c.ID], extractionsByCall[c.ID])
 		if err != nil {
 			return nil, err
 		}
 		callsByWorkflow[c.WorkflowID] = append(callsByWorkflow[c.WorkflowID], call)
-	}
-	staticsByWorkflow := map[uuid.UUID][]domainworkflow.StaticVariable{}
-	for _, s := range statics {
-		value := s.Value
-		if s.Secret {
-			decrypted, err := r.cipher.Decrypt(s.Value)
-			if err != nil {
-				return nil, err
-			}
-			value = decrypted
-		}
-		staticsByWorkflow[*s.WorkflowID] = append(staticsByWorkflow[*s.WorkflowID], domainworkflow.StaticVariable{
-			ID: s.ID, Name: s.Name, Value: value, Secret: s.Secret,
-		})
 	}
 
 	out := make([]*domainworkflow.Workflow, 0, len(models))
@@ -289,12 +334,7 @@ func workflowModelFromDomain(w *domainworkflow.Workflow) *WorkflowModel {
 	return model
 }
 
-type extractionJSON struct {
-	Name       string `json:"name"`
-	Source     string `json:"source"`
-	Expression string `json:"expression,omitempty"`
-	Secret     bool   `json:"secret,omitempty"`
-}
+var emptyExtractionsJSON = dbtype.JSONB([]byte("[]"))
 
 func callModelFromDomain(workflowID uuid.UUID, c domaincall.Call, now time.Time) (CallModel, error) {
 	headers, err := json.Marshal(c.Headers)
@@ -302,16 +342,6 @@ func callModelFromDomain(workflowID uuid.UUID, c domaincall.Call, now time.Time)
 		return CallModel{}, err
 	}
 	query, err := json.Marshal(c.Query)
-	if err != nil {
-		return CallModel{}, err
-	}
-	extractions := make([]extractionJSON, 0, len(c.Extractions))
-	for _, e := range c.Extractions {
-		extractions = append(extractions, extractionJSON{
-			Name: e.Name, Source: string(e.Source), Expression: e.Expression, Secret: e.Secret,
-		})
-	}
-	extractionsJSON, err := json.Marshal(extractions)
 	if err != nil {
 		return CallModel{}, err
 	}
@@ -329,13 +359,13 @@ func callModelFromDomain(workflowID uuid.UUID, c domaincall.Call, now time.Time)
 		VerifyTLS:   c.VerifyTLS,
 		IPVersion:   string(c.IPVersion),
 		ProxyURL:    nullableString(c.ProxyURL),
-		Extractions: dbtype.JSONB(extractionsJSON),
+		Extractions: emptyExtractionsJSON, // legacy column; call vars live in `variables`
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil
 }
 
-func callDomainFromModel(m CallModel, rules []domainrule.Rule) (domaincall.Call, error) {
+func callDomainFromModel(m CallModel, rules []domainrule.Rule, extractions []domaincall.Extraction) (domaincall.Call, error) {
 	headers := map[string]string{}
 	if len(m.Headers) > 0 {
 		if err := json.Unmarshal(m.Headers, &headers); err != nil {
@@ -348,17 +378,8 @@ func callDomainFromModel(m CallModel, rules []domainrule.Rule) (domaincall.Call,
 			return domaincall.Call{}, err
 		}
 	}
-	var raw []extractionJSON
-	if len(m.Extractions) > 0 {
-		if err := json.Unmarshal(m.Extractions, &raw); err != nil {
-			return domaincall.Call{}, err
-		}
-	}
-	extractions := make([]domaincall.Extraction, 0, len(raw))
-	for _, e := range raw {
-		extractions = append(extractions, domaincall.Extraction{
-			Name: e.Name, Source: domaincall.ExtractionSource(e.Source), Expression: e.Expression, Secret: e.Secret,
-		})
+	if extractions == nil {
+		extractions = []domaincall.Extraction{}
 	}
 	return domaincall.Call{
 		ID:          m.ID,

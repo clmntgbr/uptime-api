@@ -125,6 +125,13 @@ func New(def Definition, position int, id uuid.UUID) (Call, error) {
 		if err != nil {
 			return fail("%v", err)
 		}
+		if normalized.ID == uuid.Nil {
+			if e.ID != uuid.Nil {
+				normalized.ID = e.ID
+			} else {
+				normalized.ID = uuid.New()
+			}
+		}
 		extractions = append(extractions, normalized)
 	}
 

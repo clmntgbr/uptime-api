@@ -115,6 +115,24 @@ func TestWorkflowLifecycle(t *testing.T) {
 	if len(loaded.Calls) != 2 || len(loaded.Calls[0].Rules) != 1 || loaded.Calls[0].Extractions[0].Name != "token" || len(loaded.Statics) != 1 {
 		t.Fatalf("unexpected workflow %+v", loaded)
 	}
+	ext := loaded.Calls[0].Extractions[0]
+	if ext.ID == uuid.Nil || ext.Source != domaincall.ExtractJSON || ext.Expression != "$.token" {
+		t.Fatalf("call variable must hydrate from variables table: %+v", ext)
+	}
+	var callVar write.VariableModel
+	if err := db.First(&callVar, "call_id = ? AND type = ? AND name = ?", loaded.Calls[0].ID, "call", "token").Error; err != nil {
+		t.Fatalf("call variable row missing: %v", err)
+	}
+	if callVar.Source == nil || *callVar.Source != "json" || callVar.Value != "" {
+		t.Fatalf("unexpected call variable row %+v", callVar)
+	}
+	var callRow write.CallModel
+	if err := db.First(&callRow, "id = ?", loaded.Calls[0].ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if string(callRow.Extractions) != "[]" {
+		t.Fatalf("legacy extractions column must stay empty, got %s", callRow.Extractions)
+	}
 	if _, err := loaded.Update(def, []string{"password"}); err != nil {
 		t.Fatal(err)
 	}

@@ -11,12 +11,12 @@ import (
 
 func TestVariableHandler_ListStatics_Success(t *testing.T) {
 	m := newMocks()
-	m.listStatics.out = []domainworkflow.StaticVariable{{Name: "base_url", Value: "https://x"}}
+	m.listStatics.out = []domainworkflow.StaticVariable{{ID: testVariableID, Name: "base_url", Value: "https://x"}}
 	resp := doJSON(t, m, true, http.MethodGet, workflowVarsPath(), nil)
 	assertStatus(t, resp, http.StatusOK)
 	var out []presenter.VariableResponse
 	testutil.DecodeJSON(t, resp, &out)
-	if len(out) != 1 || out[0].Name != "base_url" {
+	if len(out) != 1 || out[0].Name != "base_url" || out[0].ID != testVariableID.String() {
 		t.Fatalf("unexpected %+v", out)
 	}
 }
@@ -37,9 +37,14 @@ func TestVariableHandler_ListStatics_WorkflowNotFound(t *testing.T) {
 
 func TestVariableHandler_GetStatic_Success(t *testing.T) {
 	m := newMocks()
-	m.getStatic.out = &domainworkflow.StaticVariable{Name: "base_url", Value: "https://x"}
+	m.getStatic.out = &domainworkflow.StaticVariable{ID: testVariableID, Name: "base_url", Value: "https://x"}
 	resp := doJSON(t, m, true, http.MethodGet, workflowVarsPath()+"/base_url", nil)
 	assertStatus(t, resp, http.StatusOK)
+	var out presenter.VariableResponse
+	testutil.DecodeJSON(t, resp, &out)
+	if out.ID != testVariableID.String() || out.Name != "base_url" {
+		t.Fatalf("unexpected %+v", out)
+	}
 	if m.getStatic.got.Name != "base_url" || m.getStatic.got.WorkflowID != testWorkflowID {
 		t.Fatalf("unexpected query %+v", m.getStatic.got)
 	}
@@ -59,6 +64,11 @@ func TestVariableHandler_CreateStatic_Success(t *testing.T) {
 	m := newMocks()
 	resp := doJSON(t, m, true, http.MethodPost, workflowVarsPath(), map[string]any{"name": "base_url", "value": "https://x"})
 	assertStatus(t, resp, http.StatusCreated)
+	var out presenter.VariableResponse
+	testutil.DecodeJSON(t, resp, &out)
+	if out.ID != testVariableID.String() || out.Name != "base_url" {
+		t.Fatalf("unexpected %+v", out)
+	}
 	if m.createStatic.got.Name != "base_url" || m.createStatic.got.WorkflowID != testWorkflowID {
 		t.Fatalf("unexpected command %+v", m.createStatic.got)
 	}

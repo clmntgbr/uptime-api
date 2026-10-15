@@ -116,7 +116,7 @@ func (m *mockCreateStatic) Handle(_ context.Context, cmd cmdvariable.CreateStati
 	if m.out != nil {
 		return m.out, nil
 	}
-	return &domainworkflow.StaticVariable{Name: cmd.Name, Value: cmd.Value}, nil
+	return &domainworkflow.StaticVariable{ID: testVariableID, Name: cmd.Name, Value: cmd.Value}, nil
 }
 
 type mockUpdateStatic struct {
@@ -135,7 +135,7 @@ func (m *mockUpdateStatic) Handle(_ context.Context, cmd cmdvariable.UpdateStati
 	if m.out != nil {
 		return m.out, nil
 	}
-	return &domainworkflow.StaticVariable{Name: cmd.Name, Value: cmd.Value}, nil
+	return &domainworkflow.StaticVariable{ID: testVariableID, Name: cmd.Name, Value: cmd.Value}, nil
 }
 
 type mockDeleteStatic struct {
@@ -190,7 +190,7 @@ func (m *mockCreateCall) Handle(_ context.Context, cmd cmdvariable.CreateCallVar
 	if m.out != nil {
 		return m.out, nil
 	}
-	return &domaincall.Extraction{Name: cmd.Name, Source: domaincall.ExtractJSON, Expression: cmd.Path}, nil
+	return &domaincall.Extraction{ID: testVariableID, Name: cmd.Name, Source: domaincall.ExtractJSON, Expression: cmd.Path}, nil
 }
 
 type mockUpdateCall struct {
@@ -209,7 +209,7 @@ func (m *mockUpdateCall) Handle(_ context.Context, cmd cmdvariable.UpdateCallVar
 	if m.out != nil {
 		return m.out, nil
 	}
-	return &domaincall.Extraction{Name: cmd.Name, Source: domaincall.ExtractJSON, Expression: cmd.Path}, nil
+	return &domaincall.Extraction{ID: testVariableID, Name: cmd.Name, Source: domaincall.ExtractJSON, Expression: cmd.Path}, nil
 }
 
 type mockDeleteCall struct {

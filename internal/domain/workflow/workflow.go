@@ -204,12 +204,21 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 			existingIDs[c.Name] = c.ID
 		}
 
+		existingByName := make(map[string]domaincall.Call, len(w.Calls))
+		for _, c := range w.Calls {
+			existingByName[c.Name] = c
+		}
+
 		calls = make([]domaincall.Call, 0, len(def.Calls))
 		callNames := map[string]struct{}{}
 		for i, cd := range def.Calls {
-			id, ok := existingIDs[strings.TrimSpace(cd.Name)]
+			name := strings.TrimSpace(cd.Name)
+			id, ok := existingIDs[name]
 			if !ok {
 				id = uuid.New()
+			}
+			if prev, ok := existingByName[name]; ok {
+				cd = withPreservedExtractionIDs(cd, prev.Extractions)
 			}
 			call, err := domaincall.New(cd, i+1, id)
 			if err != nil {

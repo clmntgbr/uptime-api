@@ -164,9 +164,6 @@ func validCallBody() map[string]any {
 		"timeoutMs": 5000,
 		"verifyTls": true,
 		"ipVersion": "any",
-		"extractions": []map[string]any{
-			{"name": "token", "source": "json", "expression": "$.access_token"},
-		},
 		"rules": []map[string]any{
 			{"subject": "status", "operator": "is", "value": "200"},
 		},

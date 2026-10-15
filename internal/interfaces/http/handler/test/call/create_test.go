@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	domaincall "go-api/internal/domain/call"
 	domainrule "go-api/internal/domain/rule"
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/interfaces/http/presenter"
@@ -25,8 +24,7 @@ func TestCallHandler_Create_Success(t *testing.T) {
 	cmd := m.create.got
 	if cmd.UserID != testutil.TestUserID || cmd.WorkflowID != testWorkflowID ||
 		cmd.Definition.Name != "login" || cmd.Definition.Method != "POST" ||
-		cmd.Definition.Timeout != 5*time.Second || len(cmd.Definition.Extractions) != 1 ||
-		cmd.Definition.Extractions[0].Source != domaincall.ExtractJSON ||
+		cmd.Definition.Timeout != 5*time.Second || len(cmd.Definition.Extractions) != 0 ||
 		len(cmd.Definition.Rules) != 1 || cmd.Definition.Rules[0].Subject != domainrule.SubjectStatus {
 		t.Fatalf("unexpected command %+v", cmd)
 	}

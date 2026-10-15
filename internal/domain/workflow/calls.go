@@ -37,6 +37,8 @@ func (w *Workflow) AddCall(def domaincall.Definition, globalNames []string) (dom
 }
 
 // ReplaceCall updates an existing call in place (same id and position).
+// Call variables are owned by AddCallVariable / UpdateCallVariable / RemoveCallVariable
+// and are never replaced from the call definition.
 func (w *Workflow) ReplaceCall(callID uuid.UUID, def domaincall.Definition, globalNames []string) (domaincall.Call, error) {
 	index := -1
 	for i, c := range w.Calls {
@@ -49,6 +51,7 @@ func (w *Workflow) ReplaceCall(callID uuid.UUID, def domaincall.Definition, glob
 		return domaincall.Call{}, ErrCallNotFound
 	}
 
+	def.Extractions = append([]domaincall.Extraction{}, w.Calls[index].Extractions...)
 	call, err := domaincall.New(def, w.Calls[index].Position, callID)
 	if err != nil {
 		return domaincall.Call{}, mapCallError(err)
@@ -105,4 +108,28 @@ func mapCallError(err error) error {
 		return &ValidationError{Call: cerr.Call, Message: cerr.Message}
 	}
 	return err
+}
+
+// withPreservedExtractionIDs copies existing extraction IDs matched by name
+// onto the definition so ReplaceCall / apply do not rotate stable variable IDs.
+func withPreservedExtractionIDs(def domaincall.Definition, existing []domaincall.Extraction) domaincall.Definition {
+	if len(def.Extractions) == 0 || len(existing) == 0 {
+		return def
+	}
+	byName := make(map[string]uuid.UUID, len(existing))
+	for _, e := range existing {
+		byName[e.Name] = e.ID
+	}
+	out := make([]domaincall.Extraction, len(def.Extractions))
+	copy(out, def.Extractions)
+	for i := range out {
+		if out[i].ID != uuid.Nil {
+			continue
+		}
+		if id, ok := byName[strings.TrimSpace(out[i].Name)]; ok && id != uuid.Nil {
+			out[i].ID = id
+		}
+	}
+	def.Extractions = out
+	return def
 }

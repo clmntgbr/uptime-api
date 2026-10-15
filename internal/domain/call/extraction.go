@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"go-api/internal/domain/variable"
+
+	"github.com/google/uuid"
 )
 
 type ExtractionSource string
@@ -24,6 +26,7 @@ const (
 
 // Extraction declares a `call` variable produced from the call response.
 type Extraction struct {
+	ID         uuid.UUID
 	Name       string
 	Source     ExtractionSource
 	Expression string

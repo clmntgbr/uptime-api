@@ -65,10 +65,13 @@ type VariableModel struct {
 	ID         uuid.UUID  `gorm:"column:id;primaryKey"`
 	UserID     uuid.UUID  `gorm:"column:user_id"`
 	WorkflowID *uuid.UUID `gorm:"column:workflow_id"`
+	CallID     *uuid.UUID `gorm:"column:call_id"`
 	Type       string     `gorm:"column:type"`
 	Name       string     `gorm:"column:name"`
 	Value      string     `gorm:"column:value"`
 	Secret     bool       `gorm:"column:secret"`
+	Source     *string    `gorm:"column:source"`
+	Path       *string    `gorm:"column:path"`
 	CreatedAt  time.Time  `gorm:"column:created_at"`
 	UpdatedAt  time.Time  `gorm:"column:updated_at"`
 }

@@ -13,12 +13,12 @@ import (
 
 func TestVariableHandler_ListCallVariables_Success(t *testing.T) {
 	m := newMocks()
-	m.listCall.out = []domaincall.Extraction{{Name: "token", Source: domaincall.ExtractJSON, Expression: "$.token"}}
+	m.listCall.out = []domaincall.Extraction{{ID: testVariableID, Name: "token", Source: domaincall.ExtractJSON, Expression: "$.token"}}
 	resp := doJSON(t, m, true, http.MethodGet, callVarsPath(), nil)
 	assertStatus(t, resp, http.StatusOK)
 	var out []presenter.VariableResponse
 	testutil.DecodeJSON(t, resp, &out)
-	if len(out) != 1 || out[0].Path != "$.token" {
+	if len(out) != 1 || out[0].Path != "$.token" || out[0].ID != testVariableID.String() {
 		t.Fatalf("unexpected %+v", out)
 	}
 }
@@ -40,9 +40,14 @@ func TestVariableHandler_ListCallVariables_CallNotFound(t *testing.T) {
 
 func TestVariableHandler_GetCallVariable_Success(t *testing.T) {
 	m := newMocks()
-	m.getCall.out = &domaincall.Extraction{Name: "token", Source: domaincall.ExtractJSON, Expression: "$.token"}
+	m.getCall.out = &domaincall.Extraction{ID: testVariableID, Name: "token", Source: domaincall.ExtractJSON, Expression: "$.token"}
 	resp := doJSON(t, m, true, http.MethodGet, callVarsPath()+"/token", nil)
 	assertStatus(t, resp, http.StatusOK)
+	var out presenter.VariableResponse
+	testutil.DecodeJSON(t, resp, &out)
+	if out.ID != testVariableID.String() || out.Name != "token" {
+		t.Fatalf("unexpected %+v", out)
+	}
 	if m.getCall.got.Name != "token" || m.getCall.got.CallID != testCallID {
 		t.Fatalf("unexpected query %+v", m.getCall.got)
 	}
@@ -63,6 +68,11 @@ func TestVariableHandler_CreateCallVariable_Success(t *testing.T) {
 	body := map[string]any{"name": "token", "path": "$.access_token", "source": "json"}
 	resp := doJSON(t, m, true, http.MethodPost, callVarsPath(), body)
 	assertStatus(t, resp, http.StatusCreated)
+	var out presenter.VariableResponse
+	testutil.DecodeJSON(t, resp, &out)
+	if out.ID != testVariableID.String() || out.Name != "token" {
+		t.Fatalf("unexpected %+v", out)
+	}
 	if m.createCall.got.Name != "token" || m.createCall.got.Path != "$.access_token" || m.createCall.got.Source != "json" {
 		t.Fatalf("unexpected command %+v", m.createCall.got)
 	}

@@ -4,6 +4,8 @@ import (
 	domaincall "go-api/internal/domain/call"
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
+
+	"github.com/google/uuid"
 )
 
 type VariableResponse struct {
@@ -46,6 +48,7 @@ func NewStaticVariableResponse(s domainworkflow.StaticVariable) VariableResponse
 		value = variable.MaskedValue
 	}
 	return VariableResponse{
+		ID:     s.ID.String(),
 		Name:   s.Name,
 		Type:   string(variable.TypeStatic),
 		Value:  value,
@@ -62,13 +65,17 @@ func NewStaticVariableListResponse(statics []domainworkflow.StaticVariable) []Va
 }
 
 func NewCallVariableResponse(e domaincall.Extraction) VariableResponse {
-	return VariableResponse{
+	resp := VariableResponse{
 		Name:   e.Name,
 		Type:   string(variable.TypeCall),
 		Path:   e.Expression,
 		Source: string(e.Source),
 		Secret: e.Secret,
 	}
+	if e.ID != uuid.Nil {
+		resp.ID = e.ID.String()
+	}
+	return resp
 }
 
 func NewCallVariableListResponse(extractions []domaincall.Extraction) []VariableResponse {

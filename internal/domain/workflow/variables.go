@@ -115,6 +115,9 @@ func (w *Workflow) AddCallVariable(callID uuid.UUID, extraction domaincall.Extra
 			return domaincall.Extraction{}, variable.ErrAlreadyExists
 		}
 	}
+	if normalized.ID == uuid.Nil {
+		normalized.ID = uuid.New()
+	}
 	nextCalls := append([]domaincall.Call{}, w.Calls...)
 	nextCalls[index].Extractions = append(append([]domaincall.Extraction{}, nextCalls[index].Extractions...), normalized)
 	if err := validateVariables(w.Statics, nextCalls, globalNames); err != nil {
@@ -152,6 +155,10 @@ func (w *Workflow) UpdateCallVariable(callID uuid.UUID, name string, extraction 
 				return domaincall.Extraction{}, variable.ErrAlreadyExists
 			}
 		}
+	}
+	normalized.ID = w.Calls[index].Extractions[extIndex].ID
+	if normalized.ID == uuid.Nil {
+		normalized.ID = uuid.New()
 	}
 	nextCalls := append([]domaincall.Call{}, w.Calls...)
 	nextExt := append([]domaincall.Extraction{}, nextCalls[index].Extractions...)
