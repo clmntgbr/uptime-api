@@ -8,6 +8,7 @@ import (
 	"go-api/internal/domain/variable"
 
 	"github.com/google/uuid"
+	"github.com/ohler55/ojg/jp"
 )
 
 type ExtractionSource string
@@ -59,6 +60,9 @@ func normalizeExtraction(e Extraction) (Extraction, error) {
 	case ExtractJSON:
 		if !strings.HasPrefix(e.Expression, "$") {
 			return Extraction{}, fmt.Errorf("extraction %q: JSONPath must start with $", e.Name)
+		}
+		if _, err := jp.ParseString(e.Expression); err != nil {
+			return Extraction{}, fmt.Errorf("extraction %q: invalid JSONPath %q (array index is $[0].id, not $.[0].id)", e.Name, e.Expression)
 		}
 	case ExtractHeader:
 		if e.Expression == "" || strings.ContainsAny(e.Expression, " \t:") {

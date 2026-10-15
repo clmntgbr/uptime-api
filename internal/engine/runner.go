@@ -152,7 +152,10 @@ func (r *Runner) runCall(ctx context.Context, state *run, call contract.JobCall)
 
 	rendered, used, missing := state.render(call)
 	if len(missing) > 0 {
-		return skippedCall(call, started, state.missingReason(missing))
+		cr := skippedCall(call, started, state.missingReason(missing))
+		// Include resolved and missing names so the UI shows what the call referenced.
+		cr.UsedVariables = mergeSortedUnique(used, missing)
+		return cr
 	}
 
 	cr := contract.CallRun{
@@ -423,4 +426,18 @@ func sortedSet(set map[string]struct{}, skipBuiltins bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func mergeSortedUnique(a, b []string) []string {
+	if len(a) == 0 && len(b) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(a)+len(b))
+	for _, s := range a {
+		set[s] = struct{}{}
+	}
+	for _, s := range b {
+		set[s] = struct{}{}
+	}
+	return sortedSet(set, true)
 }

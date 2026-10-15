@@ -283,6 +283,9 @@ func TestRun_FailedExtractionSkipsDependents(t *testing.T) {
 	if result.Calls[1].Status != contract.CallStatusSkipped || !strings.Contains(result.Calls[1].Reason, `{{first_id}} (not extracted by "list")`) {
 		t.Fatalf("dependent call must be skipped with the reason: %+v", result.Calls[1])
 	}
+	if strings.Join(result.Calls[1].UsedVariables, ",") != "base_url,first_id" {
+		t.Fatalf("skipped call must still list referenced variables, got %v", result.Calls[1].UsedVariables)
+	}
 	if result.Calls[2].Status != contract.CallStatusSuccess || len(exec.requests) != 2 {
 		t.Fatal("independent calls must still run")
 	}
