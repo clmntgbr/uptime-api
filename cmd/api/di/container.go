@@ -13,6 +13,7 @@ import (
 	variablecmd "go-api/internal/application/command/variable"
 	workflowcmd "go-api/internal/application/command/workflow"
 	querycall "go-api/internal/application/query/call"
+	querystats "go-api/internal/application/query/stats"
 	queryuser "go-api/internal/application/query/user"
 	queryvariable "go-api/internal/application/query/variable"
 	queryworkflow "go-api/internal/application/query/workflow"
@@ -38,6 +39,7 @@ type Container struct {
 	UserWebhookHandler     *httphandler.UserWebhookHandler
 	UserHandler            *httphandler.UserHandler
 	RealtimeHandler        *httphandler.RealtimeHandler
+	StatsHandler           *httphandler.StatsHandler
 	WorkflowHandler        *httphandler.WorkflowHandler
 	CallHandler            *httphandler.CallHandler
 	VariableHandler        *httphandler.VariableHandler
@@ -79,6 +81,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	workflowWriteRepo := write.NewWorkflowWriteRepository(db, cipher)
 	workflowReadRepo := read.NewWorkflowQueryRepository(db)
 	runReadRepo := read.NewRunQueryRepository(db)
+	statsRepo := read.NewStatsRepository(db)
 	stateRepo := write.NewStateRepository(db)
 	runWriteRepo := write.NewRunWriteRepository(db)
 	clock := port.SystemClock{}
@@ -112,6 +115,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		),
 		UserHandler:     httphandler.NewUserHandler(getUserByIDHandler),
 		RealtimeHandler: httphandler.NewRealtimeHandler(centrifugo.NewConnectionInfoCreator(env)),
+		StatsHandler:    httphandler.NewStatsHandler(querystats.NewGetDashboardHandler(statsRepo)),
 		WorkflowHandler: httphandler.NewWorkflowHandler(
 			workflowcmd.NewCreateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo, clock),
 			workflowcmd.NewUpdateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo, clock),
