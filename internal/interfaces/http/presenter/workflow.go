@@ -3,6 +3,7 @@ package presenter
 import (
 	"time"
 
+	domainschedule "go-api/internal/domain/schedule"
 	domainworkflow "go-api/internal/domain/workflow"
 )
 
@@ -36,6 +37,7 @@ type WorkflowResponse struct {
 	IntervalSeconds *int    `json:"intervalSeconds,omitempty"`
 	RunAt           *string `json:"runAt,omitempty"`
 	Enabled         bool    `json:"enabled"`
+	NextRunAt       *string `json:"nextRunAt,omitempty"`
 }
 
 func NewWorkflowResponseFromView(v domainworkflow.View) WorkflowResponse {
@@ -55,6 +57,10 @@ func NewWorkflowResponseFromView(v domainworkflow.View) WorkflowResponse {
 	if v.RunAt != nil {
 		s := v.RunAt.UTC().Format(time.RFC3339)
 		out.RunAt = &s
+	}
+	if v.NextRunAt != nil && !v.NextRunAt.Equal(domainschedule.Never) {
+		s := v.NextRunAt.UTC().Format(time.RFC3339)
+		out.NextRunAt = &s
 	}
 	return out
 }

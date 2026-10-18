@@ -58,8 +58,8 @@ func TestGetDashboardHandler_ComputesWindowAndSuccessRate(t *testing.T) {
 	if got.WindowHours != 24 || got.SuccessRate != 0.4 {
 		t.Fatalf("unexpected statistics %+v", got)
 	}
-	if got.Runs.Daily == nil || got.Calls.Daily == nil {
-		t.Fatal("daily must be non-nil empty slices")
+	if got.Runs.Daily == nil || got.Calls.Daily == nil || got.Incidents == nil {
+		t.Fatal("daily/incidents must be non-nil empty slices")
 	}
 }
 

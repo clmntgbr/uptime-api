@@ -7,11 +7,14 @@ import (
 )
 
 type DashboardStatisticsResponse struct {
-	WindowHours int                    `json:"windowHours"`
-	Workflows   WorkflowCountsResponse `json:"workflows"`
-	Runs        RunCountsResponse      `json:"runs"`
-	Calls       CallCountsResponse     `json:"calls"`
-	SuccessRate float64                `json:"successRate"`
+	WindowHours  int                     `json:"windowHours"`
+	Workflows    WorkflowCountsResponse  `json:"workflows"`
+	Runs         RunCountsResponse       `json:"runs"`
+	Calls        CallCountsResponse      `json:"calls"`
+	SuccessRate  float64                 `json:"successRate"`
+	LatencyP95Ms *int64                  `json:"latencyP95Ms"`
+	OpenIncident bool                    `json:"openIncident"`
+	Incidents    []IncidentRangeResponse `json:"incidents"`
 }
 
 type WorkflowCountsResponse struct {
@@ -31,13 +34,14 @@ type RunCountsResponse struct {
 }
 
 type RunDayCountsResponse struct {
-	Date    string `json:"date"`
-	Total   int64  `json:"total"`
-	Success int64  `json:"success"`
-	Failed  int64  `json:"failed"`
-	Error   int64  `json:"error"`
-	Skipped int64  `json:"skipped"`
-	Running int64  `json:"running"`
+	Date         string `json:"date"`
+	Total        int64  `json:"total"`
+	Success      int64  `json:"success"`
+	Failed       int64  `json:"failed"`
+	Error        int64  `json:"error"`
+	Skipped      int64  `json:"skipped"`
+	Running      int64  `json:"running"`
+	LatencyP95Ms *int64 `json:"latencyP95Ms"`
 }
 
 type CallCountsResponse struct {
@@ -58,17 +62,23 @@ type CallDayCountsResponse struct {
 	Skipped int64  `json:"skipped"`
 }
 
+type IncidentRangeResponse struct {
+	Start string  `json:"start"`
+	End   *string `json:"end"`
+}
+
 func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) DashboardStatisticsResponse {
 	runDaily := make([]RunDayCountsResponse, 0, len(s.Runs.Daily))
 	for _, d := range s.Runs.Daily {
 		runDaily = append(runDaily, RunDayCountsResponse{
-			Date:    d.Date.UTC().Format(time.DateOnly),
-			Total:   d.Total,
-			Success: d.Success,
-			Failed:  d.Failed,
-			Error:   d.Error,
-			Skipped: d.Skipped,
-			Running: d.Running,
+			Date:         d.Date.UTC().Format(time.DateOnly),
+			Total:        d.Total,
+			Success:      d.Success,
+			Failed:       d.Failed,
+			Error:        d.Error,
+			Skipped:      d.Skipped,
+			Running:      d.Running,
+			LatencyP95Ms: d.LatencyP95Ms,
 		})
 	}
 	callDaily := make([]CallDayCountsResponse, 0, len(s.Calls.Daily))
@@ -81,6 +91,15 @@ func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) Dash
 			Error:   d.Error,
 			Skipped: d.Skipped,
 		})
+	}
+	incidents := make([]IncidentRangeResponse, 0, len(s.Incidents))
+	for _, inc := range s.Incidents {
+		item := IncidentRangeResponse{Start: inc.Start.UTC().Format(time.RFC3339)}
+		if inc.End != nil {
+			end := inc.End.UTC().Format(time.RFC3339)
+			item.End = &end
+		}
+		incidents = append(incidents, item)
 	}
 	return DashboardStatisticsResponse{
 		WindowHours: s.WindowHours,
@@ -96,6 +115,9 @@ func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) Dash
 			Total: s.Calls.Total, Success: s.Calls.Success, Failed: s.Calls.Failed,
 			Error: s.Calls.Error, Skipped: s.Calls.Skipped, Daily: callDaily,
 		},
-		SuccessRate: s.SuccessRate,
+		SuccessRate:  s.SuccessRate,
+		LatencyP95Ms: s.LatencyP95Ms,
+		OpenIncident: s.OpenIncident,
+		Incidents:    incidents,
 	}
 }

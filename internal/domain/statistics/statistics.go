@@ -9,11 +9,14 @@ import (
 
 // DashboardStatistics is the read model for the account dashboard.
 type DashboardStatistics struct {
-	WindowHours int
-	Workflows   WorkflowCounts
-	Runs        RunCounts
-	Calls       CallCounts
-	SuccessRate float64
+	WindowHours  int
+	Workflows    WorkflowCounts
+	Runs         RunCounts
+	Calls        CallCounts
+	SuccessRate  float64
+	LatencyP95Ms *int64
+	OpenIncident bool
+	Incidents    []IncidentRange
 }
 
 type WorkflowCounts struct {
@@ -35,13 +38,14 @@ type RunCounts struct {
 
 // RunDayCounts is one calendar day of run aggregates (UTC).
 type RunDayCounts struct {
-	Date    time.Time
-	Total   int64
-	Success int64
-	Failed  int64
-	Error   int64
-	Skipped int64
-	Running int64
+	Date         time.Time
+	Total        int64
+	Success      int64
+	Failed       int64
+	Error        int64
+	Skipped      int64
+	Running      int64
+	LatencyP95Ms *int64
 }
 
 type CallCounts struct {
@@ -62,6 +66,13 @@ type CallDayCounts struct {
 	Failed  int64
 	Error   int64
 	Skipped int64
+}
+
+// IncidentRange is a contiguous period of failed/error runs.
+// End is nil while the incident is still open (latest finished run is failing).
+type IncidentRange struct {
+	Start time.Time
+	End   *time.Time
 }
 
 // ReadRepository loads aggregated dashboard counters for a user.

@@ -26,6 +26,9 @@ func TestWorkflowHandler_GetByID_Success(t *testing.T) {
 	if out.ID != testWorkflowID.String() || out.Name != "Checkout" || out.ScheduleType != "interval" || out.IntervalSeconds == nil || *out.IntervalSeconds != 300 || !out.Enabled {
 		t.Fatalf("unexpected body %+v", out)
 	}
+	if out.NextRunAt == nil || *out.NextRunAt != "2026-10-13T12:05:00Z" {
+		t.Fatalf("expected nextRunAt, got %+v", out.NextRunAt)
+	}
 }
 
 func TestWorkflowHandler_GetByID_Unauthorized(t *testing.T) {
