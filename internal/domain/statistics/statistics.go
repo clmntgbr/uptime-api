@@ -1,4 +1,4 @@
-package stats
+package statistics
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// DashboardStats is the read model for the account dashboard.
-type DashboardStats struct {
+// DashboardStatistics is the read model for the account dashboard.
+type DashboardStatistics struct {
 	WindowHours int
 	Workflows   WorkflowCounts
 	Runs        RunCounts
@@ -68,5 +68,6 @@ type CallDayCounts struct {
 type ReadRepository interface {
 	// Dashboard loads 24h counters (since) and runs/calls daily series
 	// from dailySince through untilDay (inclusive, UTC dates).
-	Dashboard(ctx context.Context, userID uuid.UUID, since, dailySince, untilDay time.Time) (DashboardStats, error)
+	// When workflowID is set, all aggregates are scoped to that workflow.
+	Dashboard(ctx context.Context, userID uuid.UUID, workflowID *uuid.UUID, since, dailySince, untilDay time.Time) (DashboardStatistics, error)
 }

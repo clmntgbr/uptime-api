@@ -30,13 +30,13 @@ func setupAPIRoutes(app *fiber.App, container *di.Container) {
 	protected := public.Group("", container.AuthenticateMiddleware.Protected())
 	setupUserRoutes(protected, container)
 	setupRealtimeRoutes(protected, container)
-	setupStatsRoutes(protected, container)
+	setupStatisticsRoutes(protected, container)
 	setupVariableRoutes(protected, container)
 	setupWorkflowRoutes(protected, container)
 }
 
-func setupStatsRoutes(api fiber.Router, container *di.Container) {
-	api.Get("/stats", container.StatsHandler.GetDashboard)
+func setupStatisticsRoutes(api fiber.Router, container *di.Container) {
+	api.Get("/statistics", container.StatisticsHandler.GetDashboard)
 }
 
 func setupVariableRoutes(api fiber.Router, container *di.Container) {

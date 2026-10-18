@@ -3,10 +3,10 @@ package presenter
 import (
 	"time"
 
-	domainstats "go-api/internal/domain/stats"
+	domainstatistics "go-api/internal/domain/statistics"
 )
 
-type DashboardStatsResponse struct {
+type DashboardStatisticsResponse struct {
 	WindowHours int                    `json:"windowHours"`
 	Workflows   WorkflowCountsResponse `json:"workflows"`
 	Runs        RunCountsResponse      `json:"runs"`
@@ -21,12 +21,12 @@ type WorkflowCountsResponse struct {
 }
 
 type RunCountsResponse struct {
-	Total   int64                 `json:"total"`
-	Success int64                 `json:"success"`
-	Failed  int64                 `json:"failed"`
-	Error   int64                 `json:"error"`
-	Skipped int64                 `json:"skipped"`
-	Running int64                 `json:"running"`
+	Total   int64                  `json:"total"`
+	Success int64                  `json:"success"`
+	Failed  int64                  `json:"failed"`
+	Error   int64                  `json:"error"`
+	Skipped int64                  `json:"skipped"`
+	Running int64                  `json:"running"`
 	Daily   []RunDayCountsResponse `json:"daily"`
 }
 
@@ -58,7 +58,7 @@ type CallDayCountsResponse struct {
 	Skipped int64  `json:"skipped"`
 }
 
-func NewDashboardStatsResponse(s domainstats.DashboardStats) DashboardStatsResponse {
+func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) DashboardStatisticsResponse {
 	runDaily := make([]RunDayCountsResponse, 0, len(s.Runs.Daily))
 	for _, d := range s.Runs.Daily {
 		runDaily = append(runDaily, RunDayCountsResponse{
@@ -82,7 +82,7 @@ func NewDashboardStatsResponse(s domainstats.DashboardStats) DashboardStatsRespo
 			Skipped: d.Skipped,
 		})
 	}
-	return DashboardStatsResponse{
+	return DashboardStatisticsResponse{
 		WindowHours: s.WindowHours,
 		Workflows: WorkflowCountsResponse{
 			Total: s.Workflows.Total, Active: s.Workflows.Active, Disabled: s.Workflows.Disabled,
