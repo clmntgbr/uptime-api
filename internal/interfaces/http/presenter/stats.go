@@ -21,20 +21,31 @@ type WorkflowCountsResponse struct {
 }
 
 type RunCountsResponse struct {
-	Total   int64 `json:"total"`
-	Success int64 `json:"success"`
-	Failed  int64 `json:"failed"`
-	Error   int64 `json:"error"`
-	Skipped int64 `json:"skipped"`
-	Running int64 `json:"running"`
+	Total   int64                 `json:"total"`
+	Success int64                 `json:"success"`
+	Failed  int64                 `json:"failed"`
+	Error   int64                 `json:"error"`
+	Skipped int64                 `json:"skipped"`
+	Running int64                 `json:"running"`
+	Daily   []RunDayCountsResponse `json:"daily"`
+}
+
+type RunDayCountsResponse struct {
+	Date    string `json:"date"`
+	Total   int64  `json:"total"`
+	Success int64  `json:"success"`
+	Failed  int64  `json:"failed"`
+	Error   int64  `json:"error"`
+	Skipped int64  `json:"skipped"`
+	Running int64  `json:"running"`
 }
 
 type CallCountsResponse struct {
-	Total   int64                  `json:"total"`
-	Success int64                  `json:"success"`
-	Failed  int64                  `json:"failed"`
-	Error   int64                  `json:"error"`
-	Skipped int64                  `json:"skipped"`
+	Total   int64                   `json:"total"`
+	Success int64                   `json:"success"`
+	Failed  int64                   `json:"failed"`
+	Error   int64                   `json:"error"`
+	Skipped int64                   `json:"skipped"`
 	Daily   []CallDayCountsResponse `json:"daily"`
 }
 
@@ -48,9 +59,21 @@ type CallDayCountsResponse struct {
 }
 
 func NewDashboardStatsResponse(s domainstats.DashboardStats) DashboardStatsResponse {
-	daily := make([]CallDayCountsResponse, 0, len(s.Calls.Daily))
+	runDaily := make([]RunDayCountsResponse, 0, len(s.Runs.Daily))
+	for _, d := range s.Runs.Daily {
+		runDaily = append(runDaily, RunDayCountsResponse{
+			Date:    d.Date.UTC().Format(time.DateOnly),
+			Total:   d.Total,
+			Success: d.Success,
+			Failed:  d.Failed,
+			Error:   d.Error,
+			Skipped: d.Skipped,
+			Running: d.Running,
+		})
+	}
+	callDaily := make([]CallDayCountsResponse, 0, len(s.Calls.Daily))
 	for _, d := range s.Calls.Daily {
-		daily = append(daily, CallDayCountsResponse{
+		callDaily = append(callDaily, CallDayCountsResponse{
 			Date:    d.Date.UTC().Format(time.DateOnly),
 			Total:   d.Total,
 			Success: d.Success,
@@ -67,10 +90,11 @@ func NewDashboardStatsResponse(s domainstats.DashboardStats) DashboardStatsRespo
 		Runs: RunCountsResponse{
 			Total: s.Runs.Total, Success: s.Runs.Success, Failed: s.Runs.Failed,
 			Error: s.Runs.Error, Skipped: s.Runs.Skipped, Running: s.Runs.Running,
+			Daily: runDaily,
 		},
 		Calls: CallCountsResponse{
 			Total: s.Calls.Total, Success: s.Calls.Success, Failed: s.Calls.Failed,
-			Error: s.Calls.Error, Skipped: s.Calls.Skipped, Daily: daily,
+			Error: s.Calls.Error, Skipped: s.Calls.Skipped, Daily: callDaily,
 		},
 		SuccessRate: s.SuccessRate,
 	}

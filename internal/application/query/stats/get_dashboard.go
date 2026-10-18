@@ -43,6 +43,9 @@ func (h *GetDashboardHandler) Handle(ctx context.Context, q GetDashboardQuery) (
 		return domainstats.DashboardStats{}, err
 	}
 	stats.WindowHours = int(dashboardWindow / time.Hour)
+	if stats.Runs.Daily == nil {
+		stats.Runs.Daily = []domainstats.RunDayCounts{}
+	}
 	if stats.Calls.Daily == nil {
 		stats.Calls.Daily = []domainstats.CallDayCounts{}
 	}

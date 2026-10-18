@@ -29,6 +29,19 @@ type RunCounts struct {
 	Error   int64
 	Skipped int64
 	Running int64
+	// Daily is day-by-day run volume over the history window (zero-filled).
+	Daily []RunDayCounts
+}
+
+// RunDayCounts is one calendar day of run aggregates (UTC).
+type RunDayCounts struct {
+	Date    time.Time
+	Total   int64
+	Success int64
+	Failed  int64
+	Error   int64
+	Skipped int64
+	Running int64
 }
 
 type CallCounts struct {
@@ -53,7 +66,7 @@ type CallDayCounts struct {
 
 // ReadRepository loads aggregated dashboard counters for a user.
 type ReadRepository interface {
-	// Dashboard loads 24h counters (since) and the calls daily series
+	// Dashboard loads 24h counters (since) and runs/calls daily series
 	// from dailySince through untilDay (inclusive, UTC dates).
 	Dashboard(ctx context.Context, userID uuid.UUID, since, dailySince, untilDay time.Time) (DashboardStats, error)
 }

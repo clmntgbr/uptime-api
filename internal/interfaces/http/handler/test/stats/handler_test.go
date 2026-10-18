@@ -59,7 +59,13 @@ func TestStatsHandler_GetDashboard_Success(t *testing.T) {
 	m := &mockDashboardHandler{out: domainstats.DashboardStats{
 		WindowHours: 24,
 		Workflows:   domainstats.WorkflowCounts{Total: 3, Active: 2, Disabled: 1},
-		Runs:        domainstats.RunCounts{Total: 10, Success: 7, Failed: 2, Error: 1},
+		Runs: domainstats.RunCounts{
+			Total: 10, Success: 7, Failed: 2, Error: 1,
+			Daily: []domainstats.RunDayCounts{{
+				Date: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
+				Total: 3, Success: 2, Failed: 1,
+			}},
+		},
 		Calls: domainstats.CallCounts{
 			Total: 20, Success: 15, Failed: 3, Error: 1, Skipped: 1,
 			Daily: []domainstats.CallDayCounts{{
@@ -82,8 +88,11 @@ func TestStatsHandler_GetDashboard_Success(t *testing.T) {
 		out.Calls.Failed != 3 || out.SuccessRate != 0.7 {
 		t.Fatalf("unexpected body %+v", out)
 	}
+	if len(out.Runs.Daily) != 1 || out.Runs.Daily[0].Date != "2026-10-15" || out.Runs.Daily[0].Total != 3 {
+		t.Fatalf("unexpected runs daily %+v", out.Runs.Daily)
+	}
 	if len(out.Calls.Daily) != 1 || out.Calls.Daily[0].Date != "2026-10-15" || out.Calls.Daily[0].Total != 5 {
-		t.Fatalf("unexpected daily %+v", out.Calls.Daily)
+		t.Fatalf("unexpected calls daily %+v", out.Calls.Daily)
 	}
 }
 
