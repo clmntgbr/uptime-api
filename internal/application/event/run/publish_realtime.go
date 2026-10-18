@@ -20,12 +20,28 @@ func NewPublishRealtimeHandler(realtimePublisher port.RealtimePublisher) *Publis
 	}
 }
 
-func (h *PublishRealtimeHandler) OnProgressed(ctx context.Context, payload []byte) error {
-	var evt domainrun.RunProgressed
+func (h *PublishRealtimeHandler) OnStarted(ctx context.Context, payload []byte) error {
+	var evt domainrun.RunStarted
 	if err := json.Unmarshal(payload, &evt); err != nil {
 		return messaging.NonRetryable(err)
 	}
-	return h.publisher.ToUser(ctx, realtime.EntityRun, realtime.ActionUpdated, evt.UserID, evt)
+	return h.publisher.ToUser(ctx, realtime.EntityWorkflow, realtime.ActionStarted, evt.UserID, evt)
+}
+
+func (h *PublishRealtimeHandler) OnCallStarted(ctx context.Context, payload []byte) error {
+	var evt domainrun.CallStarted
+	if err := json.Unmarshal(payload, &evt); err != nil {
+		return messaging.NonRetryable(err)
+	}
+	return h.publisher.ToUser(ctx, realtime.EntityCall, realtime.ActionStarted, evt.UserID, evt)
+}
+
+func (h *PublishRealtimeHandler) OnCallFinished(ctx context.Context, payload []byte) error {
+	var evt domainrun.CallFinished
+	if err := json.Unmarshal(payload, &evt); err != nil {
+		return messaging.NonRetryable(err)
+	}
+	return h.publisher.ToUser(ctx, realtime.EntityCall, realtime.ActionFinished, evt.UserID, evt)
 }
 
 func (h *PublishRealtimeHandler) OnRecorded(ctx context.Context, payload []byte) error {
@@ -33,5 +49,5 @@ func (h *PublishRealtimeHandler) OnRecorded(ctx context.Context, payload []byte)
 	if err := json.Unmarshal(payload, &evt); err != nil {
 		return messaging.NonRetryable(err)
 	}
-	return h.publisher.ToUser(ctx, realtime.EntityRun, realtime.ActionUpdated, evt.UserID, evt)
+	return h.publisher.ToUser(ctx, realtime.EntityWorkflow, realtime.ActionFinished, evt.UserID, evt)
 }

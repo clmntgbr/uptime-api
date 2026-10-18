@@ -14,7 +14,8 @@ type WriteRepository interface {
 	// Save upserts the run and its call/rule runs (final result or full insert).
 	Save(ctx context.Context, r *Run) error
 	// EnsureRunning creates the run as status=running when missing.
-	EnsureRunning(ctx context.Context, r *Run) error
+	// created is true only when a new row was inserted.
+	EnsureRunning(ctx context.Context, r *Run) (created bool, err error)
 	// UpsertCallRun inserts or replaces one call_run by (run_id, position).
 	UpsertCallRun(ctx context.Context, run *Run, call CallRun) error
 }

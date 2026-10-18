@@ -104,10 +104,25 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		publishWorkflowRealtime.OnDeleted,
 	))
 
+	reg.Register(domainrun.EventTypeRunStarted, dedup.With(
+		dedupRepo,
+		"publish_run_started_realtime",
+		publishRunRealtime.OnStarted,
+	))
+	reg.Register(domainrun.EventTypeCallStarted, dedup.With(
+		dedupRepo,
+		"publish_call_started_realtime",
+		publishRunRealtime.OnCallStarted,
+	))
+	reg.Register(domainrun.EventTypeCallFinished, dedup.With(
+		dedupRepo,
+		"publish_call_finished_realtime",
+		publishRunRealtime.OnCallFinished,
+	))
 	reg.Register(domainrun.EventTypeRunProgressed, dedup.With(
 		dedupRepo,
 		"publish_run_progressed_realtime",
-		publishRunRealtime.OnProgressed,
+		publishRunRealtime.OnCallFinished,
 	))
 	reg.Register(domainrun.EventTypeRunRecorded, dedup.With(
 		dedupRepo,

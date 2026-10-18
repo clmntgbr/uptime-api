@@ -35,7 +35,9 @@ func NewRecordCallProgressHandler(
 	}
 }
 
-// Handle persists one call_run while the parent run stays status=running.
+// Handle persists progressive call progress and emits realtime-oriented domain events.
+// phase=started: ensure running run + outbox call.started (and run.started when created).
+// phase=finished: upsert call_run + outbox call.finished (and run.started when created).
 func (h *RecordCallProgressHandler) Handle(ctx context.Context, payload []byte) error {
 	var progress contract.CallProgress
 	if err := json.Unmarshal(payload, &progress); err != nil {
@@ -56,6 +58,7 @@ func (h *RecordCallProgressHandler) Handle(ctx context.Context, payload []byte) 
 	if startedAt.IsZero() {
 		startedAt = time.Now().UTC()
 	}
+	phase := progress.NormalizedPhase()
 
 	r := &domainrun.Run{
 		ID:         runID,
@@ -66,7 +69,6 @@ func (h *RecordCallProgressHandler) Handle(ctx context.Context, payload []byte) 
 		StartedAt:  startedAt,
 		Variables:  map[string]string{},
 	}
-	r.Progressed(call)
 
 	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
 		claimed, err := h.processed.MarkProcessed(txCtx, progress.ID, RecordCallProgressHandlerName)
@@ -76,11 +78,21 @@ func (h *RecordCallProgressHandler) Handle(ctx context.Context, payload []byte) 
 		if !claimed {
 			return nil
 		}
-		if err := h.runs.EnsureRunning(txCtx, r); err != nil {
+		created, err := h.runs.EnsureRunning(txCtx, r)
+		if err != nil {
 			return err
 		}
-		if err := h.runs.UpsertCallRun(txCtx, r, call); err != nil {
-			return err
+		if created {
+			r.Started()
+		}
+		switch phase {
+		case contract.CallProgressPhaseStarted:
+			r.CallStarted(call)
+		default:
+			r.CallFinished(call)
+			if err := h.runs.UpsertCallRun(txCtx, r, call); err != nil {
+				return err
+			}
 		}
 		return h.outbox.StoreEvents(txCtx, r.PullEvents())
 	})

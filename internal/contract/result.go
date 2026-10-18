@@ -15,6 +15,9 @@ const (
 	CallProgressVersion = 1
 	CallProgressType    = "workflow.call_progress"
 
+	CallProgressPhaseStarted  = "started"
+	CallProgressPhaseFinished = "finished"
+
 	RunStatusSuccess = "success"
 	RunStatusFailed  = "failed"
 	RunStatusRunning = "running"
@@ -25,12 +28,14 @@ const (
 	CallStatusSkipped = "skipped"
 )
 
-// CallProgress is published on `workflow.results` after each call finishes,
-// so the main worker can persist call_runs progressively. Secrets are masked.
+// CallProgress is published on `workflow.results` when a call starts or finishes,
+// so the main worker can persist call_runs progressively and push realtime events.
+// Secrets are masked.
 type CallProgress struct {
 	V          int       `json:"v"`
 	ID         string    `json:"id"`
 	Type       string    `json:"type"`
+	Phase      string    `json:"phase"`
 	UserID     string    `json:"user_id"`
 	WorkflowID string    `json:"workflow_id"`
 	RunID      string    `json:"run_id"`
@@ -46,6 +51,15 @@ func (p CallProgress) Validate() error {
 	if p.Type != CallProgressType {
 		return fmt.Errorf("%w: unexpected type %q", ErrInvalidResult, p.Type)
 	}
+	phase := p.Phase
+	if phase == "" {
+		phase = CallProgressPhaseFinished
+	}
+	switch phase {
+	case CallProgressPhaseStarted, CallProgressPhaseFinished:
+	default:
+		return fmt.Errorf("%w: unknown phase %q", ErrInvalidResult, p.Phase)
+	}
 	for field, value := range map[string]string{
 		"id": p.ID, "user_id": p.UserID, "workflow_id": p.WorkflowID, "run_id": p.RunID,
 	} {
@@ -53,20 +67,30 @@ func (p CallProgress) Validate() error {
 			return fmt.Errorf("%w: %s is not a uuid", ErrInvalidResult, field)
 		}
 	}
-	switch p.Call.Status {
-	case CallStatusSuccess, CallStatusFailed, CallStatusError, CallStatusSkipped:
-	default:
-		return fmt.Errorf("%w: call %q has unknown status %q", ErrInvalidResult, p.Call.Name, p.Call.Status)
+	if p.Call.Name == "" || p.Call.Order < 1 {
+		return fmt.Errorf("%w: call name and order are required", ErrInvalidResult)
 	}
 	if p.Call.CallID != "" {
 		if _, err := uuid.Parse(p.Call.CallID); err != nil {
 			return fmt.Errorf("%w: call %q has an invalid call_id", ErrInvalidResult, p.Call.Name)
 		}
 	}
-	if p.Call.Name == "" || p.Call.Order < 1 {
-		return fmt.Errorf("%w: call name and order are required", ErrInvalidResult)
+	if phase == CallProgressPhaseFinished {
+		switch p.Call.Status {
+		case CallStatusSuccess, CallStatusFailed, CallStatusError, CallStatusSkipped:
+		default:
+			return fmt.Errorf("%w: call %q has unknown status %q", ErrInvalidResult, p.Call.Name, p.Call.Status)
+		}
 	}
 	return nil
+}
+
+// NormalizedPhase returns the progress phase, defaulting empty to finished.
+func (p CallProgress) NormalizedPhase() string {
+	if p.Phase == "" {
+		return CallProgressPhaseFinished
+	}
+	return p.Phase
 }
 
 // Result is the single message worker-calls publishes on `workflow.results`

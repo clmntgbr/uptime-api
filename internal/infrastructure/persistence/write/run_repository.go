@@ -49,11 +49,11 @@ func (r *runWriteRepository) Save(ctx context.Context, run *domainrun.Run) error
 	return nil
 }
 
-func (r *runWriteRepository) EnsureRunning(ctx context.Context, run *domainrun.Run) error {
+func (r *runWriteRepository) EnsureRunning(ctx context.Context, run *domainrun.Run) (bool, error) {
 	db := DBWithContext(ctx, r.db)
 	variables, err := marshalJSONB(run.Variables)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if variables == nil {
 		variables = dbtype.JSONB([]byte("{}"))
@@ -70,10 +70,14 @@ func (r *runWriteRepository) EnsureRunning(ctx context.Context, run *domainrun.R
 		Variables:  variables,
 		RecordedAt: time.Now().UTC(),
 	}
-	return db.Clauses(clause.OnConflict{
+	res := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
 		DoNothing: true,
-	}).Create(&model).Error
+	}).Create(&model)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
 }
 
 func (r *runWriteRepository) UpsertCallRun(ctx context.Context, run *domainrun.Run, call domainrun.CallRun) error {

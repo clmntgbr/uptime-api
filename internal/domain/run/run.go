@@ -104,13 +104,44 @@ func (r *Run) Duration() time.Duration {
 	return r.FinishedAt.Sub(r.StartedAt)
 }
 
-// Progressed records a realtime-oriented event for one finished call.
-func (r *Run) Progressed(call CallRun) {
+// Started records that this run row was created as status=running.
+func (r *Run) Started() {
+	r.events = append(r.events, RunStarted{
+		ID:         uuid.New().String(),
+		RunID:      r.ID.String(),
+		WorkflowID: r.WorkflowID.String(),
+		UserID:     r.UserID.String(),
+		Trigger:    r.Trigger,
+		StartedAt:  r.StartedAt,
+		Timestamp:  time.Now().UTC(),
+	})
+}
+
+// CallStarted records that a call began executing inside this open run.
+func (r *Run) CallStarted(call CallRun) {
 	callID := ""
 	if call.CallID != nil {
 		callID = call.CallID.String()
 	}
-	r.events = append(r.events, RunProgressed{
+	r.events = append(r.events, CallStarted{
+		ID:         uuid.New().String(),
+		RunID:      r.ID.String(),
+		WorkflowID: r.WorkflowID.String(),
+		UserID:     r.UserID.String(),
+		CallID:     callID,
+		CallName:   call.Name,
+		Position:   call.Position,
+		Timestamp:  time.Now().UTC(),
+	})
+}
+
+// CallFinished records a realtime-oriented event for one finished call.
+func (r *Run) CallFinished(call CallRun) {
+	callID := ""
+	if call.CallID != nil {
+		callID = call.CallID.String()
+	}
+	r.events = append(r.events, CallFinished{
 		ID:         uuid.New().String(),
 		RunID:      r.ID.String(),
 		WorkflowID: r.WorkflowID.String(),

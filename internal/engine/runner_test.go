@@ -110,10 +110,16 @@ func TestRun_PublishesCallProgress(t *testing.T) {
 	if result.Counts.Success != 2 {
 		t.Fatalf("unexpected result %+v", result)
 	}
-	if len(pub.progresses) != 2 {
-		t.Fatalf("expected 2 progress messages, got %d", len(pub.progresses))
+	if len(pub.progresses) != 4 {
+		t.Fatalf("expected 4 progress messages (started+finished x2), got %d", len(pub.progresses))
 	}
-	if pub.progresses[0].Call.Name != "a" || pub.progresses[1].Call.Name != "b" {
+	if pub.progresses[0].Phase != contract.CallProgressPhaseStarted || pub.progresses[0].Call.Name != "a" {
+		t.Fatalf("unexpected first progress %+v", pub.progresses[0])
+	}
+	if pub.progresses[1].Phase != contract.CallProgressPhaseFinished || pub.progresses[1].Call.Name != "a" {
+		t.Fatalf("unexpected second progress %+v", pub.progresses[1])
+	}
+	if pub.progresses[2].Call.Name != "b" || pub.progresses[3].Call.Name != "b" {
 		t.Fatalf("unexpected progress order %+v", pub.progresses)
 	}
 	if pub.progresses[0].Type != contract.CallProgressType || pub.progresses[0].RunID != job.RunID {

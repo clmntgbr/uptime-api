@@ -40,7 +40,7 @@ func NewRunner(executor Executor, bodies port.BodyStore, clock port.Clock, logge
 	return &Runner{executor: executor, bodies: bodies, clock: clock, logger: logger}
 }
 
-// WithProgressPublisher streams each finished call to workflow.results before the final Result.
+// WithProgressPublisher streams call started/finished progress to workflow.results before the final Result.
 func (r *Runner) WithProgressPublisher(progress port.ResultPublisher) *Runner {
 	r.progress = progress
 	return r
@@ -110,9 +110,12 @@ func (r *Runner) Run(ctx context.Context, job contract.Job, secrets map[string]s
 	}
 
 	for _, call := range calls {
+		startedAt := r.clock.Now()
+		r.publishProgress(ctx, job, startedCall(call, startedAt), contract.CallProgressPhaseStarted)
+
 		var cr contract.CallRun
 		if ctx.Err() != nil {
-			cr = skippedCall(call, r.clock.Now(), "workflow timeout reached")
+			cr = skippedCall(call, startedAt, "workflow timeout reached")
 		} else {
 			cr = r.runCall(ctx, state, call)
 		}
@@ -127,7 +130,7 @@ func (r *Runner) Run(ctx context.Context, job contract.Job, secrets map[string]s
 			result.Counts.Skipped++
 		}
 		result.Calls = append(result.Calls, cr)
-		r.publishProgress(ctx, job, cr)
+		r.publishProgress(ctx, job, cr, contract.CallProgressPhaseFinished)
 	}
 
 	result.FinishedAt = r.clock.Now()
@@ -140,7 +143,7 @@ func (r *Runner) Run(ctx context.Context, job contract.Job, secrets map[string]s
 	return result
 }
 
-func (r *Runner) publishProgress(ctx context.Context, job contract.Job, cr contract.CallRun) {
+func (r *Runner) publishProgress(ctx context.Context, job contract.Job, cr contract.CallRun, phase string) {
 	if r.progress == nil {
 		return
 	}
@@ -148,6 +151,7 @@ func (r *Runner) publishProgress(ctx context.Context, job contract.Job, cr contr
 		V:          contract.CallProgressVersion,
 		ID:         uuid.NewString(),
 		Type:       contract.CallProgressType,
+		Phase:      phase,
 		UserID:     job.UserID,
 		WorkflowID: job.WorkflowID,
 		RunID:      job.RunID,
@@ -157,7 +161,17 @@ func (r *Runner) publishProgress(ctx context.Context, job contract.Job, cr contr
 	}
 	if err := r.progress.PublishCallProgress(ctx, progress); err != nil {
 		r.logger.Warn("call progress publish failed; final result still records the call",
-			"run_id", job.RunID, "call", cr.Name, "error", err)
+			"run_id", job.RunID, "call", cr.Name, "phase", phase, "error", err)
+	}
+}
+
+func startedCall(call contract.JobCall, at time.Time) contract.CallRun {
+	return contract.CallRun{
+		CallID:    call.ID,
+		Name:      call.Name,
+		Order:     call.Order,
+		Rules:     []contract.RuleRun{},
+		StartedAt: at,
 	}
 }
 
