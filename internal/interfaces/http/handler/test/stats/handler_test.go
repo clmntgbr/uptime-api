@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	querystats "go-api/internal/application/query/stats"
 	domainstats "go-api/internal/domain/stats"
@@ -59,7 +60,13 @@ func TestStatsHandler_GetDashboard_Success(t *testing.T) {
 		WindowHours: 24,
 		Workflows:   domainstats.WorkflowCounts{Total: 3, Active: 2, Disabled: 1},
 		Runs:        domainstats.RunCounts{Total: 10, Success: 7, Failed: 2, Error: 1},
-		Calls:       domainstats.CallCounts{Total: 20, Success: 15, Failed: 3, Error: 1, Skipped: 1},
+		Calls: domainstats.CallCounts{
+			Total: 20, Success: 15, Failed: 3, Error: 1, Skipped: 1,
+			Daily: []domainstats.CallDayCounts{{
+				Date: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
+				Total: 5, Success: 4, Failed: 1,
+			}},
+		},
 		SuccessRate: 0.7,
 	}}
 	resp := doGet(t, mount(handler.NewStatsHandler(m), true))
@@ -74,6 +81,9 @@ func TestStatsHandler_GetDashboard_Success(t *testing.T) {
 	if out.WindowHours != 24 || out.Workflows.Active != 2 || out.Runs.Success != 7 ||
 		out.Calls.Failed != 3 || out.SuccessRate != 0.7 {
 		t.Fatalf("unexpected body %+v", out)
+	}
+	if len(out.Calls.Daily) != 1 || out.Calls.Daily[0].Date != "2026-10-15" || out.Calls.Daily[0].Total != 5 {
+		t.Fatalf("unexpected daily %+v", out.Calls.Daily)
 	}
 }
 
