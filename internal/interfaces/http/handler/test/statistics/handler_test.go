@@ -70,14 +70,14 @@ func TestStatisticsHandler_GetDashboard_Success(t *testing.T) {
 			Total: 10, Success: 7, Failed: 2, Error: 1,
 			Daily: []domainstatistics.RunDayCounts{{
 				Date: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
-				Total: 3, Success: 2, Failed: 1, LatencyP95Ms: &dayLatency,
+				Total: 3, Success: 2, Failed: 1,
 			}},
 		},
 		Calls: domainstatistics.CallCounts{
 			Total: 20, Success: 15, Failed: 3, Error: 1, Skipped: 1,
 			Daily: []domainstatistics.CallDayCounts{{
 				Date: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
-				Total: 5, Success: 4, Failed: 1,
+				Total: 5, Success: 4, Failed: 1, LatencyP95Ms: &dayLatency,
 			}},
 		},
 		SuccessRate:  0.7,
@@ -112,11 +112,11 @@ func TestStatisticsHandler_GetDashboard_Success(t *testing.T) {
 		out.Incidents[1].End != nil {
 		t.Fatalf("unexpected incidents %+v", out.Incidents)
 	}
-	if len(out.Runs.Daily) != 1 || out.Runs.Daily[0].Date != "2026-10-15" || out.Runs.Daily[0].Total != 3 ||
-		out.Runs.Daily[0].LatencyP95Ms == nil || *out.Runs.Daily[0].LatencyP95Ms != 380 {
+	if len(out.Runs.Daily) != 1 || out.Runs.Daily[0].Date != "2026-10-15" || out.Runs.Daily[0].Total != 3 {
 		t.Fatalf("unexpected runs daily %+v", out.Runs.Daily)
 	}
-	if len(out.Calls.Daily) != 1 || out.Calls.Daily[0].Date != "2026-10-15" || out.Calls.Daily[0].Total != 5 {
+	if len(out.Calls.Daily) != 1 || out.Calls.Daily[0].Date != "2026-10-15" || out.Calls.Daily[0].Total != 5 ||
+		out.Calls.Daily[0].LatencyP95Ms == nil || *out.Calls.Daily[0].LatencyP95Ms != 380 {
 		t.Fatalf("unexpected calls daily %+v", out.Calls.Daily)
 	}
 }

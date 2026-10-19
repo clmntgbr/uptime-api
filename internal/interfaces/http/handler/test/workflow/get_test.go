@@ -29,6 +29,12 @@ func TestWorkflowHandler_GetByID_Success(t *testing.T) {
 	if out.NextRunAt == nil || *out.NextRunAt != "2026-10-13T12:05:00Z" {
 		t.Fatalf("expected nextRunAt, got %+v", out.NextRunAt)
 	}
+	if out.LastRunAt == nil || *out.LastRunAt != "2026-10-13T12:00:00Z" {
+		t.Fatalf("expected lastRunAt, got %+v", out.LastRunAt)
+	}
+	if out.LastStatus == nil || *out.LastStatus != "success" {
+		t.Fatalf("expected lastStatus, got %+v", out.LastStatus)
+	}
 }
 
 func TestWorkflowHandler_GetByID_Unauthorized(t *testing.T) {

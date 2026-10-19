@@ -34,14 +34,13 @@ type RunCountsResponse struct {
 }
 
 type RunDayCountsResponse struct {
-	Date         string `json:"date"`
-	Total        int64  `json:"total"`
-	Success      int64  `json:"success"`
-	Failed       int64  `json:"failed"`
-	Error        int64  `json:"error"`
-	Skipped      int64  `json:"skipped"`
-	Running      int64  `json:"running"`
-	LatencyP95Ms *int64 `json:"latencyP95Ms"`
+	Date    string `json:"date"`
+	Total   int64  `json:"total"`
+	Success int64  `json:"success"`
+	Failed  int64  `json:"failed"`
+	Error   int64  `json:"error"`
+	Skipped int64  `json:"skipped"`
+	Running int64  `json:"running"`
 }
 
 type CallCountsResponse struct {
@@ -54,12 +53,13 @@ type CallCountsResponse struct {
 }
 
 type CallDayCountsResponse struct {
-	Date    string `json:"date"`
-	Total   int64  `json:"total"`
-	Success int64  `json:"success"`
-	Failed  int64  `json:"failed"`
-	Error   int64  `json:"error"`
-	Skipped int64  `json:"skipped"`
+	Date         string `json:"date"`
+	Total        int64  `json:"total"`
+	Success      int64  `json:"success"`
+	Failed       int64  `json:"failed"`
+	Error        int64  `json:"error"`
+	Skipped      int64  `json:"skipped"`
+	LatencyP95Ms *int64 `json:"latencyP95Ms"`
 }
 
 type IncidentRangeResponse struct {
@@ -71,25 +71,25 @@ func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) Dash
 	runDaily := make([]RunDayCountsResponse, 0, len(s.Runs.Daily))
 	for _, d := range s.Runs.Daily {
 		runDaily = append(runDaily, RunDayCountsResponse{
-			Date:         d.Date.UTC().Format(time.DateOnly),
-			Total:        d.Total,
-			Success:      d.Success,
-			Failed:       d.Failed,
-			Error:        d.Error,
-			Skipped:      d.Skipped,
-			Running:      d.Running,
-			LatencyP95Ms: d.LatencyP95Ms,
-		})
-	}
-	callDaily := make([]CallDayCountsResponse, 0, len(s.Calls.Daily))
-	for _, d := range s.Calls.Daily {
-		callDaily = append(callDaily, CallDayCountsResponse{
 			Date:    d.Date.UTC().Format(time.DateOnly),
 			Total:   d.Total,
 			Success: d.Success,
 			Failed:  d.Failed,
 			Error:   d.Error,
 			Skipped: d.Skipped,
+			Running: d.Running,
+		})
+	}
+	callDaily := make([]CallDayCountsResponse, 0, len(s.Calls.Daily))
+	for _, d := range s.Calls.Daily {
+		callDaily = append(callDaily, CallDayCountsResponse{
+			Date:         d.Date.UTC().Format(time.DateOnly),
+			Total:        d.Total,
+			Success:      d.Success,
+			Failed:       d.Failed,
+			Error:        d.Error,
+			Skipped:      d.Skipped,
+			LatencyP95Ms: d.LatencyP95Ms,
 		})
 	}
 	incidents := make([]IncidentRangeResponse, 0, len(s.Incidents))

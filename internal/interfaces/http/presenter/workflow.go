@@ -38,6 +38,8 @@ type WorkflowResponse struct {
 	RunAt           *string `json:"runAt,omitempty"`
 	Enabled         bool    `json:"enabled"`
 	NextRunAt       *string `json:"nextRunAt,omitempty"`
+	LastRunAt       *string `json:"lastRunAt,omitempty"`
+	LastStatus      *string `json:"lastStatus,omitempty"`
 }
 
 func NewWorkflowResponseFromView(v domainworkflow.View) WorkflowResponse {
@@ -61,6 +63,14 @@ func NewWorkflowResponseFromView(v domainworkflow.View) WorkflowResponse {
 	if v.NextRunAt != nil && !v.NextRunAt.Equal(domainschedule.Never) {
 		s := v.NextRunAt.UTC().Format(time.RFC3339)
 		out.NextRunAt = &s
+	}
+	if v.LastRunAt != nil {
+		s := v.LastRunAt.UTC().Format(time.RFC3339)
+		out.LastRunAt = &s
+	}
+	if v.LastStatus != "" {
+		status := v.LastStatus
+		out.LastStatus = &status
 	}
 	return out
 }

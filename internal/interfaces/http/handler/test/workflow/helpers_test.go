@@ -170,6 +170,7 @@ func sampleListViews() []domainworkflow.ListView {
 
 func sampleView() *domainworkflow.View {
 	next := time.Date(2026, 10, 13, 12, 5, 0, 0, time.UTC)
+	last := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 	return &domainworkflow.View{
 		ID:              testWorkflowID,
 		UserID:          testutil.TestUserID,
@@ -179,6 +180,7 @@ func sampleView() *domainworkflow.View {
 		Enabled:         true,
 		Status:          domainschedule.StatusIdle,
 		NextRunAt:       &next,
+		LastRunAt:       &last,
 		LastStatus:      "success",
 		CreatedAt:       time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
 		UpdatedAt:       time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC),

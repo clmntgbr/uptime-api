@@ -38,14 +38,13 @@ type RunCounts struct {
 
 // RunDayCounts is one calendar day of run aggregates (UTC).
 type RunDayCounts struct {
-	Date         time.Time
-	Total        int64
-	Success      int64
-	Failed       int64
-	Error        int64
-	Skipped      int64
-	Running      int64
-	LatencyP95Ms *int64
+	Date    time.Time
+	Total   int64
+	Success int64
+	Failed  int64
+	Error   int64
+	Skipped int64
+	Running int64
 }
 
 type CallCounts struct {
@@ -60,12 +59,13 @@ type CallCounts struct {
 
 // CallDayCounts is one calendar day of call_run aggregates (UTC).
 type CallDayCounts struct {
-	Date    time.Time
-	Total   int64
-	Success int64
-	Failed  int64
-	Error   int64
-	Skipped int64
+	Date         time.Time
+	Total        int64
+	Success      int64
+	Failed       int64
+	Error        int64
+	Skipped      int64
+	LatencyP95Ms *int64
 }
 
 // IncidentRange is a contiguous period of failed/error runs.

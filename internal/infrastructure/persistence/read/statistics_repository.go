@@ -52,12 +52,17 @@ JOIN runs r ON r.id = cr.run_id
 WHERE r.user_id = @user_id AND r.started_at >= @since
   AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)`
 
+// latencyP95SQL is the p95 of per-call wall time (timings.total), not run duration.
 const latencyP95SQL = `
-SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS latency_p95_ms
-FROM runs
-WHERE user_id = @user_id AND started_at >= @since
-  AND status IN ('success', 'failed', 'error')
-  AND (NOT @filter_workflow OR workflow_id = @workflow_id)`
+SELECT percentile_cont(0.95) WITHIN GROUP (
+    ORDER BY (cr.timings->>'total')::double precision
+) AS latency_p95_ms
+FROM call_runs cr
+JOIN runs r ON r.id = cr.run_id
+WHERE r.user_id = @user_id AND r.started_at >= @since
+  AND cr.status IN ('success', 'failed', 'error')
+  AND COALESCE((cr.timings->>'total')::double precision, 0) > 0
+  AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)`
 
 const daysCTE = `
 WITH days AS (
@@ -72,7 +77,7 @@ WITH days AS (
 // until_day (inclusive), left-joined onto run aggregates so missing days are zero.
 const runDailySQL = daysCTE + `
 ,
-counts AS (
+agg AS (
     SELECT
         (started_at AT TIME ZONE 'UTC')::date AS day,
         COUNT(*)::bigint AS total,
@@ -87,31 +92,17 @@ counts AS (
       AND started_at < (CAST(@until_day AS date) + INTERVAL '1 day')
       AND (NOT @filter_workflow OR workflow_id = @workflow_id)
     GROUP BY 1
-),
-latency AS (
-    SELECT
-        (started_at AT TIME ZONE 'UTC')::date AS day,
-        percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS latency_p95_ms
-    FROM runs
-    WHERE user_id = @user_id
-      AND started_at >= @daily_since
-      AND started_at < (CAST(@until_day AS date) + INTERVAL '1 day')
-      AND status IN ('success', 'failed', 'error')
-      AND (NOT @filter_workflow OR workflow_id = @workflow_id)
-    GROUP BY 1
 )
 SELECT
     d.day AS date,
-    COALESCE(c.total, 0)::bigint AS total,
-    COALESCE(c.success, 0)::bigint AS success,
-    COALESCE(c.failed, 0)::bigint AS failed,
-    COALESCE(c.error, 0)::bigint AS error,
-    COALESCE(c.skipped, 0)::bigint AS skipped,
-    COALESCE(c.running, 0)::bigint AS running,
-    l.latency_p95_ms AS latency_p95_ms
+    COALESCE(a.total, 0)::bigint AS total,
+    COALESCE(a.success, 0)::bigint AS success,
+    COALESCE(a.failed, 0)::bigint AS failed,
+    COALESCE(a.error, 0)::bigint AS error,
+    COALESCE(a.skipped, 0)::bigint AS skipped,
+    COALESCE(a.running, 0)::bigint AS running
 FROM days d
-LEFT JOIN counts c ON c.day = d.day
-LEFT JOIN latency l ON l.day = d.day
+LEFT JOIN agg a ON a.day = d.day
 ORDER BY d.day`
 
 // callDailySQL returns one row per UTC calendar day from daily_since through
@@ -119,7 +110,7 @@ ORDER BY d.day`
 // are zero. Prefer call_runs.started_at; fall back to the parent run start.
 const callDailySQL = daysCTE + `
 ,
-agg AS (
+counts AS (
     SELECT
         (COALESCE(cr.started_at, r.started_at) AT TIME ZONE 'UTC')::date AS day,
         COUNT(*)::bigint AS total,
@@ -134,16 +125,34 @@ agg AS (
       AND COALESCE(cr.started_at, r.started_at) < (CAST(@until_day AS date) + INTERVAL '1 day')
       AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)
     GROUP BY 1
+),
+latency AS (
+    SELECT
+        (COALESCE(cr.started_at, r.started_at) AT TIME ZONE 'UTC')::date AS day,
+        percentile_cont(0.95) WITHIN GROUP (
+            ORDER BY (cr.timings->>'total')::double precision
+        ) AS latency_p95_ms
+    FROM call_runs cr
+    JOIN runs r ON r.id = cr.run_id
+    WHERE r.user_id = @user_id
+      AND COALESCE(cr.started_at, r.started_at) >= @daily_since
+      AND COALESCE(cr.started_at, r.started_at) < (CAST(@until_day AS date) + INTERVAL '1 day')
+      AND cr.status IN ('success', 'failed', 'error')
+      AND COALESCE((cr.timings->>'total')::double precision, 0) > 0
+      AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)
+    GROUP BY 1
 )
 SELECT
     d.day AS date,
-    COALESCE(a.total, 0)::bigint AS total,
-    COALESCE(a.success, 0)::bigint AS success,
-    COALESCE(a.failed, 0)::bigint AS failed,
-    COALESCE(a.error, 0)::bigint AS error,
-    COALESCE(a.skipped, 0)::bigint AS skipped
+    COALESCE(c.total, 0)::bigint AS total,
+    COALESCE(c.success, 0)::bigint AS success,
+    COALESCE(c.failed, 0)::bigint AS failed,
+    COALESCE(c.error, 0)::bigint AS error,
+    COALESCE(c.skipped, 0)::bigint AS skipped,
+    l.latency_p95_ms AS latency_p95_ms
 FROM days d
-LEFT JOIN agg a ON a.day = d.day
+LEFT JOIN counts c ON c.day = d.day
+LEFT JOIN latency l ON l.day = d.day
 ORDER BY d.day`
 
 // incidentsSQL collapses contiguous failed/error runs into [start, end] ranges.
@@ -197,14 +206,13 @@ type runCountsRow struct {
 }
 
 type runDayRow struct {
-	Date         time.Time `gorm:"column:date"`
-	Total        int64
-	Success      int64
-	Failed       int64
-	Error        int64
-	Skipped      int64
-	Running      int64
-	LatencyP95Ms *float64  `gorm:"column:latency_p95_ms"`
+	Date    time.Time `gorm:"column:date"`
+	Total   int64
+	Success int64
+	Failed  int64
+	Error   int64
+	Skipped int64
+	Running int64
 }
 
 type callCountsRow struct {
@@ -216,12 +224,13 @@ type callCountsRow struct {
 }
 
 type callDayRow struct {
-	Date    time.Time `gorm:"column:date"`
-	Total   int64
-	Success int64
-	Failed  int64
-	Error   int64
-	Skipped int64
+	Date         time.Time `gorm:"column:date"`
+	Total        int64
+	Success      int64
+	Failed       int64
+	Error        int64
+	Skipped      int64
+	LatencyP95Ms *float64  `gorm:"column:latency_p95_ms"`
 }
 
 type latencyRow struct {
@@ -289,14 +298,13 @@ func (r *statisticsRepository) Dashboard(
 	runDaily := make([]domainstatistics.RunDayCounts, 0, len(runRows))
 	for _, row := range runRows {
 		runDaily = append(runDaily, domainstatistics.RunDayCounts{
-			Date:         row.Date,
-			Total:        row.Total,
-			Success:      row.Success,
-			Failed:       row.Failed,
-			Error:        row.Error,
-			Skipped:      row.Skipped,
-			Running:      row.Running,
-			LatencyP95Ms: ptrMs(row.LatencyP95Ms),
+			Date:    row.Date,
+			Total:   row.Total,
+			Success: row.Success,
+			Failed:  row.Failed,
+			Error:   row.Error,
+			Skipped: row.Skipped,
+			Running: row.Running,
 		})
 	}
 
@@ -312,12 +320,13 @@ func (r *statisticsRepository) Dashboard(
 	callDaily := make([]domainstatistics.CallDayCounts, 0, len(callRows))
 	for _, row := range callRows {
 		callDaily = append(callDaily, domainstatistics.CallDayCounts{
-			Date:    row.Date,
-			Total:   row.Total,
-			Success: row.Success,
-			Failed:  row.Failed,
-			Error:   row.Error,
-			Skipped: row.Skipped,
+			Date:         row.Date,
+			Total:        row.Total,
+			Success:      row.Success,
+			Failed:       row.Failed,
+			Error:        row.Error,
+			Skipped:      row.Skipped,
+			LatencyP95Ms: ptrMs(row.LatencyP95Ms),
 		})
 	}
 
