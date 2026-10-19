@@ -36,7 +36,13 @@ func (m *mockCreateHandler) Handle(_ context.Context, cmd callcmd.CreateCallComm
 	if m.err != nil {
 		return nil, m.err
 	}
-	return &domaincall.Call{ID: testCallID, Name: cmd.Definition.Name}, nil
+	return &domaincall.Call{
+		ID:       testCallID,
+		Name:     cmd.Definition.Name,
+		Method:   cmd.Definition.Method,
+		URL:      cmd.Definition.URL,
+		Position: 1,
+	}, nil
 }
 
 type mockUpdateHandler struct {
@@ -51,7 +57,13 @@ func (m *mockUpdateHandler) Handle(_ context.Context, cmd callcmd.UpdateCallComm
 	if m.err != nil {
 		return nil, m.err
 	}
-	return &domaincall.Call{ID: cmd.CallID, Name: cmd.Definition.Name}, nil
+	return &domaincall.Call{
+		ID:       cmd.CallID,
+		Name:     cmd.Definition.Name,
+		Method:   cmd.Definition.Method,
+		URL:      cmd.Definition.URL,
+		Position: 1,
+	}, nil
 }
 
 type mockDeleteHandler struct {

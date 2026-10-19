@@ -131,25 +131,69 @@ func (r *workflowQueryRepository) FindByID(ctx context.Context, userID, id uuid.
 }
 
 type callListRow struct {
-	ID   uuid.UUID `gorm:"column:id"`
-	Name string    `gorm:"column:name"`
+	ID             uuid.UUID  `gorm:"column:id"`
+	Name           string     `gorm:"column:name"`
+	Method         string     `gorm:"column:method"`
+	URL            string     `gorm:"column:url"`
+	Position       int        `gorm:"column:position"`
+	LastStatus     *string    `gorm:"column:last_status"`
+	LastHTTPStatus *int       `gorm:"column:last_http_status"`
+	LastFinishedAt *time.Time `gorm:"column:last_finished_at"`
+	LastLatencyMs  *int64     `gorm:"column:last_latency_ms"`
 }
+
+// listCallsSQL returns call definitions with the latest execution summary.
+// Named params only: timings->>'total' must not use a Postgres ? operator.
+const listCallsSQL = `
+SELECT
+  c.id,
+  c.name,
+  c.method,
+  c.url,
+  c.position,
+  lr.status AS last_status,
+  lr.http_status AS last_http_status,
+  lr.finished_at AS last_finished_at,
+  ROUND((lr.timings->>'total')::double precision)::bigint AS last_latency_ms
+FROM calls c
+JOIN workflows w ON w.id = c.workflow_id
+LEFT JOIN LATERAL (
+  SELECT cr.status, cr.http_status, cr.finished_at, cr.timings
+  FROM call_runs cr
+  WHERE cr.call_id = c.id
+  ORDER BY cr.finished_at DESC NULLS LAST, cr.started_at DESC NULLS LAST
+  LIMIT 1
+) lr ON TRUE
+WHERE c.workflow_id = @workflow_id
+  AND w.user_id = @user_id
+  AND w.deleted_at IS NULL
+ORDER BY c.position`
 
 func (r *workflowQueryRepository) ListCalls(ctx context.Context, userID, workflowID uuid.UUID) ([]domainworkflow.CallListView, error) {
 	var rows []callListRow
-	err := r.db.WithContext(ctx).
-		Table("calls c").
-		Select("c.id, c.name").
-		Joins("JOIN workflows w ON w.id = c.workflow_id").
-		Where("c.workflow_id = ? AND w.user_id = ? AND w.deleted_at IS NULL", workflowID, userID).
-		Order("c.position").
-		Scan(&rows).Error
+	err := r.db.WithContext(ctx).Raw(listCallsSQL, map[string]any{
+		"workflow_id": workflowID,
+		"user_id":     userID,
+	}).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 	views := make([]domainworkflow.CallListView, 0, len(rows))
 	for _, row := range rows {
-		views = append(views, domainworkflow.CallListView{ID: row.ID, Name: row.Name})
+		v := domainworkflow.CallListView{
+			ID:             row.ID,
+			Name:           row.Name,
+			Method:         row.Method,
+			URL:            row.URL,
+			Position:       row.Position,
+			LastHTTPStatus: row.LastHTTPStatus,
+			LastFinishedAt: row.LastFinishedAt,
+			LastLatencyMs:  row.LastLatencyMs,
+		}
+		if row.LastStatus != nil {
+			v.LastStatus = *row.LastStatus
+		}
+		views = append(views, v)
 	}
 	return views, nil
 }

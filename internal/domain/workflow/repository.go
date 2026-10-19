@@ -39,9 +39,17 @@ type ListView struct {
 	Name string
 }
 
+// CallListView is one row of GET /workflows/:id/calls (definition + last execution).
 type CallListView struct {
-	ID   uuid.UUID
-	Name string
+	ID             uuid.UUID
+	Name           string
+	Method         string
+	URL            string
+	Position       int
+	LastStatus     string
+	LastHTTPStatus *int
+	LastFinishedAt *time.Time
+	LastLatencyMs  *int64
 }
 
 // CallView is the detail of one call (without extractions and rules for now).

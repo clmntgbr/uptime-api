@@ -3,6 +3,7 @@ package calltest
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/interfaces/http/presenter"
@@ -13,9 +14,19 @@ import (
 
 func TestCallHandler_List_Success(t *testing.T) {
 	m := newMocks()
+	httpStatus := 200
+	latency := int64(142)
+	finished := time.Date(2026, 10, 19, 14, 45, 0, 0, time.UTC)
 	m.list.views = []domainworkflow.CallListView{
-		{ID: testCallID, Name: "login"},
-		{ID: uuid.MustParse("01960000-0000-7000-8000-0000000000c2"), Name: "orders"},
+		{
+			ID: testCallID, Name: "login", Method: "POST", URL: "https://api.example.com/auth",
+			Position: 1, LastStatus: "success", LastHTTPStatus: &httpStatus,
+			LastFinishedAt: &finished, LastLatencyMs: &latency,
+		},
+		{
+			ID: uuid.MustParse("01960000-0000-7000-8000-0000000000c2"), Name: "orders",
+			Method: "GET", URL: "https://api.example.com/orders", Position: 2,
+		},
 	}
 	resp := doJSON(t, m, true, http.MethodGet, callsPath(), nil)
 	assertStatus(t, resp, http.StatusOK)
@@ -25,7 +36,16 @@ func TestCallHandler_List_Success(t *testing.T) {
 	}
 	var out []presenter.CallResponse
 	testutil.DecodeJSON(t, resp, &out)
-	if len(out) != 2 || out[0].ID != testCallID.String() || out[0].Name != "login" {
+	if len(out) != 2 ||
+		out[0].ID != testCallID.String() || out[0].Name != "login" ||
+		out[0].Method != "POST" || out[0].URL != "https://api.example.com/auth" ||
+		out[0].Position != 1 || out[0].LastStatus == nil || *out[0].LastStatus != "success" ||
+		out[0].LastHTTPStatus == nil || *out[0].LastHTTPStatus != 200 ||
+		out[0].LastFinishedAt == nil || *out[0].LastFinishedAt != "2026-10-19T14:45:00Z" ||
+		out[0].LastLatencyMs == nil || *out[0].LastLatencyMs != 142 ||
+		out[1].Method != "GET" || out[1].URL != "https://api.example.com/orders" ||
+		out[1].LastStatus != nil || out[1].LastHTTPStatus != nil ||
+		out[1].LastFinishedAt != nil || out[1].LastLatencyMs != nil {
 		t.Fatalf("unexpected body %+v", out)
 	}
 }

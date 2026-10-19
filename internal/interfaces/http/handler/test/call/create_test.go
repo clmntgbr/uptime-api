@@ -18,7 +18,7 @@ func TestCallHandler_Create_Success(t *testing.T) {
 
 	var out presenter.CallResponse
 	testutil.DecodeJSON(t, resp, &out)
-	if out.ID != testCallID.String() || out.Name != "login" {
+	if out.ID != testCallID.String() || out.Name != "login" || out.Method != "POST" {
 		t.Fatalf("unexpected body %+v", out)
 	}
 	cmd := m.create.got

@@ -1,28 +1,61 @@
 package presenter
 
 import (
+	"time"
+
 	domaincall "go-api/internal/domain/call"
 	domainworkflow "go-api/internal/domain/workflow"
 )
 
+// CallResponse is the shape of create/update and list call rows.
 type CallResponse struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-func NewCallResponse(id, name string) CallResponse {
-	return CallResponse{ID: id, Name: name}
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	Method         string  `json:"method"`
+	URL            string  `json:"url"`
+	Position       int     `json:"position"`
+	LastStatus     *string `json:"lastStatus,omitempty"`
+	LastHTTPStatus *int    `json:"lastHttpStatus,omitempty"`
+	LastFinishedAt *string `json:"lastFinishedAt,omitempty"`
+	LastLatencyMs  *int64  `json:"lastLatencyMs,omitempty"`
 }
 
 func NewCallResponseFromCall(c domaincall.Call) CallResponse {
-	return NewCallResponse(c.ID.String(), c.Name)
+	return CallResponse{
+		ID:       c.ID.String(),
+		Name:     c.Name,
+		Method:   c.Method,
+		URL:      c.URL,
+		Position: c.Position,
+	}
 }
 
 func NewCallListResponseFromViews(views []domainworkflow.CallListView) []CallResponse {
 	out := make([]CallResponse, 0, len(views))
 	for _, v := range views {
-		out = append(out, NewCallResponse(v.ID.String(), v.Name))
+		out = append(out, NewCallListResponseFromView(v))
 	}
+	return out
+}
+
+func NewCallListResponseFromView(v domainworkflow.CallListView) CallResponse {
+	out := CallResponse{
+		ID:       v.ID.String(),
+		Name:     v.Name,
+		Method:   v.Method,
+		URL:      v.URL,
+		Position: v.Position,
+	}
+	if v.LastStatus != "" {
+		status := v.LastStatus
+		out.LastStatus = &status
+	}
+	out.LastHTTPStatus = v.LastHTTPStatus
+	if v.LastFinishedAt != nil {
+		s := v.LastFinishedAt.UTC().Format(time.RFC3339)
+		out.LastFinishedAt = &s
+	}
+	out.LastLatencyMs = v.LastLatencyMs
 	return out
 }
 
