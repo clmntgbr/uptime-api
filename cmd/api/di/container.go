@@ -13,6 +13,7 @@ import (
 	variablecmd "go-api/internal/application/command/variable"
 	workflowcmd "go-api/internal/application/command/workflow"
 	querycall "go-api/internal/application/query/call"
+	queryrun "go-api/internal/application/query/run"
 	querystatistics "go-api/internal/application/query/statistics"
 	queryuser "go-api/internal/application/query/user"
 	queryvariable "go-api/internal/application/query/variable"
@@ -41,6 +42,7 @@ type Container struct {
 	RealtimeHandler        *httphandler.RealtimeHandler
 	StatisticsHandler      *httphandler.StatisticsHandler
 	WorkflowHandler        *httphandler.WorkflowHandler
+	RunHandler             *httphandler.RunHandler
 	CallHandler            *httphandler.CallHandler
 	VariableHandler        *httphandler.VariableHandler
 	KafkaProducer          *kafka.Producer
@@ -132,6 +134,10 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			workflowcmd.NewDeleteWorkflowHandler(workflowWriteRepo, outboxRepo),
 			runManual,
 			stopRun,
+		),
+		RunHandler: httphandler.NewRunHandler(
+			queryrun.NewListRunsHandler(runReadRepo),
+			queryrun.NewGetRunHandler(runReadRepo),
 		),
 		CallHandler: httphandler.NewCallHandler(
 			callcmd.NewCreateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),

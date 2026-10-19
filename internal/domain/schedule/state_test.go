@@ -52,6 +52,9 @@ func TestState_LeaseLifecycle(t *testing.T) {
 	if !s.Running() {
 		t.Fatal("a result for another run must not release the lease")
 	}
+	if s.LastStatus == "success" {
+		t.Fatal("a late result for another run must not record an outcome")
+	}
 
 	s.Complete(runID, "failed", now.Add(2*time.Minute))
 	if s.Running() || s.ConsecutiveFailures != 1 || s.LastStatus != "failed" {
@@ -62,5 +65,53 @@ func TestState_LeaseLifecycle(t *testing.T) {
 	lease, ok := s.ExpireLease()
 	if !ok || lease.RunID == uuid.Nil || s.Running() || s.ConsecutiveFailures != 2 {
 		t.Fatalf("expired lease must count as an error: %+v", s)
+	}
+}
+
+func TestState_RequestCancelAndTakeover(t *testing.T) {
+	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+	s := New(uuid.New(), NextRun(now, time.Minute))
+	oldRun := uuid.New()
+	s.Lease(oldRun, now, 6*time.Minute)
+
+	id, transitioned, ok := s.RequestCancel(now)
+	if !ok || !transitioned || id != oldRun || s.Status != StatusCancelling || !s.LeaseActive(now) {
+		t.Fatalf("cancel must keep an active cancelling lease: %+v", s)
+	}
+	id, transitioned, ok = s.RequestCancel(now)
+	if !ok || transitioned || id != oldRun {
+		t.Fatal("second cancel must be idempotent without transition")
+	}
+
+	old, took := s.TakeOverCancelling(now)
+	if !took || old.RunID != oldRun || s.Running() {
+		t.Fatalf("takeover must drop the cancelling lease: %+v", s)
+	}
+	newRun := uuid.New()
+	s.Lease(newRun, now.Add(time.Second), 6*time.Minute)
+
+	s.Complete(oldRun, "failed", now.Add(2*time.Second))
+	if !s.Running() || *s.LeaseRunID != newRun || s.LastStatus == "failed" || s.ConsecutiveFailures != 0 {
+		t.Fatalf("late cancelled result must not touch the new lease: %+v", s)
+	}
+
+	s.Complete(newRun, "success", now.Add(3*time.Second))
+	if s.Running() || s.LastStatus != "success" {
+		t.Fatalf("new run must complete normally: %+v", s)
+	}
+}
+
+func TestState_RevertCancel(t *testing.T) {
+	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+	s := New(uuid.New(), NextRun(now, time.Minute))
+	runID := uuid.New()
+	s.Lease(runID, now, 6*time.Minute)
+	s.RequestCancel(now)
+
+	if !s.RevertCancel(runID) || s.Status != StatusRunning {
+		t.Fatalf("revert must restore running: %+v", s)
+	}
+	if s.RevertCancel(runID) {
+		t.Fatal("revert must be a no-op when not cancelling")
 	}
 }

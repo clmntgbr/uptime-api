@@ -20,8 +20,9 @@ const (
 )
 
 const (
-	ReasonOverlap = "overlap"
-	ReasonTimeout = "timeout"
+	ReasonOverlap   = "overlap"
+	ReasonTimeout   = "timeout"
+	ReasonCancelled = "cancelled"
 )
 
 type CallStatus string
@@ -187,6 +188,23 @@ func NewTimedOut(runID, workflowID, userID uuid.UUID, startedAt, expiredAt time.
 		Reason:     ReasonTimeout,
 		StartedAt:  startedAt,
 		FinishedAt: expiredAt,
+	}
+	r.recordEvent()
+	return r
+}
+
+// NewCancelled records a run that was stopped and then superseded by a new run
+// before its Result arrived. Progressive call_runs are kept; status is finalized.
+func NewCancelled(runID, workflowID, userID uuid.UUID, startedAt, finishedAt time.Time) *Run {
+	r := &Run{
+		ID:         runID,
+		WorkflowID: workflowID,
+		UserID:     userID,
+		Trigger:    contract.TriggerManual,
+		Status:     StatusFailed,
+		Reason:     ReasonCancelled,
+		StartedAt:  startedAt,
+		FinishedAt: finishedAt,
 	}
 	r.recordEvent()
 	return r

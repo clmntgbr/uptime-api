@@ -47,9 +47,10 @@ func NewStopRunHandler(
 func (h *StopRunHandler) Handle(ctx context.Context, cmd StopRunCommand) (uuid.UUID, error) {
 	now := h.clock.Now()
 	var (
-		runID      uuid.UUID
-		userID     uuid.UUID
-		workflowID uuid.UUID
+		runID              uuid.UUID
+		userID             uuid.UUID
+		workflowID         uuid.UUID
+		cancelTransitioned bool
 	)
 
 	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
@@ -69,7 +70,7 @@ func (h *StopRunHandler) Handle(ctx context.Context, cmd StopRunCommand) (uuid.U
 			return fmt.Errorf("schedule state missing for workflow %s", w.ID)
 		}
 
-		id, ok := state.RequestCancel(now)
+		id, transitioned, ok := state.RequestCancel(now)
 		if !ok {
 			return domainworkflow.ErrNoRunInProgress
 		}
@@ -79,6 +80,7 @@ func (h *StopRunHandler) Handle(ctx context.Context, cmd StopRunCommand) (uuid.U
 		runID = id
 		userID = w.UserID
 		workflowID = w.ID
+		cancelTransitioned = transitioned
 		return nil
 	})
 	if err != nil {
@@ -96,7 +98,26 @@ func (h *StopRunHandler) Handle(ctx context.Context, cmd StopRunCommand) (uuid.U
 	}
 	if err := h.publisher.PublishCancel(ctx, cancel); err != nil {
 		h.logger.Error("cancel publish failed", "workflow_id", workflowID, "run_id", runID, "error", err)
+		if cancelTransitioned {
+			h.revertCancel(context.WithoutCancel(ctx), workflowID, runID)
+		}
 		return uuid.Nil, fmt.Errorf("publish cancel: %w", err)
 	}
 	return runID, nil
+}
+
+func (h *StopRunHandler) revertCancel(ctx context.Context, workflowID, runID uuid.UUID) {
+	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
+		state, err := h.states.GetForUpdate(txCtx, workflowID)
+		if err != nil || state == nil {
+			return err
+		}
+		if !state.RevertCancel(runID) {
+			return nil
+		}
+		return h.states.Save(txCtx, *state)
+	})
+	if err != nil {
+		h.logger.Error("cancel revert failed", "workflow_id", workflowID, "run_id", runID, "error", err)
+	}
 }

@@ -91,7 +91,17 @@ func (h *RunManualHandler) Handle(ctx context.Context, cmd RunManualCommand) (uu
 			return fmt.Errorf("schedule state missing for workflow %s", w.ID)
 		}
 		if state.LeaseActive(now) {
-			return domainworkflow.ErrRunInProgress
+			// After stop, status stays cancelling until the current call finishes.
+			// Allow an immediate re-run by taking over that lease; the previous
+			// run keeps its cancel signal. Finalize it here so a late Result is a
+			// no-op and cannot overwrite the new lease's outcome.
+			old, ok := state.TakeOverCancelling(now)
+			if !ok {
+				return domainworkflow.ErrRunInProgress
+			}
+			if err := h.recordSuperseded(txCtx, old, state.WorkflowID, w.UserID, now); err != nil {
+				return err
+			}
 		}
 		if lease, expired := state.ExpireLease(); expired {
 			if err := h.recordTimeout(txCtx, lease, state.WorkflowID, w.UserID); err != nil {
@@ -138,6 +148,27 @@ func (h *RunManualHandler) recordTimeout(ctx context.Context, lease domainschedu
 	r := domainrun.NewTimedOut(lease.RunID, workflowID, userID, lease.StartedAt, lease.Until)
 	if err := h.runs.Save(ctx, r); err != nil {
 		return fmt.Errorf("record timed out run: %w", err)
+	}
+	return h.outbox.StoreEvents(ctx, r.PullEvents())
+}
+
+// recordSuperseded finalizes a cancelling run that was replaced by a new manual
+// run, so the late Result from worker-calls is ignored (processed_events).
+func (h *RunManualHandler) recordSuperseded(ctx context.Context, lease domainschedule.ExpiredLease, workflowID, userID uuid.UUID, at time.Time) error {
+	claimed, err := h.processed.MarkProcessed(ctx, lease.RunID.String(), RecordRunHandlerName)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return nil
+	}
+	started := lease.StartedAt
+	if started.IsZero() {
+		started = at
+	}
+	r := domainrun.NewCancelled(lease.RunID, workflowID, userID, started, at)
+	if err := h.runs.Save(ctx, r); err != nil {
+		return fmt.Errorf("record superseded run: %w", err)
 	}
 	return h.outbox.StoreEvents(ctx, r.PullEvents())
 }

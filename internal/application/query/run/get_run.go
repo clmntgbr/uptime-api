@@ -12,8 +12,9 @@ import (
 var ErrRunNotFound = errors.New("run not found")
 
 type GetRunQuery struct {
-	UserID uuid.UUID
-	RunID  uuid.UUID
+	UserID     uuid.UUID
+	WorkflowID uuid.UUID // optional; when set, the run must belong to that workflow
+	RunID      uuid.UUID
 }
 
 type GetRunHandler struct {
@@ -30,6 +31,9 @@ func (h *GetRunHandler) Handle(ctx context.Context, q GetRunQuery) (*domainrun.D
 		return nil, err
 	}
 	if view == nil {
+		return nil, ErrRunNotFound
+	}
+	if q.WorkflowID != uuid.Nil && view.WorkflowID != q.WorkflowID {
 		return nil, ErrRunNotFound
 	}
 	return view, nil

@@ -57,9 +57,11 @@ func NewContainer(env *config.WorkerCallsConfig, logger *slog.Logger) (*Containe
 		kafka.PayloadHandler(handler.Handle),
 		producer,
 	)
+	// Each replica needs every cancel: the registry is in-memory per process.
+	// A shared group would deliver the signal to only one instance.
 	cancelsConsumer := kafka.NewConsumer(
 		env.Kafka,
-		kafka.DefaultConsumerOptions(env.Group+"-cancels", kafka.TopicWorkflowCancels, env.Concurrency, false),
+		kafka.DefaultConsumerOptions(env.Group+"-cancels-"+env.Kafka.InstanceID, kafka.TopicWorkflowCancels, 1, false),
 		kafka.PayloadHandler(cancelHandler.Handle),
 		producer,
 	)

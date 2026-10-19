@@ -89,13 +89,36 @@ func (s *State) Lease(runID uuid.UUID, now time.Time, duration time.Duration) {
 }
 
 // RequestCancel moves a running lease to cancelling so remaining calls are skipped.
-// Returns the leased run ID when the transition happened (or was already cancelling).
-func (s *State) RequestCancel(now time.Time) (uuid.UUID, bool) {
+// ok is true when a lease can be cancelled; transitioned is true only when this
+// call flipped running→cancelling (already-cancelling returns ok without transition).
+func (s *State) RequestCancel(now time.Time) (runID uuid.UUID, transitioned, ok bool) {
 	if !s.LeaseActive(now) || s.LeaseRunID == nil {
-		return uuid.Nil, false
+		return uuid.Nil, false, false
+	}
+	id := *s.LeaseRunID
+	if s.Status == StatusCancelling {
+		return id, false, true
 	}
 	s.Status = StatusCancelling
-	return *s.LeaseRunID, true
+	return id, true, true
+}
+
+// TakeOverCancelling drops an active cancelling lease so a new run can start.
+// The previous run keeps its cancel signal; callers must finalize that run
+// (MarkProcessed + record) so a late Result cannot overwrite state.
+func (s *State) TakeOverCancelling(now time.Time) (ExpiredLease, bool) {
+	if !s.LeaseActive(now) || s.Status != StatusCancelling || s.LeaseRunID == nil {
+		return ExpiredLease{}, false
+	}
+	lease := ExpiredLease{RunID: *s.LeaseRunID}
+	if s.LeaseStartedAt != nil {
+		lease.StartedAt = *s.LeaseStartedAt
+	}
+	if s.LeaseUntil != nil {
+		lease.Until = *s.LeaseUntil
+	}
+	s.release()
+	return lease, true
 }
 
 // ExpiredLease is what remains of a lease nobody completed in time.
@@ -133,8 +156,12 @@ func (s *State) ReleaseLease(runID uuid.UUID) bool {
 }
 
 // Complete records the outcome of runID. The lease is only released when it
-// still belongs to that run: a late result never frees a newer run's lease.
+// still belongs to that run: a late result never frees a newer run's lease,
+// nor does it overwrite last_* after a cancelling takeover.
 func (s *State) Complete(runID uuid.UUID, status string, finishedAt time.Time) {
+	if s.Running() && s.LeaseRunID != nil && *s.LeaseRunID != runID {
+		return
+	}
 	if s.Running() && *s.LeaseRunID == runID {
 		s.release()
 	}
@@ -142,6 +169,16 @@ func (s *State) Complete(runID uuid.UUID, status string, finishedAt time.Time) {
 		return
 	}
 	s.recordOutcome(runID, status, finishedAt)
+}
+
+// RevertCancel restores a cancelling lease to running when the cancel signal
+// could not be published (so stop can be retried).
+func (s *State) RevertCancel(runID uuid.UUID) bool {
+	if s.Status != StatusCancelling || s.LeaseRunID == nil || *s.LeaseRunID != runID {
+		return false
+	}
+	s.Status = StatusRunning
+	return true
 }
 
 func (s *State) release() {
