@@ -37,6 +37,7 @@ type WorkflowResponse struct {
 	IntervalSeconds *int    `json:"intervalSeconds,omitempty"`
 	RunAt           *string `json:"runAt,omitempty"`
 	Enabled         bool    `json:"enabled"`
+	IsRunning       bool    `json:"isRunning"`
 	NextRunAt       *string `json:"nextRunAt,omitempty"`
 	LastRunAt       *string `json:"lastRunAt,omitempty"`
 	LastStatus      *string `json:"lastStatus,omitempty"`
@@ -48,6 +49,7 @@ func NewWorkflowResponseFromView(v domainworkflow.View) WorkflowResponse {
 		Name:         v.Name,
 		ScheduleType: string(v.ScheduleType),
 		Enabled:      v.Enabled,
+		IsRunning:    v.Status == domainschedule.StatusRunning,
 	}
 	if out.ScheduleType == "" {
 		out.ScheduleType = string(domainworkflow.ScheduleInterval)
