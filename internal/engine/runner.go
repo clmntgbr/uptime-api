@@ -33,7 +33,8 @@ type Runner struct {
 	bodies   port.BodyStore
 	clock    port.Clock
 	logger   *slog.Logger
-	progress port.ResultPublisher // optional; nil skips progressive publishes
+	progress port.ResultPublisher     // optional; nil skips progressive publishes
+	cancel   port.CancellationChecker // optional; nil never cancels mid-run
 }
 
 func NewRunner(executor Executor, bodies port.BodyStore, clock port.Clock, logger *slog.Logger) *Runner {
@@ -43,6 +44,12 @@ func NewRunner(executor Executor, bodies port.BodyStore, clock port.Clock, logge
 // WithProgressPublisher streams call started/finished progress to workflow.results before the final Result.
 func (r *Runner) WithProgressPublisher(progress port.ResultPublisher) *Runner {
 	r.progress = progress
+	return r
+}
+
+// WithCancellationChecker skips remaining calls once a stop was requested for the run.
+func (r *Runner) WithCancellationChecker(cancel port.CancellationChecker) *Runner {
+	r.cancel = cancel
 	return r
 }
 
@@ -111,12 +118,16 @@ func (r *Runner) Run(ctx context.Context, job contract.Job, secrets map[string]s
 
 	for _, call := range calls {
 		startedAt := r.clock.Now()
-		r.publishProgress(ctx, job, startedCall(call, startedAt), contract.CallProgressPhaseStarted)
-
 		var cr contract.CallRun
-		if ctx.Err() != nil {
+		switch {
+		case r.isCancelled(ctx, job.RunID):
+			// Stop was requested: skip this and every later call; the previous
+			// in-flight call (if any) already finished.
+			cr = skippedCall(call, startedAt, "run cancelled")
+		case ctx.Err() != nil:
 			cr = skippedCall(call, startedAt, "workflow timeout reached")
-		} else {
+		default:
+			r.publishProgress(ctx, job, startedCall(call, startedAt), contract.CallProgressPhaseStarted)
 			cr = r.runCall(ctx, state, call)
 		}
 		switch cr.Status {
@@ -141,6 +152,18 @@ func (r *Runner) Run(ctx context.Context, job contract.Job, secrets map[string]s
 	}
 	result.EmittedAt = r.clock.Now()
 	return result
+}
+
+func (r *Runner) isCancelled(ctx context.Context, runID string) bool {
+	if r.cancel == nil {
+		return false
+	}
+	ok, err := r.cancel.IsCancelled(ctx, runID)
+	if err != nil {
+		r.logger.Warn("cancel check failed; continuing run", "run_id", runID, "error", err)
+		return false
+	}
+	return ok
 }
 
 func (r *Runner) publishProgress(ctx context.Context, job contract.Job, cr contract.CallRun, phase string) {

@@ -86,6 +86,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	runWriteRepo := write.NewRunWriteRepository(db)
 	clock := port.SystemClock{}
 
+	workflowPublisher := kafka.NewWorkflowPublisher(producer)
 	runManual := schedulecmd.NewRunManualHandler(
 		stateRepo,
 		workflowWriteRepo,
@@ -94,9 +95,16 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		processed.NewTxClaimer(db),
 		outboxRepo,
 		sealer,
-		kafka.NewWorkflowPublisher(producer),
+		workflowPublisher,
 		clock,
 		time.Minute,
+		slog.Default(),
+	)
+	stopRun := schedulecmd.NewStopRunHandler(
+		stateRepo,
+		workflowWriteRepo,
+		workflowPublisher,
+		clock,
 		slog.Default(),
 	)
 
@@ -123,6 +131,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			queryworkflow.NewGetWorkflowHandler(workflowReadRepo),
 			workflowcmd.NewDeleteWorkflowHandler(workflowWriteRepo, outboxRepo),
 			runManual,
+			stopRun,
 		),
 		CallHandler: httphandler.NewCallHandler(
 			callcmd.NewCreateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),

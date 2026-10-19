@@ -127,6 +127,41 @@ func TestRun_PublishesCallProgress(t *testing.T) {
 	}
 }
 
+func TestRun_CancelSkipsRemainingCalls(t *testing.T) {
+	var calls int
+	exec := &fakeExecutor{handler: func(Request) (*Response, error) {
+		calls++
+		return jsonResponse(200, `{}`), nil
+	}}
+	job := newJob(
+		contract.JobCall{Name: "a", URL: "{{base_url}}/a", Order: 1},
+		contract.JobCall{Name: "b", URL: "{{base_url}}/b", Order: 2},
+		contract.JobCall{Name: "c", URL: "{{base_url}}/c", Order: 3},
+	)
+	// Flip after the first cancel check so call a runs, then b/c are skipped.
+	flip := &flipCancel{after: 1}
+	result := newRunner(exec, nil).WithCancellationChecker(flip).Run(context.Background(), job, nil)
+	if calls != 1 {
+		t.Fatalf("expected only the first call to execute, got %d", calls)
+	}
+	if result.Counts.Success != 1 || result.Counts.Skipped != 2 {
+		t.Fatalf("unexpected counts %+v", result.Counts)
+	}
+	if result.Calls[1].Reason != "run cancelled" || result.Calls[2].Reason != "run cancelled" {
+		t.Fatalf("unexpected skip reasons %+v", result.Calls)
+	}
+}
+
+type flipCancel struct {
+	n     int
+	after int
+}
+
+func (f *flipCancel) IsCancelled(context.Context, string) (bool, error) {
+	f.n++
+	return f.n > f.after, nil
+}
+
 func TestRun_ProgressPublishFailureDoesNotAbort(t *testing.T) {
 	exec := &fakeExecutor{handler: func(Request) (*Response, error) {
 		return jsonResponse(200, `{}`), nil

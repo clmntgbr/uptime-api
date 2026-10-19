@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"golang.org/x/sync/errgroup"
 
 	"go-api/cmd/worker-calls/di"
 	"go-api/internal/infrastructure/config"
@@ -34,7 +37,10 @@ func main() {
 	defer container.Producer.Close()
 
 	logger.Info("worker-calls started", "concurrency", env.Concurrency)
-	if err := container.Consumer.Run(ctx); err != nil {
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return container.JobsConsumer.Run(gctx) })
+	g.Go(func() error { return container.CancelsConsumer.Run(gctx) })
+	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
 		logger.Error("worker-calls stopped with error", "error", err)
 		os.Exit(1)
 	}

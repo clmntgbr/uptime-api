@@ -15,6 +15,7 @@ var (
 	ErrUnknownVar       = errors.New("unknown variable")
 	ErrVarOutOfOrder    = errors.New("variable produced by a later call")
 	ErrRunInProgress    = errors.New("a run is already in progress")
+	ErrNoRunInProgress  = errors.New("no run is in progress")
 	ErrNoCalls          = errors.New("workflow has no calls")
 	ErrVariableInUse    = errors.New("variable is used by a call")
 )

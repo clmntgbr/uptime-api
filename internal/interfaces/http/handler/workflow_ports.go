@@ -34,3 +34,7 @@ type workflowDeleteHandler interface {
 type workflowRunHandler interface {
 	Handle(ctx context.Context, cmd schedulecmd.RunManualCommand) (uuid.UUID, error)
 }
+
+type workflowStopHandler interface {
+	Handle(ctx context.Context, cmd schedulecmd.StopRunCommand) (uuid.UUID, error)
+}

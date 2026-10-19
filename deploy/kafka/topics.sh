@@ -32,6 +32,9 @@ TOPICS=(
   "workflow.results 12 $((7 * DAY_MS))"
   "workflow.results.retry 12 $((7 * DAY_MS))"
   "workflow.results.dlq 12 $((30 * DAY_MS))"
+  "workflow.cancels 6 $((1 * DAY_MS))"
+  "workflow.cancels.retry 6 $((1 * DAY_MS))"
+  "workflow.cancels.dlq 6 $((30 * DAY_MS))"
   "events 6 $((7 * DAY_MS))"
   "events.retry 6 $((7 * DAY_MS))"
   "events.dlq 6 $((30 * DAY_MS))"
@@ -80,15 +83,19 @@ create_user worker-calls "${KAFKA_WORKER_CALLS_PASSWORD:?}"
 
 # api + scheduler: write jobs (manual runs and the tick).
 acl --allow-principal User:api --operation Write --operation Describe --topic workflow.jobs
+acl --allow-principal User:api --operation Write --operation Describe --topic workflow.cancels
 acl --allow-principal User:scheduler --operation Write --operation Describe --topic workflow.jobs
 
 # worker-calls: read jobs (+retry), write results, its own retry and dlq.
 acl --allow-principal User:worker-calls --operation Read --operation Describe \
-  --topic workflow.jobs --topic workflow.jobs.retry
+  --topic workflow.jobs --topic workflow.jobs.retry \
+  --topic workflow.cancels --topic workflow.cancels.retry
 acl --allow-principal User:worker-calls --operation Write --operation Describe \
-  --topic workflow.results --topic workflow.jobs.retry --topic workflow.jobs.dlq
+  --topic workflow.results --topic workflow.jobs.retry --topic workflow.jobs.dlq \
+  --topic workflow.cancels.retry --topic workflow.cancels.dlq
 acl --allow-principal User:worker-calls --operation Read \
-  --group worker-calls --group worker-calls.retry
+  --group worker-calls --group worker-calls.retry \
+  --group worker-calls-cancels --group worker-calls-cancels.retry
 
 # worker: read results and events (+retry), write events, retry and dlq of what it reads.
 acl --allow-principal User:worker --operation Read --operation Describe \

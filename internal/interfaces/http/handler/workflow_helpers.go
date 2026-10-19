@@ -94,6 +94,11 @@ func writeWorkflowError(c fiber.Ctx, err error, fallback string) error {
 			"message": "A run is already in progress",
 			"code":    "RUN_IN_PROGRESS",
 		})
+	case errors.Is(err, domainworkflow.ErrNoRunInProgress):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"message": "No run is in progress",
+			"code":    "NO_RUN_IN_PROGRESS",
+		})
 	case errors.Is(err, domainworkflow.ErrNoCalls):
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "Workflow has no calls",

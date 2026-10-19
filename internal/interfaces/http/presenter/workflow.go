@@ -49,7 +49,7 @@ func NewWorkflowResponseFromView(v domainworkflow.View) WorkflowResponse {
 		Name:         v.Name,
 		ScheduleType: string(v.ScheduleType),
 		Enabled:      v.Enabled,
-		IsRunning:    v.Status == domainschedule.StatusRunning,
+		IsRunning:    v.Status == domainschedule.StatusRunning || v.Status == domainschedule.StatusCancelling,
 	}
 	if out.ScheduleType == "" {
 		out.ScheduleType = string(domainworkflow.ScheduleInterval)

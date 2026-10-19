@@ -117,6 +117,25 @@ func (m *mockRunHandler) Handle(_ context.Context, cmd schedulecmd.RunManualComm
 	return testRunID, nil
 }
 
+type mockStopHandler struct {
+	calls int
+	got   schedulecmd.StopRunCommand
+	runID uuid.UUID
+	err   error
+}
+
+func (m *mockStopHandler) Handle(_ context.Context, cmd schedulecmd.StopRunCommand) (uuid.UUID, error) {
+	m.calls++
+	m.got = cmd
+	if m.err != nil {
+		return uuid.Nil, m.err
+	}
+	if m.runID != uuid.Nil {
+		return m.runID, nil
+	}
+	return testRunID, nil
+}
+
 type mocks struct {
 	create *mockCreateHandler
 	update *mockUpdateHandler
@@ -124,6 +143,7 @@ type mocks struct {
 	get    *mockGetHandler
 	delete *mockDeleteHandler
 	run    *mockRunHandler
+	stop   *mockStopHandler
 }
 
 func newMocks() mocks {
@@ -134,12 +154,13 @@ func newMocks() mocks {
 		get:    &mockGetHandler{},
 		delete: &mockDeleteHandler{},
 		run:    &mockRunHandler{},
+		stop:   &mockStopHandler{},
 	}
 }
 
 // mountRoutes registers the workflow routes; authenticated adds a user to the context.
 func mountRoutes(m mocks, authenticated bool) *fiber.App {
-	h := handler.NewWorkflowHandler(m.create, m.update, m.list, m.get, m.delete, m.run)
+	h := handler.NewWorkflowHandler(m.create, m.update, m.list, m.get, m.delete, m.run, m.stop)
 	app := testutil.NewTestApp()
 	if authenticated {
 		app.Use(testutil.WithUserWithoutProject(testutil.TestUserID))
@@ -150,6 +171,7 @@ func mountRoutes(m mocks, authenticated bool) *fiber.App {
 	app.Put("/workflows/:id", h.Update)
 	app.Delete("/workflows/:id", h.Delete)
 	app.Post("/workflows/:id/runs", h.Run)
+	app.Post("/workflows/:id/stop", h.Stop)
 	return app
 }
 

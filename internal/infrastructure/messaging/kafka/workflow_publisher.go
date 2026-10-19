@@ -17,6 +17,7 @@ type WorkflowPublisher struct {
 var (
 	_ port.JobPublisher    = (*WorkflowPublisher)(nil)
 	_ port.ResultPublisher = (*WorkflowPublisher)(nil)
+	_ port.CancelPublisher = (*WorkflowPublisher)(nil)
 )
 
 func NewWorkflowPublisher(producer *Producer) *WorkflowPublisher {
@@ -50,5 +51,15 @@ func (p *WorkflowPublisher) PublishCallProgress(ctx context.Context, progress co
 	}
 	return p.producer.Produce(ctx, TopicWorkflowResults, []byte(progress.WorkflowID), body, map[string]string{
 		"type": contract.CallProgressType, "run_id": progress.RunID,
+	})
+}
+
+func (p *WorkflowPublisher) PublishCancel(ctx context.Context, cancel contract.Cancel) error {
+	body, err := json.Marshal(cancel)
+	if err != nil {
+		return err
+	}
+	return p.producer.Produce(ctx, TopicWorkflowCancels, []byte(cancel.RunID), body, map[string]string{
+		"type": contract.CancelType, "run_id": cancel.RunID,
 	})
 }

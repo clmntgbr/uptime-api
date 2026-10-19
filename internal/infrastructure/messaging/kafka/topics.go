@@ -4,6 +4,7 @@ package kafka
 const (
 	TopicWorkflowJobs    = "workflow.jobs"
 	TopicWorkflowResults = "workflow.results"
+	TopicWorkflowCancels = "workflow.cancels"
 	TopicEvents          = "events"
 )
 

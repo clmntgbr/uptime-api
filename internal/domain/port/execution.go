@@ -12,10 +12,21 @@ type JobPublisher interface {
 	PublishJob(ctx context.Context, job contract.Job) error
 }
 
+// CancelPublisher publishes run cancel signals on `workflow.cancels`.
+type CancelPublisher interface {
+	PublishCancel(ctx context.Context, cancel contract.Cancel) error
+}
+
 // ResultPublisher publishes run results on `workflow.results`.
 type ResultPublisher interface {
 	PublishResult(ctx context.Context, result contract.Result) error
 	PublishCallProgress(ctx context.Context, progress contract.CallProgress) error
+}
+
+// CancellationChecker reports whether a run was asked to stop. Checked between
+// calls so the in-flight call finishes, then remaining calls are skipped.
+type CancellationChecker interface {
+	IsCancelled(ctx context.Context, runID string) (bool, error)
 }
 
 // WorkflowRunner executes a job end to end and returns its result. It never

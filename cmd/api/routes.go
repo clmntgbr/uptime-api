@@ -54,6 +54,7 @@ func setupWorkflowRoutes(api fiber.Router, container *di.Container) {
 	api.Put("/workflows/:id", container.WorkflowHandler.Update)
 	api.Delete("/workflows/:id", container.WorkflowHandler.Delete)
 	api.Post("/workflows/:id/runs", container.WorkflowHandler.Run)
+	api.Post("/workflows/:id/stop", container.WorkflowHandler.Stop)
 
 	api.Get("/workflows/:id/variables", container.VariableHandler.ListStatics)
 	api.Post("/workflows/:id/variables", container.VariableHandler.CreateStatic)

@@ -47,7 +47,7 @@ JOIN workflows w ON w.id = s.workflow_id
 WHERE w.deleted_at IS NULL
   AND (
     (w.enabled AND s.next_run_at <= @now)
-    OR (s.status = 'running' AND s.lease_until IS NOT NULL AND s.lease_until < @now)
+    OR (s.status IN ('running', 'cancelling') AND s.lease_until IS NOT NULL AND s.lease_until < @now)
   )
 ORDER BY s.next_run_at
 LIMIT @limit

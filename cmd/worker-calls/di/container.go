@@ -17,8 +17,9 @@ import (
 )
 
 type Container struct {
-	Consumer *kafka.Consumer
-	Producer *kafka.Producer
+	JobsConsumer    *kafka.Consumer
+	CancelsConsumer *kafka.Consumer
+	Producer        *kafka.Producer
 }
 
 func NewContainer(env *config.WorkerCallsConfig, logger *slog.Logger) (*Container, error) {
@@ -38,17 +39,33 @@ func NewContainer(env *config.WorkerCallsConfig, logger *slog.Logger) (*Containe
 		logger.Warn("SSRF protection disabled: private destinations are allowed")
 	}
 
+	cancels := engine.NewMemoryCancellationRegistry()
 	executor := httpclient.NewExecutor(httpclient.Config{UserAgent: env.UserAgent, AllowPrivate: env.AllowPrivateIPs})
 	clock := port.SystemClock{}
 	publisher := kafka.NewWorkflowPublisher(producer)
-	runner := observability.InstrumentRunner(engine.NewRunner(executor, bodies, clock, logger).WithProgressPublisher(publisher))
+	runner := observability.InstrumentRunner(
+		engine.NewRunner(executor, bodies, clock, logger).
+			WithProgressPublisher(publisher).
+			WithCancellationChecker(cancels),
+	)
 	handler := execution.NewExecuteJobHandler(opener, runner, publisher, clock, logger)
+	cancelHandler := execution.NewRecordCancelHandler(cancels)
 
-	consumer := kafka.NewConsumer(
+	jobsConsumer := kafka.NewConsumer(
 		env.Kafka,
 		kafka.DefaultConsumerOptions(env.Group, kafka.TopicWorkflowJobs, env.Concurrency, false),
 		kafka.PayloadHandler(handler.Handle),
 		producer,
 	)
-	return &Container{Consumer: consumer, Producer: producer}, nil
+	cancelsConsumer := kafka.NewConsumer(
+		env.Kafka,
+		kafka.DefaultConsumerOptions(env.Group+"-cancels", kafka.TopicWorkflowCancels, env.Concurrency, false),
+		kafka.PayloadHandler(cancelHandler.Handle),
+		producer,
+	)
+	return &Container{
+		JobsConsumer:    jobsConsumer,
+		CancelsConsumer: cancelsConsumer,
+		Producer:        producer,
+	}, nil
 }

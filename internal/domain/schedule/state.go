@@ -12,8 +12,9 @@ const Tick = time.Minute
 type Status string
 
 const (
-	StatusIdle    Status = "idle"
-	StatusRunning Status = "running"
+	StatusIdle       Status = "idle"
+	StatusRunning    Status = "running"
+	StatusCancelling Status = "cancelling"
 )
 
 // State is the scheduling state of a workflow. The lease guarantees that a
@@ -68,9 +69,9 @@ func (s *State) ClearSchedule() {
 	s.NextRunAt = Never
 }
 
-// Running reports whether a lease is held (valid or expired).
+// Running reports whether a lease is held (valid or expired), including while cancelling.
 func (s State) Running() bool {
-	return s.Status == StatusRunning && s.LeaseRunID != nil
+	return (s.Status == StatusRunning || s.Status == StatusCancelling) && s.LeaseRunID != nil
 }
 
 func (s State) LeaseActive(now time.Time) bool {
@@ -85,6 +86,16 @@ func (s *State) Lease(runID uuid.UUID, now time.Time, duration time.Duration) {
 	s.LeaseRunID = &runID
 	s.LeaseStartedAt = &started
 	s.LeaseUntil = &until
+}
+
+// RequestCancel moves a running lease to cancelling so remaining calls are skipped.
+// Returns the leased run ID when the transition happened (or was already cancelling).
+func (s *State) RequestCancel(now time.Time) (uuid.UUID, bool) {
+	if !s.LeaseActive(now) || s.LeaseRunID == nil {
+		return uuid.Nil, false
+	}
+	s.Status = StatusCancelling
+	return *s.LeaseRunID, true
 }
 
 // ExpiredLease is what remains of a lease nobody completed in time.

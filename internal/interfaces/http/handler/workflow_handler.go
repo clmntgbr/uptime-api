@@ -20,6 +20,7 @@ type WorkflowHandler struct {
 	getHandler    workflowGetHandler
 	deleteHandler workflowDeleteHandler
 	runHandler    workflowRunHandler
+	stopHandler   workflowStopHandler
 }
 
 func NewWorkflowHandler(
@@ -29,6 +30,7 @@ func NewWorkflowHandler(
 	getHandler workflowGetHandler,
 	deleteHandler workflowDeleteHandler,
 	runHandler workflowRunHandler,
+	stopHandler workflowStopHandler,
 ) *WorkflowHandler {
 	return &WorkflowHandler{
 		createHandler: createHandler,
@@ -37,6 +39,7 @@ func NewWorkflowHandler(
 		getHandler:    getHandler,
 		deleteHandler: deleteHandler,
 		runHandler:    runHandler,
+		stopHandler:   stopHandler,
 	}
 }
 
@@ -180,6 +183,27 @@ func (h *WorkflowHandler) Run(c fiber.Ctx) error {
 	})
 	if err != nil {
 		return writeWorkflowError(c, err, "Failed to run workflow")
+	}
+	return c.Status(fiber.StatusAccepted).JSON(presenter.NewWorkflowRunResponse(runID.String()))
+}
+
+func (h *WorkflowHandler) Stop(c fiber.Ctx) error {
+	user, err := httpctx.GetUser(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "Unauthorized"})
+	}
+
+	workflowID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid workflow id"})
+	}
+
+	runID, err := h.stopHandler.Handle(c.Context(), schedulecmd.StopRunCommand{
+		UserID:     user.ID,
+		WorkflowID: workflowID,
+	})
+	if err != nil {
+		return writeWorkflowError(c, err, "Failed to stop workflow")
 	}
 	return c.Status(fiber.StatusAccepted).JSON(presenter.NewWorkflowRunResponse(runID.String()))
 }
