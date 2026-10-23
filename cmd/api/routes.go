@@ -67,6 +67,7 @@ func setupWorkflowRoutes(api fiber.Router, container *di.Container) {
 	api.Get("/workflows/:id/calls", container.CallHandler.List)
 	api.Post("/workflows/:id/calls", container.CallHandler.Create)
 	api.Get("/workflows/:id/calls/:callId", container.CallHandler.GetByID)
+	api.Post("/workflows/:id/calls/:callId/copy", container.CallHandler.Copy)
 	api.Put("/workflows/:id/calls/:callId", container.CallHandler.Update)
 	api.Delete("/workflows/:id/calls/:callId", container.CallHandler.Delete)
 

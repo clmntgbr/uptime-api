@@ -2,8 +2,10 @@ package workflow
 
 import (
 	"testing"
+	"time"
 
 	domaincall "go-api/internal/domain/call"
+	domainrule "go-api/internal/domain/rule"
 
 	"github.com/google/uuid"
 )
@@ -79,6 +81,86 @@ func TestReplaceCall_IgnoresDefinitionExtractions(t *testing.T) {
 	if len(replaced.Extractions) != 1 || replaced.Extractions[0].ID != extID ||
 		replaced.Extractions[0].Name != "token" || replaced.Extractions[0].Expression != "$.token" {
 		t.Fatalf("ReplaceCall must keep existing call variables, got %+v", replaced.Extractions)
+	}
+}
+
+func TestDuplicateCall_CopiesFieldsAndRulesKeepsTemplates(t *testing.T) {
+	userID := uuid.New()
+	verify := true
+	w, err := New(userID, Definition{
+		Name:     "wf",
+		Interval: MinInterval,
+		Enabled:  true,
+		Calls: []domaincall.Definition{
+			{
+				Name:   "login",
+				Method: "POST",
+				URL:    "https://example.com/login",
+				Extractions: []domaincall.Extraction{{
+					Name: "token", Source: domaincall.ExtractJSON, Expression: "$.token",
+				}},
+			},
+			{
+				Name:      "Orders call",
+				Method:    "GET",
+				URL:       "https://example.com/orders?access={{token}}",
+				Headers:   map[string]string{"Authorization": "Bearer {{token}}"},
+				Query:     map[string]string{"page": "1"},
+				Body:      `{"token":"{{token}}"}`,
+				Timeout:   5 * time.Second,
+				VerifyTLS: &verify,
+				IPVersion: domaincall.IPv4,
+				ProxyURL:  "https://proxy.example.com:8080",
+				Extractions: []domaincall.Extraction{{
+					Name: "orderId", Source: domaincall.ExtractJSON, Expression: "$.id",
+				}},
+				Rules: []domainrule.Rule{{
+					Subject: domainrule.SubjectStatus, Operator: domainrule.OpIs, Value: "200",
+				}},
+			},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcID := w.Calls[1].ID
+
+	copied, err := w.DuplicateCall(srcID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copied.ID == srcID || copied.Position != 3 || copied.Name != "Orders call" ||
+		copied.Method != "GET" ||
+		copied.URL != "https://example.com/orders?access={{token}}" ||
+		copied.Headers["Authorization"] != "Bearer {{token}}" ||
+		copied.Query["page"] != "1" || copied.Body != `{"token":"{{token}}"}` ||
+		copied.Timeout != 5*time.Second || !copied.VerifyTLS ||
+		copied.IPVersion != domaincall.IPv4 ||
+		copied.ProxyURL != "https://proxy.example.com:8080" {
+		t.Fatalf("unexpected copied call %+v", copied)
+	}
+	if len(copied.Rules) != 1 || copied.Rules[0].ID == uuid.Nil ||
+		copied.Rules[0].Subject != domainrule.SubjectStatus || copied.Rules[0].Value != "200" {
+		t.Fatalf("rules not copied: %+v", copied.Rules)
+	}
+	if len(copied.Extractions) != 0 {
+		t.Fatalf("call variables must not be copied, got %+v", copied.Extractions)
+	}
+	if len(w.Calls[1].Extractions) != 1 || w.Calls[1].Extractions[0].Name != "orderId" {
+		t.Fatalf("source extractions must stay untouched: %+v", w.Calls[1].Extractions)
+	}
+}
+
+func TestDuplicateCall_NotFound(t *testing.T) {
+	w, err := New(uuid.New(), Definition{
+		Name: "wf", Interval: MinInterval, Enabled: true,
+		Calls: []domaincall.Definition{{Name: "a", Method: "GET", URL: "https://example.com"}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.DuplicateCall(uuid.New(), nil); err != ErrCallNotFound {
+		t.Fatalf("got %v want ErrCallNotFound", err)
 	}
 }
 

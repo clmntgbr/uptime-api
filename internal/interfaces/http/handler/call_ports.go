@@ -13,6 +13,10 @@ type callCreateHandler interface {
 	Handle(ctx context.Context, cmd callcmd.CreateCallCommand) (*domaincall.Call, error)
 }
 
+type callCopyHandler interface {
+	Handle(ctx context.Context, cmd callcmd.CopyCallCommand) (*domaincall.Call, error)
+}
+
 type callUpdateHandler interface {
 	Handle(ctx context.Context, cmd callcmd.UpdateCallCommand) (*domaincall.Call, error)
 }

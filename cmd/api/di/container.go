@@ -141,6 +141,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		),
 		CallHandler: httphandler.NewCallHandler(
 			callcmd.NewCreateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			callcmd.NewCopyCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
 			callcmd.NewUpdateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
 			callcmd.NewDeleteCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
 			querycall.NewListCallsHandler(workflowReadRepo),

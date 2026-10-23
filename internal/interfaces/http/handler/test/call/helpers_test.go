@@ -45,6 +45,31 @@ func (m *mockCreateHandler) Handle(_ context.Context, cmd callcmd.CreateCallComm
 	}, nil
 }
 
+type mockCopyHandler struct {
+	calls int
+	got   callcmd.CopyCallCommand
+	call  *domaincall.Call
+	err   error
+}
+
+func (m *mockCopyHandler) Handle(_ context.Context, cmd callcmd.CopyCallCommand) (*domaincall.Call, error) {
+	m.calls++
+	m.got = cmd
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.call != nil {
+		return m.call, nil
+	}
+	return &domaincall.Call{
+		ID:       uuid.MustParse("01960000-0000-7000-8000-0000000000c9"),
+		Name:     "login",
+		Method:   "POST",
+		URL:      "https://api.example.com/login",
+		Position: 2,
+	}, nil
+}
+
 type mockUpdateHandler struct {
 	calls int
 	got   callcmd.UpdateCallCommand
@@ -128,6 +153,7 @@ func sampleCallView() *domainworkflow.CallView {
 
 type mocks struct {
 	create *mockCreateHandler
+	copy   *mockCopyHandler
 	update *mockUpdateHandler
 	delete *mockDeleteHandler
 	list   *mockListHandler
@@ -137,6 +163,7 @@ type mocks struct {
 func newMocks() mocks {
 	return mocks{
 		create: &mockCreateHandler{},
+		copy:   &mockCopyHandler{},
 		update: &mockUpdateHandler{},
 		delete: &mockDeleteHandler{},
 		list:   &mockListHandler{},
@@ -145,7 +172,7 @@ func newMocks() mocks {
 }
 
 func mountRoutes(m mocks, authenticated bool) *fiber.App {
-	h := handler.NewCallHandler(m.create, m.update, m.delete, m.list, m.get)
+	h := handler.NewCallHandler(m.create, m.copy, m.update, m.delete, m.list, m.get)
 	app := testutil.NewTestApp()
 	if authenticated {
 		app.Use(testutil.WithUserWithoutProject(testutil.TestUserID))
@@ -153,6 +180,7 @@ func mountRoutes(m mocks, authenticated bool) *fiber.App {
 	app.Get("/workflows/:id/calls", h.List)
 	app.Post("/workflows/:id/calls", h.Create)
 	app.Get("/workflows/:id/calls/:callId", h.GetByID)
+	app.Post("/workflows/:id/calls/:callId/copy", h.Copy)
 	app.Put("/workflows/:id/calls/:callId", h.Update)
 	app.Delete("/workflows/:id/calls/:callId", h.Delete)
 	return app

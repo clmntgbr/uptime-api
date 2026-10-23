@@ -7,6 +7,7 @@ import (
 	"time"
 
 	domaincall "go-api/internal/domain/call"
+	domainrule "go-api/internal/domain/rule"
 
 	"github.com/google/uuid"
 )
@@ -60,6 +61,55 @@ func (w *Workflow) ReplaceCall(callID uuid.UUID, def domaincall.Definition, glob
 	w.Calls = next
 	w.recordCallMutation()
 	return call, nil
+}
+
+// DuplicateCall appends a copy of callID (request fields and rules). Call
+// variables (extractions) are not copied — templates like {{token}} in the URL
+// keep working against variables produced by earlier calls. The new call is
+// placed at the end.
+func (w *Workflow) DuplicateCall(callID uuid.UUID, globalNames []string) (domaincall.Call, error) {
+	index, err := w.callIndex(callID)
+	if err != nil {
+		return domaincall.Call{}, err
+	}
+	src := w.Calls[index]
+
+	rules := make([]domainrule.Rule, 0, len(src.Rules))
+	for _, r := range src.Rules {
+		rules = append(rules, domainrule.Rule{
+			Subject:  r.Subject,
+			Operator: r.Operator,
+			Target:   r.Target,
+			Value:    r.Value,
+		})
+	}
+
+	verifyTLS := src.VerifyTLS
+	def := domaincall.Definition{
+		Name:      src.Name,
+		Method:    src.Method,
+		URL:       src.URL,
+		Headers:   copyStringMap(src.Headers),
+		Query:     copyStringMap(src.Query),
+		Body:      src.Body,
+		Timeout:   src.Timeout,
+		VerifyTLS: &verifyTLS,
+		IPVersion: src.IPVersion,
+		ProxyURL:  src.ProxyURL,
+		Rules:     rules,
+	}
+	return w.AddCall(def, globalNames)
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // RemoveCall deletes a call and renumbers the remaining positions.

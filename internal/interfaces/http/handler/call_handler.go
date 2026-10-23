@@ -11,6 +11,7 @@ import (
 
 type CallHandler struct {
 	createHandler callCreateHandler
+	copyHandler   callCopyHandler
 	updateHandler callUpdateHandler
 	deleteHandler callDeleteHandler
 	listHandler   callListHandler
@@ -19,6 +20,7 @@ type CallHandler struct {
 
 func NewCallHandler(
 	createHandler callCreateHandler,
+	copyHandler callCopyHandler,
 	updateHandler callUpdateHandler,
 	deleteHandler callDeleteHandler,
 	listHandler callListHandler,
@@ -26,6 +28,7 @@ func NewCallHandler(
 ) *CallHandler {
 	return &CallHandler{
 		createHandler: createHandler,
+		copyHandler:   copyHandler,
 		updateHandler: updateHandler,
 		deleteHandler: deleteHandler,
 		listHandler:   listHandler,
@@ -95,6 +98,27 @@ func (h *CallHandler) Create(c fiber.Ctx) error {
 	})
 	if err != nil {
 		return writeCallError(c, err, "Failed to create call")
+	}
+	return c.Status(fiber.StatusCreated).JSON(presenter.NewCallResponseFromCall(*call))
+}
+
+func (h *CallHandler) Copy(c fiber.Ctx) error {
+	user, err := httpctx.GetUser(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "Unauthorized"})
+	}
+	workflowID, callID, err := parseWorkflowAndCallIDs(c)
+	if err != nil {
+		return err
+	}
+
+	call, err := h.copyHandler.Handle(c.Context(), callcmd.CopyCallCommand{
+		UserID:     user.ID,
+		WorkflowID: workflowID,
+		CallID:     callID,
+	})
+	if err != nil {
+		return writeCallError(c, err, "Failed to copy call")
 	}
 	return c.Status(fiber.StatusCreated).JSON(presenter.NewCallResponseFromCall(*call))
 }
