@@ -7,26 +7,38 @@ import (
 	domainworkflow "go-api/internal/domain/workflow"
 )
 
+// CallRecentRunResponse is one bar of the call list sparkline.
+type CallRecentRunResponse struct {
+	ID         string  `json:"id"`
+	RunID      string  `json:"runId"`
+	Status     string  `json:"status"`
+	HTTPStatus *int    `json:"httpStatus,omitempty"`
+	FinishedAt *string `json:"finishedAt,omitempty"`
+	LatencyMs  *int64  `json:"latencyMs,omitempty"`
+}
+
 // CallResponse is the shape of create/update and list call rows.
 type CallResponse struct {
-	ID             string  `json:"id"`
-	Name           string  `json:"name"`
-	Method         string  `json:"method"`
-	URL            string  `json:"url"`
-	Position       int     `json:"position"`
-	LastStatus     *string `json:"lastStatus,omitempty"`
-	LastHTTPStatus *int    `json:"lastHttpStatus,omitempty"`
-	LastFinishedAt *string `json:"lastFinishedAt,omitempty"`
-	LastLatencyMs  *int64  `json:"lastLatencyMs,omitempty"`
+	ID             string                   `json:"id"`
+	Name           string                   `json:"name"`
+	Method         string                   `json:"method"`
+	URL            string                   `json:"url"`
+	Position       int                      `json:"position"`
+	LastStatus     *string                  `json:"lastStatus,omitempty"`
+	LastHTTPStatus *int                     `json:"lastHttpStatus,omitempty"`
+	LastFinishedAt *string                  `json:"lastFinishedAt,omitempty"`
+	LastLatencyMs  *int64                   `json:"lastLatencyMs,omitempty"`
+	RecentRuns     []CallRecentRunResponse `json:"recentRuns"`
 }
 
 func NewCallResponseFromCall(c domaincall.Call) CallResponse {
 	return CallResponse{
-		ID:       c.ID.String(),
-		Name:     c.Name,
-		Method:   c.Method,
-		URL:      c.URL,
-		Position: c.Position,
+		ID:         c.ID.String(),
+		Name:       c.Name,
+		Method:     c.Method,
+		URL:        c.URL,
+		Position:   c.Position,
+		RecentRuns: []CallRecentRunResponse{},
 	}
 }
 
@@ -40,11 +52,12 @@ func NewCallListResponseFromViews(views []domainworkflow.CallListView) []CallRes
 
 func NewCallListResponseFromView(v domainworkflow.CallListView) CallResponse {
 	out := CallResponse{
-		ID:       v.ID.String(),
-		Name:     v.Name,
-		Method:   v.Method,
-		URL:      v.URL,
-		Position: v.Position,
+		ID:         v.ID.String(),
+		Name:       v.Name,
+		Method:     v.Method,
+		URL:        v.URL,
+		Position:   v.Position,
+		RecentRuns: make([]CallRecentRunResponse, 0, len(v.RecentRuns)),
 	}
 	if v.LastStatus != "" {
 		status := v.LastStatus
@@ -56,6 +69,20 @@ func NewCallListResponseFromView(v domainworkflow.CallListView) CallResponse {
 		out.LastFinishedAt = &s
 	}
 	out.LastLatencyMs = v.LastLatencyMs
+	for _, r := range v.RecentRuns {
+		item := CallRecentRunResponse{
+			ID:         r.ID.String(),
+			RunID:      r.RunID.String(),
+			Status:     r.Status,
+			HTTPStatus: r.HTTPStatus,
+			LatencyMs:  r.LatencyMs,
+		}
+		if r.FinishedAt != nil {
+			s := r.FinishedAt.UTC().Format(time.RFC3339)
+			item.FinishedAt = &s
+		}
+		out.RecentRuns = append(out.RecentRuns, item)
+	}
 	return out
 }
 

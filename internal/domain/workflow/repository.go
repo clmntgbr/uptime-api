@@ -39,7 +39,20 @@ type ListView struct {
 	Name string
 }
 
-// CallListView is one row of GET /workflows/:id/calls (definition + last execution).
+// CallRecentRunLimit is how many past executions feed the list sparkline.
+const CallRecentRunLimit = 24
+
+// CallRecentRunView is one bar of the call list sparkline (status + latency).
+type CallRecentRunView struct {
+	ID         uuid.UUID
+	RunID      uuid.UUID
+	Status     string
+	HTTPStatus *int
+	FinishedAt *time.Time
+	LatencyMs  *int64
+}
+
+// CallListView is one row of GET /workflows/:id/calls (definition + recent runs).
 type CallListView struct {
 	ID             uuid.UUID
 	Name           string
@@ -50,6 +63,8 @@ type CallListView struct {
 	LastHTTPStatus *int
 	LastFinishedAt *time.Time
 	LastLatencyMs  *int64
+	// RecentRuns is oldest→newest (at most CallRecentRunLimit), for the mini timeline.
+	RecentRuns []CallRecentRunView
 }
 
 // CallView is the detail of one call (without extractions and rules for now).

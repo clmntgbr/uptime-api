@@ -131,19 +131,25 @@ func (r *workflowQueryRepository) FindByID(ctx context.Context, userID, id uuid.
 }
 
 type callListRow struct {
-	ID             uuid.UUID  `gorm:"column:id"`
-	Name           string     `gorm:"column:name"`
-	Method         string     `gorm:"column:method"`
-	URL            string     `gorm:"column:url"`
-	Position       int        `gorm:"column:position"`
-	LastStatus     *string    `gorm:"column:last_status"`
-	LastHTTPStatus *int       `gorm:"column:last_http_status"`
-	LastFinishedAt *time.Time `gorm:"column:last_finished_at"`
-	LastLatencyMs  *int64     `gorm:"column:last_latency_ms"`
+	ID         uuid.UUID    `gorm:"column:id"`
+	Name       string       `gorm:"column:name"`
+	Method     string       `gorm:"column:method"`
+	URL        string       `gorm:"column:url"`
+	Position   int          `gorm:"column:position"`
+	RecentRuns dbtype.JSONB `gorm:"column:recent_runs"`
 }
 
-// listCallsSQL returns call definitions with the latest execution summary.
-// Named params only: timings->>'total' must not use a Postgres ? operator.
+type callRecentRunJSON struct {
+	ID         uuid.UUID  `json:"id"`
+	RunID      uuid.UUID  `json:"run_id"`
+	Status     string     `json:"status"`
+	HTTPStatus *int       `json:"http_status"`
+	FinishedAt *time.Time `json:"finished_at"`
+	LatencyMs  *int64     `json:"latency_ms"`
+}
+
+// listCallsSQL returns call definitions with up to CallRecentRunLimit past runs
+// (oldest→newest) for the list sparkline. Named params only — no Postgres ? op.
 const listCallsSQL = `
 SELECT
   c.id,
@@ -151,19 +157,36 @@ SELECT
   c.method,
   c.url,
   c.position,
-  lr.status AS last_status,
-  lr.http_status AS last_http_status,
-  lr.finished_at AS last_finished_at,
-  ROUND((lr.timings->>'total')::double precision)::bigint AS last_latency_ms
+  COALESCE(hist.recent_runs, '[]'::jsonb) AS recent_runs
 FROM calls c
 JOIN workflows w ON w.id = c.workflow_id
 LEFT JOIN LATERAL (
-  SELECT cr.status, cr.http_status, cr.finished_at, cr.timings
-  FROM call_runs cr
-  WHERE cr.call_id = c.id
-  ORDER BY cr.finished_at DESC NULLS LAST, cr.started_at DESC NULLS LAST
-  LIMIT 1
-) lr ON TRUE
+  SELECT jsonb_agg(
+    jsonb_build_object(
+      'id', t.id,
+      'run_id', t.run_id,
+      'status', t.status,
+      'http_status', t.http_status,
+      'finished_at', t.finished_at,
+      'latency_ms', t.latency_ms
+    )
+    ORDER BY t.finished_at ASC NULLS LAST, t.started_at ASC NULLS LAST
+  ) AS recent_runs
+  FROM (
+    SELECT
+      cr.id,
+      cr.run_id,
+      cr.status,
+      cr.http_status,
+      cr.finished_at,
+      cr.started_at,
+      ROUND((cr.timings->>'total')::double precision)::bigint AS latency_ms
+    FROM call_runs cr
+    WHERE cr.call_id = c.id
+    ORDER BY cr.finished_at DESC NULLS LAST, cr.started_at DESC NULLS LAST
+    LIMIT @recent_limit
+  ) t
+) hist ON TRUE
 WHERE c.workflow_id = @workflow_id
   AND w.user_id = @user_id
   AND w.deleted_at IS NULL
@@ -172,30 +195,59 @@ ORDER BY c.position`
 func (r *workflowQueryRepository) ListCalls(ctx context.Context, userID, workflowID uuid.UUID) ([]domainworkflow.CallListView, error) {
 	var rows []callListRow
 	err := r.db.WithContext(ctx).Raw(listCallsSQL, map[string]any{
-		"workflow_id": workflowID,
-		"user_id":     userID,
+		"workflow_id":  workflowID,
+		"user_id":      userID,
+		"recent_limit": domainworkflow.CallRecentRunLimit,
 	}).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 	views := make([]domainworkflow.CallListView, 0, len(rows))
 	for _, row := range rows {
-		v := domainworkflow.CallListView{
-			ID:             row.ID,
-			Name:           row.Name,
-			Method:         row.Method,
-			URL:            row.URL,
-			Position:       row.Position,
-			LastHTTPStatus: row.LastHTTPStatus,
-			LastFinishedAt: row.LastFinishedAt,
-			LastLatencyMs:  row.LastLatencyMs,
+		recent, err := decodeCallRecentRuns(row.RecentRuns)
+		if err != nil {
+			return nil, err
 		}
-		if row.LastStatus != nil {
-			v.LastStatus = *row.LastStatus
+		v := domainworkflow.CallListView{
+			ID:         row.ID,
+			Name:       row.Name,
+			Method:     row.Method,
+			URL:        row.URL,
+			Position:   row.Position,
+			RecentRuns: recent,
+		}
+		if n := len(recent); n > 0 {
+			last := recent[n-1]
+			v.LastStatus = last.Status
+			v.LastHTTPStatus = last.HTTPStatus
+			v.LastFinishedAt = last.FinishedAt
+			v.LastLatencyMs = last.LatencyMs
 		}
 		views = append(views, v)
 	}
 	return views, nil
+}
+
+func decodeCallRecentRuns(raw dbtype.JSONB) ([]domainworkflow.CallRecentRunView, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return []domainworkflow.CallRecentRunView{}, nil
+	}
+	var rows []callRecentRunJSON
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]domainworkflow.CallRecentRunView, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domainworkflow.CallRecentRunView{
+			ID:         row.ID,
+			RunID:      row.RunID,
+			Status:     row.Status,
+			HTTPStatus: row.HTTPStatus,
+			FinishedAt: row.FinishedAt,
+			LatencyMs:  row.LatencyMs,
+		})
+	}
+	return out, nil
 }
 
 type callDetailRow struct {
