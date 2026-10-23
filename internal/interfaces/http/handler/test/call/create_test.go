@@ -95,7 +95,7 @@ func TestCallHandler_Create_HandlerError_NotFound(t *testing.T) {
 
 func TestCallHandler_Create_HandlerError_InvalidWorkflow(t *testing.T) {
 	m := newMocks()
-	m.create.err = &domainworkflow.ValidationError{Call: "login", Message: "call names must be unique within a workflow"}
+	m.create.err = &domainworkflow.ValidationError{Call: "login", Message: "call name is required (max 100 characters)"}
 	resp := doJSON(t, m, true, http.MethodPost, callsPath(), validCallBody())
 	assertStatus(t, resp, http.StatusBadRequest)
 	if out := testutil.DecodeJSONMap(t, resp); out["code"] != "INVALID_WORKFLOW" {

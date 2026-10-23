@@ -16,11 +16,6 @@ func (w *Workflow) AddCall(def domaincall.Definition, globalNames []string) (dom
 	if len(w.Calls) >= MaxCalls {
 		return domaincall.Call{}, &ValidationError{Message: fmt.Sprintf("a workflow has at most %d calls", MaxCalls)}
 	}
-	for _, existing := range w.Calls {
-		if existing.Name == strings.TrimSpace(def.Name) {
-			return domaincall.Call{}, &ValidationError{Call: existing.Name, Message: "call names must be unique within a workflow"}
-		}
-	}
 
 	call, err := domaincall.New(def, len(w.Calls)+1, uuid.New())
 	if err != nil {
@@ -55,11 +50,6 @@ func (w *Workflow) ReplaceCall(callID uuid.UUID, def domaincall.Definition, glob
 	call, err := domaincall.New(def, w.Calls[index].Position, callID)
 	if err != nil {
 		return domaincall.Call{}, mapCallError(err)
-	}
-	for i, existing := range w.Calls {
-		if i != index && existing.Name == call.Name {
-			return domaincall.Call{}, &ValidationError{Call: call.Name, Message: "call names must be unique within a workflow"}
-		}
 	}
 
 	next := append([]domaincall.Call{}, w.Calls...)

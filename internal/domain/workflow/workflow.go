@@ -76,9 +76,9 @@ func New(userID uuid.UUID, def Definition, globalNames []string) (*Workflow, err
 	return w, nil
 }
 
-// Update replaces the definition. Calls keep their ID when their name is kept,
-// so results stay attached to the same call across edits. It reports whether
-// the schedule changed (type, interval, runAt or enablement).
+// Update replaces the definition. When Calls are replaced, IDs are kept by
+// position so results stay attached across edits. It reports whether the
+// schedule changed (type, interval, runAt or enablement).
 func (w *Workflow) Update(def Definition, globalNames []string) (bool, error) {
 	previous := scheduleSnapshot(w)
 	if err := w.apply(def, globalNames); err != nil {
@@ -199,27 +199,15 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 
 	calls := w.Calls
 	if len(def.Calls) > 0 {
-		existingIDs := make(map[string]uuid.UUID, len(w.Calls))
-		for _, c := range w.Calls {
-			existingIDs[c.Name] = c.ID
-		}
-
-		existingByName := make(map[string]domaincall.Call, len(w.Calls))
-		for _, c := range w.Calls {
-			existingByName[c.Name] = c
-		}
-
 		calls = make([]domaincall.Call, 0, len(def.Calls))
-		callNames := map[string]struct{}{}
 		for i, cd := range def.Calls {
-			name := strings.TrimSpace(cd.Name)
-			id, ok := existingIDs[name]
-			if !ok {
-				id = uuid.New()
+			id := uuid.New()
+			var prevExtractions []domaincall.Extraction
+			if i < len(w.Calls) {
+				id = w.Calls[i].ID
+				prevExtractions = w.Calls[i].Extractions
 			}
-			if prev, ok := existingByName[name]; ok {
-				cd = withPreservedExtractionIDs(cd, prev.Extractions)
-			}
+			cd = withPreservedExtractionIDs(cd, prevExtractions)
 			call, err := domaincall.New(cd, i+1, id)
 			if err != nil {
 				var cerr *domaincall.ValidationError
@@ -228,10 +216,6 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 				}
 				return err
 			}
-			if _, dup := callNames[call.Name]; dup {
-				return &ValidationError{Call: call.Name, Message: "call names must be unique within a workflow"}
-			}
-			callNames[call.Name] = struct{}{}
 			calls = append(calls, call)
 		}
 	}

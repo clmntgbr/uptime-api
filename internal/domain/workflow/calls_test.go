@@ -82,6 +82,30 @@ func TestReplaceCall_IgnoresDefinitionExtractions(t *testing.T) {
 	}
 }
 
+func TestAddCall_AllowsDuplicateNames(t *testing.T) {
+	userID := uuid.New()
+	w, err := New(userID, Definition{
+		Name:     "wf",
+		Interval: MinInterval,
+		Enabled:  true,
+		Calls: []domaincall.Definition{{
+			Name: "Orders call", Method: "GET", URL: "https://example.com/a",
+		}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := w.AddCall(domaincall.Definition{
+		Name: "Orders call", Method: "GET", URL: "https://example.com/b",
+	}, nil)
+	if err != nil {
+		t.Fatalf("duplicate call names must be allowed: %v", err)
+	}
+	if second.Name != "Orders call" || len(w.Calls) != 2 || w.Calls[0].ID == w.Calls[1].ID {
+		t.Fatalf("unexpected calls %+v", w.Calls)
+	}
+}
+
 func TestApply_PreservesExtractionIDsByCallName(t *testing.T) {
 	userID := uuid.New()
 	extID := uuid.New()
