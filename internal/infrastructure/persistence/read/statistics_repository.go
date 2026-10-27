@@ -177,47 +177,6 @@ WHERE r.user_id = @user_id
 GROUP BY 1, 4
 ORDER BY 1, 4`
 
-// incidentsSQL collapses contiguous failed/error runs into [start, end] ranges.
-// End is NULL when the island includes the chronologically last finished run.
-const incidentsSQL = `
-WITH finished AS (
-    SELECT
-        id,
-        started_at,
-        COALESCE(finished_at, started_at) AS ended_at,
-        CASE WHEN status IN ('failed', 'error') THEN 1 ELSE 0 END AS is_bad,
-        ROW_NUMBER() OVER (ORDER BY started_at ASC, id ASC) AS rn,
-        ROW_NUMBER() OVER (
-            PARTITION BY (status IN ('failed', 'error'))
-            ORDER BY started_at ASC, id ASC
-        ) AS rn_status
-    FROM runs
-    WHERE user_id = @user_id
-      AND started_at >= @daily_since
-      AND started_at < (CAST(@until_day AS date) + INTERVAL '1 day')
-      AND status IN ('success', 'failed', 'error')
-      AND (NOT @filter_workflow OR workflow_id = @workflow_id)
-),
-bad_islands AS (
-    SELECT
-        (rn - rn_status) AS island,
-        MIN(started_at) AS start_at,
-        MAX(ended_at) AS end_at,
-        MAX(rn) AS max_rn
-    FROM finished
-    WHERE is_bad = 1
-    GROUP BY 1
-),
-last_rn AS (
-    SELECT MAX(rn) AS rn FROM finished
-)
-SELECT
-    b.start_at AS start,
-    CASE WHEN b.max_rn = l.rn THEN NULL ELSE b.end_at END AS "end"
-FROM bad_islands b
-CROSS JOIN last_rn l
-ORDER BY b.start_at`
-
 type runCountsRow struct {
 	Total   int64
 	Success int64
@@ -266,11 +225,6 @@ type callDurationRow struct {
 	Date       time.Time `gorm:"column:date"`
 	DurationMs float64   `gorm:"column:duration_ms"`
 	Samples    int64     `gorm:"column:samples"`
-}
-
-type incidentRow struct {
-	Start time.Time  `gorm:"column:start"`
-	End   *time.Time `gorm:"column:end"`
 }
 
 func roundMs(v float64) int64 {
@@ -366,25 +320,9 @@ func (r *statisticsRepository) Dashboard(
 		return domainstatistics.DashboardStatistics{}, err
 	}
 
-	var incidentRows []incidentRow
-	if err := db.Raw(incidentsSQL, params).Scan(&incidentRows).Error; err != nil {
-		return domainstatistics.DashboardStatistics{}, err
-	}
-	incidents := make([]domainstatistics.IncidentRange, 0, len(incidentRows))
-	openIncident := false
-	for _, row := range incidentRows {
-		inc := domainstatistics.IncidentRange{Start: row.Start, End: row.End}
-		if inc.End == nil {
-			openIncident = true
-		}
-		incidents = append(incidents, inc)
-	}
-
 	return domainstatistics.DashboardStatistics{
 		Workflows:    workflows,
 		LatencyP95Ms: ptrMs(latency.LatencyP95Ms),
-		OpenIncident: openIncident,
-		Incidents:    incidents,
 		Runs: domainstatistics.RunCounts{
 			Total: runTotals.Total, Success: runTotals.Success, Failed: runTotals.Failed,
 			Error: runTotals.Error, Skipped: runTotals.Skipped, Running: runTotals.Running,

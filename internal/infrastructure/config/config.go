@@ -75,6 +75,16 @@ func loadDotEnv() {
 	}
 }
 
+// IsProduction reports whether env is a production deployment (GO_ENV).
+func IsProduction(env string) bool {
+	switch strings.ToLower(strings.TrimSpace(env)) {
+	case "production", "prod":
+		return true
+	default:
+		return false
+	}
+}
+
 func getEnv(key string) string {
 	if value := os.Getenv(key); value != "" {
 		return value

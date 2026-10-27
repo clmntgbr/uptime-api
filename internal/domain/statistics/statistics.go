@@ -15,8 +15,6 @@ type DashboardStatistics struct {
 	Calls        CallCounts
 	SuccessRate  float64
 	LatencyP95Ms *int64
-	OpenIncident bool
-	Incidents    []IncidentRange
 	// CallDurations is the mean wall-clock duration of each call, per UTC day.
 	// Stacking a day rebuilds the average run.
 	CallDurations []CallDurationSeries
@@ -84,13 +82,6 @@ type CallDurationPoint struct {
 	Date       time.Time
 	DurationMs int64
 	Samples    int64
-}
-
-// IncidentRange is a contiguous period of failed/error runs.
-// End is nil while the incident is still open (latest finished run is failing).
-type IncidentRange struct {
-	Start time.Time
-	End   *time.Time
 }
 
 // ReadRepository loads aggregated dashboard counters for a user.

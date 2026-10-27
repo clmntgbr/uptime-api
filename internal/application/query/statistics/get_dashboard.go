@@ -50,9 +50,6 @@ func (h *GetDashboardHandler) Handle(ctx context.Context, q GetDashboardQuery) (
 	if result.Calls.Daily == nil {
 		result.Calls.Daily = []domainstatistics.CallDayCounts{}
 	}
-	if result.Incidents == nil {
-		result.Incidents = []domainstatistics.IncidentRange{}
-	}
 	if result.CallDurations == nil {
 		result.CallDurations = []domainstatistics.CallDurationSeries{}
 	}

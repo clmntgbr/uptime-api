@@ -90,7 +90,8 @@ func (d *dialer) DialContext(ctx context.Context, network, address string) (net.
 			continue
 		}
 		if !d.allowPrivate && IsBlocked(ip) {
-			lastErr = fmt.Errorf("%w: %s resolves to %s", ErrBlocked, host, ip)
+			// Do not include the resolved IP: it would help map internal networks.
+			lastErr = fmt.Errorf("%w: %s", ErrBlocked, host)
 			continue
 		}
 		dialNetwork := "tcp4"

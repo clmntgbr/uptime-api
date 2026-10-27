@@ -1,0 +1,21 @@
+# Secrets: never copy into an image layer
+.env
+.env.*
+
+# VCS and local build output
+.git
+tmp
+bin
+coverage*
+*.log
+
+# Not needed to build the binaries
+docs
+.cursor
+.github
+deploy
+caddy
+centrifugo
+compose*.yaml
+codecov.yml
+README.md

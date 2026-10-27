@@ -60,20 +60,24 @@ func extract(e contract.JobExtraction, resp *Response, b *body) (string, error) 
 		if value == "" {
 			return "", fmt.Errorf("header %s is absent", e.Expression)
 		}
-		return value, nil
+		return clampExtractionValue(value), nil
 	case "regex":
 		re, err := regexp.Compile(e.Expression)
 		if err != nil {
 			return "", fmt.Errorf("invalid regular expression")
 		}
-		m := re.FindSubmatch(b.raw)
+		haystack := b.raw
+		if len(haystack) > MaxRegexBodyBytes {
+			haystack = haystack[:MaxRegexBodyBytes]
+		}
+		m := re.FindSubmatch(haystack)
 		if m == nil {
 			return "", fmt.Errorf("regular expression does not match")
 		}
 		if len(m) > 1 {
-			return string(m[1]), nil
+			return clampExtractionValue(string(m[1])), nil
 		}
-		return string(m[0]), nil
+		return clampExtractionValue(string(m[0])), nil
 	case "json":
 		v, err := b.jsonPath(e.Expression)
 		if errors.Is(err, errNotFound) {
@@ -82,9 +86,16 @@ func extract(e contract.JobExtraction, resp *Response, b *body) (string, error) 
 		if err != nil {
 			return "", err
 		}
-		return stringify(v), nil
+		return clampExtractionValue(stringify(v)), nil
 	}
 	return "", fmt.Errorf("unknown extraction source %q", e.Source)
+}
+
+func clampExtractionValue(v string) string {
+	if len(v) <= MaxExtractionValueBytes {
+		return v
+	}
+	return v[:MaxExtractionValueBytes]
 }
 
 // stringify renders a JSON value as it is used in a template: strings without

@@ -113,9 +113,12 @@ func New(def Definition, position int, id uuid.UUID) (Call, error) {
 		}
 	}
 
-	for header := range def.Headers {
+	for header, value := range def.Headers {
 		if strings.TrimSpace(header) == "" || strings.ContainsAny(header, " \t:\r\n") {
 			return fail("invalid header name %q", header)
+		}
+		if strings.ContainsAny(value, "\r\n") {
+			return fail("header %q value must not contain CR or LF", header)
 		}
 	}
 

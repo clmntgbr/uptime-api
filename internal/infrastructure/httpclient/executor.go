@@ -196,6 +196,10 @@ func (s *session) Do(ctx context.Context, req engine.Request) (*engine.Response,
 			if next.URL.Scheme != "http" && next.URL.Scheme != "https" {
 				return fmt.Errorf("redirect to unsupported scheme %q", next.URL.Scheme)
 			}
+			// Forbid TLS downgrade: https → http.
+			if len(via) > 0 && via[len(via)-1].URL.Scheme == "https" && next.URL.Scheme == "http" {
+				return fmt.Errorf("redirect to insecure scheme rejected")
+			}
 			rec.redirects = append(rec.redirects, next.URL.String())
 			return nil
 		},

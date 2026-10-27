@@ -19,6 +19,10 @@ const (
 	MaxBodyKeysBytes = 5 * 1024 * 1024
 	// MaxBodyBytes is the most the executor reads from a response; beyond, the call fails with body_too_large.
 	MaxBodyBytes = 50 * 1024 * 1024
+	// MaxRegexBodyBytes is how much of the body regex extractions may scan.
+	MaxRegexBodyBytes = 1 * 1024 * 1024
+	// MaxExtractionValueBytes caps a single extracted variable value.
+	MaxExtractionValueBytes = 4 * 1024
 )
 
 // Executor creates one Session per run, so cookies are kept between the calls of a run only.

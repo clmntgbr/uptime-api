@@ -7,6 +7,7 @@ type WorkerCallsConfig struct {
 	Group             string
 	UserAgent         string
 	AllowPrivateIPs   bool
+	Environment       string
 	MetricsAddr       string
 	Kafka             KafkaConfig
 	Storage           StorageConfig
@@ -24,6 +25,7 @@ func LoadWorkerCalls() *WorkerCallsConfig {
 		Group:             getEnvOrDefault("WORKER_CALLS_GROUP", "worker-calls"),
 		UserAgent:         getEnvOrDefault("HTTP_USER_AGENT", "UptimeMonitor/1.0 (+https://uptime.example.com/bot)"),
 		AllowPrivateIPs:   getEnvBoolOrDefault("SSRF_ALLOW_PRIVATE", false),
+		Environment:       getEnvOrDefault("GO_ENV", "development"),
 		MetricsAddr:       getEnvOrDefault("METRICS_ADDR", ":9100"),
 		Kafka:             loadKafka("worker-calls"),
 		Storage:           loadStorage(true),

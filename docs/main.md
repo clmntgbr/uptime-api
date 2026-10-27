@@ -13,7 +13,6 @@ Le produit surveille des enchaînements d'appels API appelés **workflows** : un
 | Workflow | Liste ordonnée d'un ou plusieurs calls, exécutée à intervalle régulier |
 | Call | Requête HTTP, variables à extraire de la réponse, règles d'alerte |
 | Run | Une exécution complète d'un workflow, avec le détail de chaque call |
-| Incident | Ouvert après des échecs confirmés, fermé après des réussites confirmées |
 
 **Principes de conception**
 
@@ -23,7 +22,7 @@ Le produit surveille des enchaînements d'appels API appelés **workflows** : un
 - **Frontière nette** : les workers d'exécution (`worker-xxxx`) n'accèdent jamais à Postgres. Ils renvoient un message par Kafka, et le worker principal (`worker`) l'enregistre en base.
 - **Léger côté produit** : Go, Kafka, Postgres, pas de navigateur headless.
 
-**Inclus dans la phase 1** : workflows et calls, variables (statiques, de workflow, globales), règles dont le certificat TLS, historique complet, test sans sauvegarde, incidents et notifications (e-mail, Slack, Teams, webhook sortant), authentification Clerk, API REST.
+**Inclus dans la phase 1** : workflows et calls, variables (statiques, de workflow, globales), règles dont le certificat TLS, historique complet, test sans sauvegarde, notifications (e-mail, Slack, Teams, webhook sortant), authentification Clerk, API REST.
 
 **Exclus de la phase 1** : webhooks, serveurs, échéances, agent installé sur les serveurs, plusieurs régions, tests de navigateur.
 
@@ -120,7 +119,7 @@ Les valeurs peuvent contenir des variables : `le champ $.user.id est {{workflow.
 
 **Règle par défaut** : sans règle explicite, un call est en échec si le code n'est pas 2xx ou s'il y a une erreur réseau (DNS, connexion, TLS, timeout).
 
-**Certificats sur les calls** : le worker-calls lit la chaîne de certificats pendant la connexion TLS de chaque call, sans requête supplémentaire. Il stocke l'émetteur, la date d'expiration et la validité de la chaîne, et vérifie aussi les certificats intermédiaires. Comme un call tourne souvent, la règle fonctionne par paliers (30, 14, 7 et 1 jours par défaut) : l'incident s'ouvre au premier palier franchi, un rappel part à chaque palier suivant, et il se ferme quand le certificat est renouvelé. La vérification TLS peut être désactivée pour un call (certificat auto-signé), le certificat est alors lu et signalé quand même.
+**Certificats sur les calls** : le worker-calls lit la chaîne de certificats pendant la connexion TLS de chaque call, sans requête supplémentaire. Il stocke l'émetteur, la date d'expiration et la validité de la chaîne, et vérifie aussi les certificats intermédiaires. Comme un call tourne souvent, la règle fonctionne par paliers (30, 14, 7 et 1 jours par défaut) : une notification part au premier palier franchi, puis un rappel à chaque palier suivant, jusqu'au renouvellement du certificat. La vérification TLS peut être désactivée pour un call (certificat auto-signé), le certificat est alors lu et signalé quand même.
 
 **Évaluation**
 
@@ -131,7 +130,7 @@ Les valeurs peuvent contenir des variables : `le champ $.user.id est {{workflow.
 
 **Interface** : un bouton « Tester maintenant » exécute le workflow, affiche chaque règle en vert ou rouge avec la valeur observée, et ne laisse qu'une trace courte (voir la section Exécution). Les règles se construisent avec trois listes déroulantes (sujet, opérateur, valeur) plus un bouton « Ajouter une règle », avec la phrase complète affichée en aperçu.
 
-**Réglages séparés des règles** : le nombre d'échecs consécutifs avant d'ouvrir un incident et la durée de récupération sont des réglages du workflow, pas des règles (voir la section Alertes et incidents).
+**Réglages séparés des règles** : le nombre d'échecs consécutifs avant d'alerter et la durée de récupération sont des réglages du workflow, pas des règles (voir la section Alertes et notifications).
 
 ## Exécution des workflows
 
@@ -143,7 +142,7 @@ Un workflow s'exécute en séquence dans un `worker-calls`. Le `scheduler` prép
 2. Un `worker-calls` consomme le job et reprend le `run_id` fourni dans le message.
 3. Pour chaque call, dans l'ordre : résolution des variables, requête HTTP, capture de la réponse, extraction des variables, évaluation des règles.
 4. Le worker publie un seul message sur `workflow.results` avec tous les détails, puis valide son offset. Il n'écrit rien d'autre.
-5. Le `worker` consomme le résultat, l'écrit dans une transaction Postgres, met à jour le statut du workflow, libère le bail, évalue les incidents, prévient Centrifugo et publie les événements.
+5. Le `worker` consomme le résultat, l'écrit dans une transaction Postgres, met à jour le statut du workflow, libère le bail, évalue les alertes, prévient Centrifugo et publie les événements.
 
 Un workflow ne s'exécute jamais deux fois en parallèle : si le bail est encore valide, la nouvelle passe est enregistrée en `skipped` avec la raison `overlap`. Si un `worker-calls` plante avant d'avoir publié son résultat, le job est relivré par Kafka ; à défaut, le bail expire et le run est marqué `error` (raison `timeout`) avant la passe suivante.
 
@@ -179,31 +178,31 @@ Un workflow ne s'exécute jamais deux fois en parallèle : si le bail est encore
 - Version d'IP au choix (IPv4, IPv6 ou les deux), vérification TLS activable ou non, proxy optionnel.
 - Intervalle minimal : 1 minute (offre payante), 5 minutes (offre gratuite).
 
-**Test sans sauvegarde** : « Tester maintenant » publie un job avec le déclencheur `test`. Il suit le même chemin que les runs planifiés, avec le même résultat enregistré, mais conservé 24 heures seulement et sans effet sur les incidents. L'`api` répond tout de suite avec le `run_id` ; le front reçoit le résultat par Centrifugo.
+**Test sans sauvegarde** : « Tester maintenant » publie un job avec le déclencheur `test`. Il suit le même chemin que les runs planifiés, avec le même résultat enregistré, mais conservé 24 heures seulement et sans déclencher d'alerte. L'`api` répond tout de suite avec le `run_id` ; le front reçoit le résultat par Centrifugo.
 
 **Régions** : une région européenne au MVP. Plusieurs régions viendront ensuite : le workflow s'exécute alors dans chaque région choisie, et une panne n'est confirmée que si plusieurs régions la voient.
 
-## Alertes et incidents
+## Alertes et notifications
 
-Les règles décident si un résultat est bon ou mauvais ; les incidents décident quand prévenir quelqu'un. Le `worker` gère ce cycle de façon événementielle : à chaque résultat enregistré, il met à jour l'état et ouvre ou ferme l'incident. Un incident s'ouvre après plusieurs échecs confirmés et se ferme après plusieurs réussites, pour éviter les alertes sur un échec isolé.
+Les règles décident si un résultat est bon ou mauvais ; les notifications préviennent l'équipe quand un échec est confirmé. Le `worker` gère ce cycle de façon événementielle : à chaque résultat enregistré, il met à jour l'état du workflow et, si besoin, demande l'envoi d'une alerte. Une alerte part après plusieurs échecs confirmés et une notification de rétablissement part après plusieurs réussites, pour éviter le bruit d'un échec isolé.
 
-**Cycle d'un incident**
+**Cycle d'une alerte**
 
 1. Un run passe en `failed` : le `worker` l'enregistre, puis évalue l'état du workflow.
 2. La confirmation se déclenche : le `worker` place le workflow en état `confirming` et avance son prochain passage de quelques secondes ; le `scheduler` le relance jusqu'à atteindre le nombre d'échecs consécutifs demandé (3 par défaut).
-3. Le `worker` ouvre l'incident, avec la règle en échec, la valeur observée et le lien vers la trace complète.
-4. Il publie une demande de notification sur `notifications.requests` : un `worker-notify` envoie les messages sur les canaux choisis. Un rappel est renvoyé à intervalle réglable tant que l'incident reste ouvert.
-5. L'incident se ferme après le nombre de réussites consécutives configuré (2 par défaut), et une notification de rétablissement part.
+3. Le `worker` publie une demande de notification sur `notifications.requests` (règle en échec, valeur observée, lien vers la trace).
+4. Un `worker-notify` envoie les messages sur les canaux choisis. Un rappel est renvoyé à intervalle réglable tant que le workflow reste en échec confirmé.
+5. Après le nombre de réussites consécutives configuré (2 par défaut), une notification de rétablissement part.
 
-Les alertes de certificat suivent leurs propres paliers (voir la section Règles d'alerte) mais passent par le même circuit d'incident et de notification.
+Les alertes de certificat suivent leurs propres paliers (voir la section Règles d'alerte) mais passent par le même circuit de notification.
 
 **Réglages par workflow**
 
 | Réglage | Défaut | Rôle |
 | --- | --- | --- |
-| Échecs avant alerte | 3 | Confirmation avant d'ouvrir l'incident |
+| Échecs avant alerte | 3 | Confirmation avant d'envoyer la première alerte |
 | Réussites avant résolution | 2 | Confirmation du rétablissement |
-| Rappel | 30 min | Intervalle entre deux relances tant que l'incident dure |
+| Rappel | 30 min | Intervalle entre deux relances tant que le workflow reste en échec |
 | Fenêtre de maintenance | Aucune | Plages horaires récurrentes sans alerte, avec fuseau |
 | Canaux | E-mail de l'équipe | Où envoyer les notifications |
 
@@ -219,9 +218,7 @@ Les alertes de certificat suivent leurs propres paliers (voir la section Règles
 
 **Contenu d'une notification** : nom du workflow et du call, phrase de la règle en échec, valeur observée contre valeur attendue, heure de début, lien vers le détail. Aucun corps de réponse ni secret n'est inclus.
 
-**Actions sur un incident** : prise en compte (l'incident reste ouvert mais les rappels s'arrêtent), mise en sourdine pour une durée, résolution manuelle, commentaire interne.
-
-**Historique** : chaque incident garde sa chronologie (ouverture, notifications envoyées, prise en compte, résolution) et reste consultable avec les traces des runs concernés.
+**Actions** : mise en sourdine pour une durée, désactivation temporaire des rappels, commentaire interne lié au workflow.
 
 ## Containers
 
@@ -232,7 +229,7 @@ La phase 1 tient en 9 containers sur 4 réseaux Docker. Règle de base : les wor
 | `caddy` | Caddy | Reverse proxy, TLS automatique, route `/api` et `/connection/websocket` | `edge` | Non |
 | `api` | Go (Fiber) | API REST, validation des jetons Clerk, configuration des workflows, lecture des résultats, jetons de connexion Centrifugo, publication des jobs de test | `edge`, `backend`, `data` | Oui |
 | `scheduler` | Go | Planifie les workflows (bail en base), relance les confirmations, purge et agrège | `backend`, `data` | Une instance active |
-| `worker` | Go | Worker principal événementiel : consomme les résultats des workers, les écrit en base, ouvre et ferme les incidents, prévient Centrifugo, demande les notifications | `backend`, `data` | Oui |
+| `worker` | Go | Worker principal événementiel : consomme les résultats des workers, les écrit en base, évalue les alertes, prévient Centrifugo, demande les notifications | `backend`, `data` | Oui |
 | `worker-calls` | Go | Exécute les workflows : requêtes HTTP, extraction des variables, évaluation des règles | `egress` | Oui |
 | `worker-notify` | Go | Envoie les notifications (e-mail, Slack, Teams, webhook sortant) | `egress` | Oui |
 | `kafka` | Apache Kafka (KRaft) | Messaging interne | `backend`, `egress` | Non au départ (3 brokers en production) |
@@ -369,7 +366,7 @@ Kafka est la seule messagerie interne. Les jobs, les résultats des workers et l
 | `workflow.results` | `workflow_id` | `worker-calls` | `worker` | Résultat complet d'un run | 7 jours |
 | `notifications.requests` | `org_id` | `worker` | `worker-notify` | Demande d'envoi sur un canal | 3 jours |
 | `notifications.results` | `org_id` | `worker-notify` | `worker` | Statut d'envoi | 3 jours |
-| `events` | `workflow_id` | `worker` | Aucun au MVP | `result.recorded`, `incident.opened`, `incident.resolved` | 7 jours |
+| `events` | `workflow_id` | `worker` | Aucun au MVP | `result.recorded`, `alert.sent`, `alert.resolved` | 7 jours |
 | `*.retry` et `*.dlq` | Identique au topic d'origine | Le service qui échoue | Le même groupe (retry), l'équipe (dlq) | Messages à rejouer ou à examiner | 30 jours pour les dlq |
 
 Les topics de workflows ont 12 partitions, les autres 6. Les topics sont créés par l'infrastructure (la création automatique est désactivée), avec leurs rétentions.
@@ -378,7 +375,7 @@ Les topics de workflows ont 12 partitions, les autres 6. Les topics sont créés
 
 - Producteurs idempotents (`enable.idempotence`) avec `acks=all`.
 - Livraison au moins une fois : un offset n'est validé qu'après le traitement complet, et les écritures du `worker` sont idempotentes (clé unique sur `run_id` ou sur l'identifiant de l'événement).
-- **Transaction unique dans le `worker`** : résultat, état du workflow et état d'incident sont écrits dans la même transaction Postgres, puis l'offset est validé. Les demandes de notification sont d'abord inscrites dans la table `notifications` avec le statut `pending`, puis publiées ; si le `worker` plante entre les deux, le message est relu, les écritures sont ignorées (idempotence) et les `pending` sont republiées.
+- **Transaction unique dans le `worker`** : résultat et état du workflow sont écrits dans la même transaction Postgres, puis l'offset est validé. Les demandes de notification sont d'abord inscrites dans la table `notifications` avec le statut `pending`, puis publiées ; si le `worker` plante entre les deux, le message est relu, les écritures sont ignorées (idempotence) et les `pending` sont republiées.
 - **Retries** : une erreur transitoire (base indisponible, par exemple) est retentée 3 fois sur place avec un délai croissant, puis le message part sur `*.retry` avec un en-tête `attempt` et une heure `not_before` ; le consumer de retry met la partition en pause jusqu'à cette heure. Après 5 tentatives, ou immédiatement pour un message invalide (poison), il part en `*.dlq` avec une alerte interne.
 - **Rééquilibrages** : adhésion statique (`group.instance.id`) et assignation coopérative, pour qu'un déploiement ne provoque pas de tempête de rééquilibrages. `max.poll.interval.ms` est fixé à 10 minutes, au-dessus de la durée maximale d'un workflow (5 minutes).
 - **Taille** : `max.message.bytes` à 4 Mo. Les gros corps passent par claim-check (zstd → objet store) ; le message ne porte que l'aperçu et la référence.
@@ -435,7 +432,7 @@ Postgres est la source de vérité, accessible uniquement à `api`, `scheduler` 
 | `organizations`, `users` | Copie locale des organisations et utilisateurs Clerk : identifiants, plan, quotas, rôle | L'authentification est déléguée à Clerk, synchronisée par ses webhooks |
 | `api_keys` | Clés d'API par organisation : préfixe, hash, portée, dernière utilisation | Jamais stockées en clair, révocables |
 | `global_variables` | Variables globales de l'organisation | Valeur chiffrée si `secret` |
-| `workflows` | Nom, intervalle, variables statiques, réglages d'incident, canaux, activation | Écrite par l'`api` |
+| `workflows` | Nom, intervalle, variables statiques, réglages d'alerte, canaux, activation | Écrite par l'`api` |
 | `calls` | Position dans le workflow, méthode, URL, headers, query, body, extractions, timeout | Validation de l'ordre des variables à l'écriture |
 | `rules` | Règles d'alerte d'un call : sujet, opérateur, valeur, paliers | Valeurs pouvant contenir des variables |
 | `notification_channels` | E-mail, Slack, Teams, webhook sortant | Configuration chiffrée |
@@ -455,12 +452,10 @@ Postgres est la source de vérité, accessible uniquement à `api`, `scheduler` 
 | `call_runs` | Un call exécuté : requête, réponse, timings, réseau, TLS, erreur, variables extraites | Corps tronqué au-delà de 256 Ko, supprimé avec son run |
 | `rule_runs` | Phrase de la règle, valeur observée, valeur attendue, réussite | Lié au call run qui l'a produit, supprimé avec lui |
 
-**Incidents**
+**Notifications et audit**
 
 | Table | Contenu |
 | --- | --- |
-| `incidents` | Workflow et call concernés, règle en échec, valeur observée, ouverture, résolution, état de prise en compte |
-| `incident_events` | Chronologie : ouverture, notifications, prise en compte, rappels, résolution |
 | `notifications` | Canal, statut (`pending`, `sent`, `failed`), tentative, heure d'envoi, clé d'idempotence |
 | `audit_log` | Qui a modifié quoi, non modifiable, conservé 12 mois |
 
@@ -491,7 +486,6 @@ L'`api` expose une API JSON versionnée (`/v1`) utilisée par le front et par le
 | Workflows et calls | `GET/POST /v1/workflows`, `GET/PUT/DELETE /v1/workflows/{id}`, `POST /v1/workflows/{id}/run` (exécution manuelle), `POST /v1/workflows/test` (test sans sauvegarde, répond `202` avec le `run_id`) |
 | Exécutions | `GET /v1/workflows/{id}/runs`, `GET /v1/runs/{id}` (détail de chaque call avec requête, réponse, timings et règles) |
 | Variables | `GET/POST/PUT/DELETE /v1/variables` (globales) |
-| Incidents | `GET /v1/incidents`, `POST /v1/incidents/{id}/ack`, `POST /v1/incidents/{id}/resolve` |
 | Certificats | `GET /v1/certificates` (certificats vus par les calls, triés par expiration) |
 | Canaux | `GET/POST /v1/channels`, `POST /v1/channels/{id}/test` |
 | Clés d'API | `GET/POST/DELETE /v1/api-keys` |
@@ -499,14 +493,14 @@ L'`api` expose une API JSON versionnée (`/v1`) utilisée par le front et par le
 
 **Temps réel avec Centrifugo**
 
-1. Le `worker` enregistre un résultat, un incident ou un statut de test en base.
+1. Le `worker` enregistre un résultat ou un statut de test en base.
 2. Après le commit, il envoie une notification légère à Centrifugo par son API serveur (HTTP). Si Centrifugo est indisponible, l'envoi est abandonné sans bloquer l'écriture.
 3. Le front reçoit la notification et relit l'objet concerné par l'API.
 
 | Canal | Événements | Contenu du message |
 | --- | --- | --- |
 | `org:{org_id}` | `run.completed`, `test.completed` | Identifiants du workflow et du run, statut, compteurs |
-| `org:{org_id}` | `incident.opened`, `incident.resolved` | Identifiant de l'incident, workflow, call |
+| `org:{org_id}` | `alert.sent`, `alert.resolved` | Identifiants du workflow et du call, règle concernée |
 
 **Règles**
 
@@ -587,7 +581,7 @@ L'unité de facturation et d'isolation est l'organisation. Trois offres, avec de
 
 **Facturation** : abonnement mensuel ou annuel via un prestataire de paiement (Stripe), changement d'offre immédiat, facture européenne avec TVA. Pas de facturation à l'usage au MVP.
 
-**Organisations et équipes** : un utilisateur peut appartenir à plusieurs organisations, grâce aux organisations Clerk. Les rôles sont propriétaire (facturation et suppression), éditeur (configuration) et lecteur (consultation et prise en compte des incidents).
+**Organisations et équipes** : un utilisateur peut appartenir à plusieurs organisations, grâce aux organisations Clerk. Les rôles sont propriétaire (facturation et suppression), éditeur (configuration) et lecteur (consultation).
 
 **Coût d'infrastructure à surveiller** : la rétention des corps de réponse est le premier poste de stockage, et la fréquence d'exécution le premier poste de calcul. Les quotas de l'offre gratuite doivent rester assez bas pour que son coût par organisation soit négligeable. Clerk facture par utilisateur actif : ce coût entre dans le calcul de la marge de chaque offre.
 
@@ -601,7 +595,7 @@ Un outil de monitoring qui tombe sans prévenir détruit la confiance : la plate
 | --- | --- | --- |
 | Retard du `scheduler` (écart entre `next_run_at` et la publication du job) | Les workflows ne partent plus à l'heure | Plus de 30 s |
 | Consumer lag du groupe `worker-calls` sur `workflow.jobs` | Workers saturés ou à l'arrêt | Croissance continue pendant 5 min |
-| Consumer lag du groupe `worker` sur `workflow.results` | Résultats écrits trop tard, incidents en retard | Plus de 60 s de retard |
+| Consumer lag du groupe `worker` sur `workflow.results` | Résultats écrits trop tard, alertes en retard | Plus de 60 s de retard |
 | Messages dans les topics `.dlq` | Messages que personne ne sait traiter | Supérieur à 0 |
 | Taux d'échec des notifications (`notifications.results`) | Les clients ne sont pas prévenus | Supérieur à 2 % |
 | Durée des runs par rapport au timeout | Workflows proches de leur limite | Plus de 80 % du timeout |

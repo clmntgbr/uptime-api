@@ -23,6 +23,10 @@ const (
 	// ExtractRegex applies a regular expression to the body; the first capture
 	// group is used when present, the whole match otherwise.
 	ExtractRegex ExtractionSource = "regex"
+
+	// MaxRegexPatternBytes caps user regex patterns (RE2 is linear, but long
+	// patterns still cost CPU on large bodies).
+	MaxRegexPatternBytes = 500
 )
 
 // Extraction declares a `call` variable produced from the call response.
@@ -71,7 +75,13 @@ func normalizeExtraction(e Extraction) (Extraction, error) {
 	case ExtractStatus:
 		e.Expression = ""
 	case ExtractRegex:
-		if _, err := regexp.Compile(e.Expression); err != nil || e.Expression == "" {
+		if e.Expression == "" {
+			return Extraction{}, fmt.Errorf("extraction %q: invalid regular expression", e.Name)
+		}
+		if len(e.Expression) > MaxRegexPatternBytes {
+			return Extraction{}, fmt.Errorf("extraction %q: regular expression exceeds %d characters", e.Name, MaxRegexPatternBytes)
+		}
+		if _, err := regexp.Compile(e.Expression); err != nil {
 			return Extraction{}, fmt.Errorf("extraction %q: invalid regular expression", e.Name)
 		}
 	default:

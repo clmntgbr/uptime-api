@@ -13,8 +13,6 @@ type DashboardStatisticsResponse struct {
 	Calls         CallCountsResponse           `json:"calls"`
 	SuccessRate   float64                      `json:"successRate"`
 	LatencyP95Ms  *int64                       `json:"latencyP95Ms"`
-	OpenIncident  bool                         `json:"openIncident"`
-	Incidents     []IncidentRangeResponse      `json:"incidents"`
 	CallDurations []CallDurationSeriesResponse `json:"callDurations"`
 }
 
@@ -76,11 +74,6 @@ type CallDurationSeriesResponse struct {
 	Daily    []CallDurationPointResponse `json:"daily"`
 }
 
-type IncidentRangeResponse struct {
-	Start string  `json:"start"`
-	End   *string `json:"end"`
-}
-
 func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) DashboardStatisticsResponse {
 	runDaily := make([]RunDayCountsResponse, 0, len(s.Runs.Daily))
 	for _, d := range s.Runs.Daily {
@@ -123,15 +116,6 @@ func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) Dash
 			Daily:    daily,
 		})
 	}
-	incidents := make([]IncidentRangeResponse, 0, len(s.Incidents))
-	for _, inc := range s.Incidents {
-		item := IncidentRangeResponse{Start: inc.Start.UTC().Format(time.RFC3339)}
-		if inc.End != nil {
-			end := inc.End.UTC().Format(time.RFC3339)
-			item.End = &end
-		}
-		incidents = append(incidents, item)
-	}
 	return DashboardStatisticsResponse{
 		WindowHours: s.WindowHours,
 		Workflows: WorkflowCountsResponse{
@@ -148,8 +132,6 @@ func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) Dash
 		},
 		SuccessRate:   s.SuccessRate,
 		LatencyP95Ms:  s.LatencyP95Ms,
-		OpenIncident:  s.OpenIncident,
-		Incidents:     incidents,
 		CallDurations: callDurations,
 	}
 }

@@ -47,6 +47,9 @@ func TestSession_BlocksPrivateDestinations(t *testing.T) {
 	if !errors.As(err, &execErr) || execErr.Type != contract.ErrorTypeBlocked {
 		t.Fatalf("a name resolving to loopback must be blocked, got %v", err)
 	}
+	if strings.Contains(execErr.Message, "127.0.0.1") || strings.Contains(execErr.Message, "::1") {
+		t.Fatalf("blocked message must not leak the resolved IP, got %q", execErr.Message)
+	}
 }
 
 func TestSession_TLSRedirectsCookiesAndTimings(t *testing.T) {
@@ -140,5 +143,29 @@ func TestSession_LimitsRedirectsAndBody(t *testing.T) {
 	slow.Timeout = 100 * time.Millisecond
 	if _, err := exec.NewSession().Do(context.Background(), slow); !errors.As(err, &execErr) || execErr.Type != contract.ErrorTypeTimeout {
 		t.Fatalf("expected timeout, got %v", err)
+	}
+}
+
+func TestSession_RejectsHTTPSToHTTPRedirect(t *testing.T) {
+	httpSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer httpSrv.Close()
+
+	tlsMux := http.NewServeMux()
+	tlsMux.HandleFunc("/down", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, httpSrv.URL+"/ok", http.StatusFound)
+	})
+	tlsSrv := httptest.NewTLSServer(tlsMux)
+	defer tlsSrv.Close()
+
+	roots := x509.NewCertPool()
+	roots.AddCert(tlsSrv.Certificate())
+	_, err := NewExecutor(Config{AllowPrivate: true, RootCAs: roots}).NewSession().Do(
+		context.Background(), request(tlsSrv.URL+"/down"),
+	)
+	var execErr *engine.ExecError
+	if !errors.As(err, &execErr) || execErr.Type != contract.ErrorTypeInvalid {
+		t.Fatalf("https→http redirect must be rejected, got %v", err)
 	}
 }

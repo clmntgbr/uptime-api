@@ -36,6 +36,9 @@ func NewContainer(env *config.WorkerCallsConfig, logger *slog.Logger) (*Containe
 		return nil, fmt.Errorf("body store: %w", err)
 	}
 	if env.AllowPrivateIPs {
+		if config.IsProduction(env.Environment) {
+			return nil, fmt.Errorf("SSRF_ALLOW_PRIVATE=true is forbidden when GO_ENV=%s", env.Environment)
+		}
 		logger.Warn("SSRF protection disabled: private destinations are allowed")
 	}
 
