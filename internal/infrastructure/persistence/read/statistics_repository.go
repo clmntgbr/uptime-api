@@ -3,6 +3,7 @@ package read
 import (
 	"context"
 	"math"
+	"sort"
 	"time"
 
 	domainstatistics "go-api/internal/domain/statistics"
@@ -155,6 +156,27 @@ LEFT JOIN counts c ON c.day = d.day
 LEFT JOIN latency l ON l.day = d.day
 ORDER BY d.day`
 
+// callDurationSQL is the mean timings.total of each call per UTC day.
+// A missing call_id falls back to workflow and position so old rows still stack.
+const callDurationSQL = `
+SELECT
+    COALESCE(cr.call_id::text, cr.workflow_id::text || ':' || cr.position::text) AS id,
+    (ARRAY_AGG(cr.name ORDER BY COALESCE(cr.finished_at, cr.started_at, r.started_at) DESC))[1] AS name,
+    MIN(cr.position) AS position,
+    (COALESCE(cr.started_at, r.started_at) AT TIME ZONE 'UTC')::date AS date,
+    AVG((cr.timings->>'total')::double precision) AS duration_ms,
+    COUNT(*)::bigint AS samples
+FROM call_runs cr
+JOIN runs r ON r.id = cr.run_id
+WHERE r.user_id = @user_id
+  AND COALESCE(cr.started_at, r.started_at) >= @daily_since
+  AND COALESCE(cr.started_at, r.started_at) < (CAST(@until_day AS date) + INTERVAL '1 day')
+  AND cr.status IN ('success', 'failed', 'error')
+  AND COALESCE((cr.timings->>'total')::double precision, 0) > 0
+  AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)
+GROUP BY 1, 4
+ORDER BY 1, 4`
+
 // incidentsSQL collapses contiguous failed/error runs into [start, end] ranges.
 // End is NULL when the island includes the chronologically last finished run.
 const incidentsSQL = `
@@ -230,11 +252,20 @@ type callDayRow struct {
 	Failed       int64
 	Error        int64
 	Skipped      int64
-	LatencyP95Ms *float64  `gorm:"column:latency_p95_ms"`
+	LatencyP95Ms *float64 `gorm:"column:latency_p95_ms"`
 }
 
 type latencyRow struct {
 	LatencyP95Ms *float64 `gorm:"column:latency_p95_ms"`
+}
+
+type callDurationRow struct {
+	ID         string    `gorm:"column:id"`
+	Name       string    `gorm:"column:name"`
+	Position   int       `gorm:"column:position"`
+	Date       time.Time `gorm:"column:date"`
+	DurationMs float64   `gorm:"column:duration_ms"`
+	Samples    int64     `gorm:"column:samples"`
 }
 
 type incidentRow struct {
@@ -330,6 +361,11 @@ func (r *statisticsRepository) Dashboard(
 		})
 	}
 
+	var durationRows []callDurationRow
+	if err := db.Raw(callDurationSQL, params).Scan(&durationRows).Error; err != nil {
+		return domainstatistics.DashboardStatistics{}, err
+	}
+
 	var incidentRows []incidentRow
 	if err := db.Raw(incidentsSQL, params).Scan(&incidentRows).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
@@ -358,5 +394,43 @@ func (r *statisticsRepository) Dashboard(
 			Total: callTotals.Total, Success: callTotals.Success, Failed: callTotals.Failed,
 			Error: callTotals.Error, Skipped: callTotals.Skipped, Daily: callDaily,
 		},
+		CallDurations: groupCallDurations(durationRows),
 	}, nil
+}
+
+func groupCallDurations(rows []callDurationRow) []domainstatistics.CallDurationSeries {
+	order := make([]string, 0)
+	byID := make(map[string]*domainstatistics.CallDurationSeries, len(rows))
+	for _, row := range rows {
+		series, ok := byID[row.ID]
+		if !ok {
+			series = &domainstatistics.CallDurationSeries{
+				ID:       row.ID,
+				Name:     row.Name,
+				Position: row.Position,
+			}
+			byID[row.ID] = series
+			order = append(order, row.ID)
+		}
+		if row.Name != "" {
+			series.Name = row.Name
+		}
+		series.Position = row.Position
+		series.Daily = append(series.Daily, domainstatistics.CallDurationPoint{
+			Date:       row.Date,
+			DurationMs: roundMs(row.DurationMs),
+			Samples:    row.Samples,
+		})
+	}
+	out := make([]domainstatistics.CallDurationSeries, 0, len(order))
+	for _, id := range order {
+		out = append(out, *byID[id])
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Position != out[j].Position {
+			return out[i].Position < out[j].Position
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
 }

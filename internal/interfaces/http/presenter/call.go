@@ -7,14 +7,23 @@ import (
 	domainworkflow "go-api/internal/domain/workflow"
 )
 
+// CallRecentRunTimingsResponse is the phase breakdown of one sparkline bar.
+type CallRecentRunTimingsResponse struct {
+	DNS      int64 `json:"dns"`
+	Connect  int64 `json:"connect"`
+	TLS      int64 `json:"tls"`
+	Transfer int64 `json:"transfer"`
+}
+
 // CallRecentRunResponse is one bar of the call list sparkline.
 type CallRecentRunResponse struct {
-	ID         string  `json:"id"`
-	RunID      string  `json:"runId"`
-	Status     string  `json:"status"`
-	HTTPStatus *int    `json:"httpStatus,omitempty"`
-	FinishedAt *string `json:"finishedAt,omitempty"`
-	LatencyMs  *int64  `json:"latencyMs,omitempty"`
+	ID         string                         `json:"id"`
+	RunID      string                         `json:"runId"`
+	Status     string                         `json:"status"`
+	HTTPStatus *int                           `json:"httpStatus,omitempty"`
+	FinishedAt *string                        `json:"finishedAt,omitempty"`
+	LatencyMs  *int64                         `json:"latencyMs,omitempty"`
+	Timings    *CallRecentRunTimingsResponse `json:"timings,omitempty"`
 }
 
 // CallResponse is the shape of create/update and list call rows.
@@ -80,6 +89,14 @@ func NewCallListResponseFromView(v domainworkflow.CallListView) CallResponse {
 		if r.FinishedAt != nil {
 			s := r.FinishedAt.UTC().Format(time.RFC3339)
 			item.FinishedAt = &s
+		}
+		if r.Timings != nil {
+			item.Timings = &CallRecentRunTimingsResponse{
+				DNS:      r.Timings.DNS,
+				Connect:  r.Timings.Connect,
+				TLS:      r.Timings.TLS,
+				Transfer: r.Timings.Transfer,
+			}
 		}
 		out.RecentRuns = append(out.RecentRuns, item)
 	}

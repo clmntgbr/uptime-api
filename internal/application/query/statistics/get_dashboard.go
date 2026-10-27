@@ -53,6 +53,9 @@ func (h *GetDashboardHandler) Handle(ctx context.Context, q GetDashboardQuery) (
 	if result.Incidents == nil {
 		result.Incidents = []domainstatistics.IncidentRange{}
 	}
+	if result.CallDurations == nil {
+		result.CallDurations = []domainstatistics.CallDurationSeries{}
+	}
 	if result.Runs.Total > 0 {
 		result.SuccessRate = float64(result.Runs.Success) / float64(result.Runs.Total)
 	}

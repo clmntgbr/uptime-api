@@ -139,13 +139,21 @@ type callListRow struct {
 	RecentRuns dbtype.JSONB `gorm:"column:recent_runs"`
 }
 
+type callRecentRunTimingsJSON struct {
+	DNS      int64 `json:"dns"`
+	Connect  int64 `json:"connect"`
+	TLS      int64 `json:"tls"`
+	Transfer int64 `json:"transfer"`
+}
+
 type callRecentRunJSON struct {
-	ID         uuid.UUID  `json:"id"`
-	RunID      uuid.UUID  `json:"run_id"`
-	Status     string     `json:"status"`
-	HTTPStatus *int       `json:"http_status"`
-	FinishedAt *time.Time `json:"finished_at"`
-	LatencyMs  *int64     `json:"latency_ms"`
+	ID         uuid.UUID                 `json:"id"`
+	RunID      uuid.UUID                 `json:"run_id"`
+	Status     string                    `json:"status"`
+	HTTPStatus *int                      `json:"http_status"`
+	FinishedAt *time.Time                `json:"finished_at"`
+	LatencyMs  *int64                    `json:"latency_ms"`
+	Timings    *callRecentRunTimingsJSON `json:"timings"`
 }
 
 // listCallsSQL returns call definitions with up to CallRecentRunLimit past runs
@@ -168,7 +176,13 @@ LEFT JOIN LATERAL (
       'status', t.status,
       'http_status', t.http_status,
       'finished_at', t.finished_at,
-      'latency_ms', t.latency_ms
+      'latency_ms', t.latency_ms,
+      'timings', jsonb_build_object(
+        'dns', COALESCE(ROUND((t.timings->>'dns')::double precision)::bigint, 0),
+        'connect', COALESCE(ROUND((t.timings->>'connect')::double precision)::bigint, 0),
+        'tls', COALESCE(ROUND((t.timings->>'tls')::double precision)::bigint, 0),
+        'transfer', COALESCE(ROUND((t.timings->>'transfer')::double precision)::bigint, 0)
+      )
     )
     ORDER BY t.finished_at ASC NULLS LAST, t.started_at ASC NULLS LAST
   ) AS recent_runs
@@ -180,6 +194,7 @@ LEFT JOIN LATERAL (
       cr.http_status,
       cr.finished_at,
       cr.started_at,
+      cr.timings,
       ROUND((cr.timings->>'total')::double precision)::bigint AS latency_ms
     FROM call_runs cr
     WHERE cr.call_id = c.id
@@ -238,14 +253,23 @@ func decodeCallRecentRuns(raw dbtype.JSONB) ([]domainworkflow.CallRecentRunView,
 	}
 	out := make([]domainworkflow.CallRecentRunView, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, domainworkflow.CallRecentRunView{
+		item := domainworkflow.CallRecentRunView{
 			ID:         row.ID,
 			RunID:      row.RunID,
 			Status:     row.Status,
 			HTTPStatus: row.HTTPStatus,
 			FinishedAt: row.FinishedAt,
 			LatencyMs:  row.LatencyMs,
-		})
+		}
+		if row.Timings != nil {
+			item.Timings = &domainworkflow.CallRecentRunTimings{
+				DNS:      row.Timings.DNS,
+				Connect:  row.Timings.Connect,
+				TLS:      row.Timings.TLS,
+				Transfer: row.Timings.Transfer,
+			}
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }

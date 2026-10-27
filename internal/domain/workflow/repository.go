@@ -42,6 +42,14 @@ type ListView struct {
 // CallRecentRunLimit is how many past executions feed the list sparkline.
 const CallRecentRunLimit = 24
 
+// CallRecentRunTimings is the phase breakdown stored on a call run.
+type CallRecentRunTimings struct {
+	DNS      int64
+	Connect  int64
+	TLS      int64
+	Transfer int64
+}
+
 // CallRecentRunView is one bar of the call list sparkline (status + latency).
 type CallRecentRunView struct {
 	ID         uuid.UUID
@@ -50,6 +58,7 @@ type CallRecentRunView struct {
 	HTTPStatus *int
 	FinishedAt *time.Time
 	LatencyMs  *int64
+	Timings    *CallRecentRunTimings
 }
 
 // CallListView is one row of GET /workflows/:id/calls (definition + recent runs).

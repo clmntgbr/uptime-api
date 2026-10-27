@@ -17,6 +17,9 @@ type DashboardStatistics struct {
 	LatencyP95Ms *int64
 	OpenIncident bool
 	Incidents    []IncidentRange
+	// CallDurations is the mean wall-clock duration of each call, per UTC day.
+	// Stacking a day rebuilds the average run.
+	CallDurations []CallDurationSeries
 }
 
 type WorkflowCounts struct {
@@ -66,6 +69,21 @@ type CallDayCounts struct {
 	Error        int64
 	Skipped      int64
 	LatencyP95Ms *int64
+}
+
+// CallDurationSeries is one call's mean duration over the history window.
+type CallDurationSeries struct {
+	ID       string
+	Name     string
+	Position int
+	Daily    []CallDurationPoint
+}
+
+// CallDurationPoint is the mean timings.total for one call on one UTC day.
+type CallDurationPoint struct {
+	Date       time.Time
+	DurationMs int64
+	Samples    int64
 }
 
 // IncidentRange is a contiguous period of failed/error runs.
