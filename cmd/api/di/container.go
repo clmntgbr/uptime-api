@@ -110,21 +110,26 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		slog.Default(),
 	)
 
+	userWebhookMiddleware, err := middleware.NewUserWebhookMiddleware(env.ClerkWebhookSecret)
+	if err != nil {
+		log.Fatalf("invalid CLERK_WEBHOOK_SECRET: %v", err)
+	}
+
 	return &Container{
 		AuthenticateMiddleware: middleware.NewAuthenticateMiddleware(
 			validateTokenHandler,
 			fetchUserHandler,
 			createUserHandler,
 		),
-		UserWebhookMiddleware: middleware.NewUserWebhookMiddleware(env.ClerkWebhookSecret),
+		UserWebhookMiddleware: userWebhookMiddleware,
 		UserWebhookHandler: httphandler.NewUserWebhookHandler(
 			getUserByExternalIDHandler,
 			createUserHandler,
 			updateUserHandler,
 			deleteUserByExternalIDHandler,
 		),
-		UserHandler:     httphandler.NewUserHandler(getUserByIDHandler),
-		RealtimeHandler: httphandler.NewRealtimeHandler(centrifugo.NewConnectionInfoCreator(env)),
+		UserHandler:       httphandler.NewUserHandler(getUserByIDHandler),
+		RealtimeHandler:   httphandler.NewRealtimeHandler(centrifugo.NewConnectionInfoCreator(env)),
 		StatisticsHandler: httphandler.NewStatisticsHandler(querystatistics.NewGetDashboardHandler(statisticsRepo)),
 		WorkflowHandler: httphandler.NewWorkflowHandler(
 			workflowcmd.NewCreateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo, clock),

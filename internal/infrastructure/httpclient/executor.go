@@ -30,8 +30,26 @@ type Config struct {
 	// MaxBodyBytes is the hard read limit (body_too_large). Defaults to engine.MaxBodyBytes (50 MiB).
 	MaxBodyBytes int64
 	MaxRedirects int
+	// MinTLSVersion is the lowest TLS version accepted. Defaults to TLS 1.2.
+	MinTLSVersion uint16
 	// RootCAs overrides the system roots (tests).
 	RootCAs *x509.CertPool
+}
+
+// ParseMinTLSVersion maps "1.0", "1.1", "1.2" or "1.3" to a crypto/tls constant.
+func ParseMinTLSVersion(v string) (uint16, error) {
+	switch strings.TrimSpace(v) {
+	case "1.0":
+		return tls.VersionTLS10, nil
+	case "1.1":
+		return tls.VersionTLS11, nil
+	case "1.2", "":
+		return tls.VersionTLS12, nil
+	case "1.3":
+		return tls.VersionTLS13, nil
+	default:
+		return 0, fmt.Errorf("unsupported TLS version %q (want 1.0, 1.1, 1.2 or 1.3)", v)
+	}
 }
 
 type Executor struct {
@@ -44,6 +62,9 @@ func NewExecutor(cfg Config) *Executor {
 	}
 	if cfg.MaxRedirects <= 0 {
 		cfg.MaxRedirects = engine.MaxRedirects
+	}
+	if cfg.MinTLSVersion == 0 {
+		cfg.MinTLSVersion = tls.VersionTLS12
 	}
 	return &Executor{cfg: cfg}
 }
@@ -155,7 +176,7 @@ func (s *session) Do(ctx context.Context, req engine.Request) (*engine.Response,
 		ResponseHeaderTimeout:  req.Timeout,
 		MaxResponseHeaderBytes: 64 * 1024,
 		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS10,
+			MinVersion: s.cfg.MinTLSVersion,
 			// Verification is done in VerifyConnection, so the chain is always
 			// read and reported, even when the call accepts invalid certificates.
 			InsecureSkipVerify: true,

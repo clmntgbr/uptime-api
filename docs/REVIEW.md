@@ -19,25 +19,28 @@ Aucun point bloquant trouvé dans le code applicatif.
 
 ## P2 : priorité moyenne
 
-### 1. Pas de `.dockerignore`
-- Fichier : racine du repo (absent).
-- Problème : `COPY . .` dans le stage `base` copie `.env`, `.git/`, `tmp/`, `bin/` dans les layers. Le stage `development` hérite de `base`, donc l'image dev contient le `.env`. Le stage `production` ne copie que les binaires, donc l'image prod n'est pas touchée.
-- Fix : ajouter `.dockerignore` avec `.env`, `.git`, `tmp`, `bin`, `docs`, `*.log`.
+### 1. Pas de `.dockerignore` : corrigé
+- Fichier : `.dockerignore` (ajouté à la racine, non commité).
+- Problème initial : `COPY . .` dans le stage `base` copiait `.env`, `.git/`, `tmp/`, `bin/` dans les layers. Le stage `development` hérite de `base`, donc l'image dev contenait le `.env`. Le stage `production` ne copie que les binaires, donc l'image prod n'était pas touchée.
+- Fix appliqué : `.env`, `.env.*`, `.git`, `tmp`, `bin`, `coverage*`, `*.log`, `docs`, `.cursor`, `.github`, `deploy`, `caddy`, `centrifugo`, `compose*.yaml`, `codecov.yml`, `README.md` exclus.
+- Vérification : build du stage `base`, puis `ls /app` dans l'image : `.env`, `.git`, `tmp`, `bin`, `docs` absents ; `migrations/` présent (embarqué via `go:embed`).
 
-### 2. TLS 1.0 autorisé pour les appels monitorés
-- Fichier : `internal/infrastructure/httpclient/executor.go:158`.
-- Problème : `MinVersion: tls.VersionTLS10`. Pour du monitoring c'est peut-être voulu (sonder des vieux serveurs), mais c'est un choix implicite et non configurable.
-- Fix : rendre le minimum configurable par call (ou par défaut TLS 1.2), documenter le choix si volontaire.
+### 2. TLS 1.0 autorisé pour les appels monitorés : corrigé
+- Fichier : `internal/infrastructure/httpclient/executor.go`.
+- Problème initial : `MinVersion: tls.VersionTLS10` en dur.
+- Fix appliqué : minimum par défaut TLS 1.2 (`Config.MinTLSVersion`). Configurable au niveau worker-calls via `HTTP_MIN_TLS_VERSION` (`1.0`, `1.1`, `1.2`, `1.3`, défaut `1.2`), parsé et validé au démarrage (`httpclient.ParseMinTLSVersion`).
+- Limite : le réglage est global au worker, pas par call. Un réglage par call demande un champ dans le modèle `call` (non fait).
+- Test : `TestSession_RejectsTLSBelowMinimum` (serveur TLS 1.0 rejeté par défaut), `TestParseMinTLSVersion`.
 
-### 3. Panic dans le middleware webhook
-- Fichier : `internal/interfaces/http/middleware/user_webhook_middleware.go:21-26`.
-- Problème : `svix.NewWebhook` est appelé à chaque requête, et `panic(err)` en cas d'erreur (secret vide ou mal formé). Aucun middleware `recover` n'est branché dans `cmd/api/main.go`, donc le panic remonte jusqu'à net/http et la requête tombe sans réponse propre.
-- Fix : construire le `svix.Webhook` une fois dans `NewUserWebhookMiddleware` (qui retourne une erreur), et échouer au démarrage si le secret est invalide.
+### 3. Panic dans le middleware webhook : corrigé
+- Fichier : `internal/interfaces/http/middleware/user_webhook_middleware.go`, `cmd/api/di/container.go`.
+- Problème initial : `svix.NewWebhook` appelé à chaque requête, `panic(err)` en cas d'erreur.
+- Fix appliqué : `NewUserWebhookMiddleware` construit le client svix une fois et retourne une erreur. Le conteneur DI fait `log.Fatalf` si `CLERK_WEBHOOK_SECRET` est invalide. Un secret vide est accepté par svix, donc le démarrage ne casse pas en dev : les webhooks sont alors rejetés (401).
 
-### 4. Pas de `recover` middleware Fiber
+### 4. Pas de `recover` middleware Fiber : corrigé
 - Fichier : `cmd/api/main.go`.
 - Problème : aucun `recover.New()`. Tout panic dans un handler produit une connexion coupée au lieu d'un 500 JSON.
-- Fix : `app.Use(recover.New())` juste après `helmet`.
+- Fix appliqué : `app.Use(recover.New())` ajouté en tête de chaîne, avant `helmet`, pour couvrir aussi les panics de helmet et cors (écart par rapport au fix proposé « après helmet »).
 
 ## P3 : priorité basse
 

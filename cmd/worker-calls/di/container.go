@@ -42,8 +42,17 @@ func NewContainer(env *config.WorkerCallsConfig, logger *slog.Logger) (*Containe
 		logger.Warn("SSRF protection disabled: private destinations are allowed")
 	}
 
+	minTLS, err := httpclient.ParseMinTLSVersion(env.MinTLSVersion)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP_MIN_TLS_VERSION: %w", err)
+	}
+
 	cancels := engine.NewMemoryCancellationRegistry()
-	executor := httpclient.NewExecutor(httpclient.Config{UserAgent: env.UserAgent, AllowPrivate: env.AllowPrivateIPs})
+	executor := httpclient.NewExecutor(httpclient.Config{
+		UserAgent:     env.UserAgent,
+		AllowPrivate:  env.AllowPrivateIPs,
+		MinTLSVersion: minTLS,
+	})
 	clock := port.SystemClock{}
 	publisher := kafka.NewWorkflowPublisher(producer)
 	runner := observability.InstrumentRunner(

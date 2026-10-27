@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"go-api/internal/interfaces/http/dto"
@@ -11,20 +12,21 @@ import (
 )
 
 type UserWebhookMiddleware struct {
-	secret string
+	webhook *svix.Webhook
 }
 
-func NewUserWebhookMiddleware(secret string) *UserWebhookMiddleware {
-	return &UserWebhookMiddleware{secret: secret}
+// NewUserWebhookMiddleware fails on an invalid secret so the API refuses to start
+// instead of failing every webhook request.
+func NewUserWebhookMiddleware(secret string) (*UserWebhookMiddleware, error) {
+	wh, err := svix.NewWebhook(secret)
+	if err != nil {
+		return nil, fmt.Errorf("invalid clerk webhook secret: %w", err)
+	}
+	return &UserWebhookMiddleware{webhook: wh}, nil
 }
 
 func (m *UserWebhookMiddleware) Protected() fiber.Handler {
 	return func(c fiber.Ctx) error {
-		wh, err := svix.NewWebhook(m.secret)
-		if err != nil {
-			panic(err)
-		}
-
 		payload := c.Body()
 
 		headers := http.Header{}
@@ -32,7 +34,7 @@ func (m *UserWebhookMiddleware) Protected() fiber.Handler {
 		headers.Set("svix-timestamp", c.Get("svix-timestamp"))
 		headers.Set("svix-signature", c.Get("svix-signature"))
 
-		if err := wh.Verify(payload, headers); err != nil {
+		if err := m.webhook.Verify(payload, headers); err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"message": "invalid signature",
 			})

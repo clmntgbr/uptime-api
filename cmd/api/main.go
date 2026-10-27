@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/helmet"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/logger"
+	"github.com/gofiber/fiber/v3/middleware/recover"
 )
 
 func main() {
@@ -37,6 +38,7 @@ func main() {
 		ErrorHandler:  validation.FiberErrorHandler,
 	})
 
+	app.Use(recover.New())
 	app.Use(helmet.New())
 
 	app.Use(cors.New(cors.Config{

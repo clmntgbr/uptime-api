@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"net/http"
@@ -167,5 +168,31 @@ func TestSession_RejectsHTTPSToHTTPRedirect(t *testing.T) {
 	var execErr *engine.ExecError
 	if !errors.As(err, &execErr) || execErr.Type != contract.ErrorTypeInvalid {
 		t.Fatalf("https→http redirect must be rejected, got %v", err)
+	}
+}
+
+func TestSession_RejectsTLSBelowMinimum(t *testing.T) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv.TLS = &tls.Config{MaxVersion: tls.VersionTLS10}
+	srv.StartTLS()
+	defer srv.Close()
+
+	_, err := NewExecutor(Config{AllowPrivate: true}).NewSession().Do(context.Background(), request(srv.URL))
+	var execErr *engine.ExecError
+	if !errors.As(err, &execErr) || execErr.Type != contract.ErrorTypeTLS {
+		t.Fatalf("default minimum must reject TLS 1.0, got %v", err)
+	}
+}
+
+func TestParseMinTLSVersion(t *testing.T) {
+	cases := map[string]uint16{"": tls.VersionTLS12, "1.2": tls.VersionTLS12, "1.0": tls.VersionTLS10, "1.1": tls.VersionTLS11, "1.3": tls.VersionTLS13}
+	for in, want := range cases {
+		got, err := ParseMinTLSVersion(in)
+		if err != nil || got != want {
+			t.Errorf("ParseMinTLSVersion(%q) = %x, %v; want %x", in, got, err, want)
+		}
+	}
+	if _, err := ParseMinTLSVersion("ssl3"); err == nil {
+		t.Error("unsupported version must be rejected")
 	}
 }
