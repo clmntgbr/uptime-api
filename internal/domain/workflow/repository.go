@@ -32,6 +32,59 @@ type ReadRepository interface {
 	ListCalls(ctx context.Context, userID, workflowID uuid.UUID) ([]CallListView, error)
 	// FindCall returns nil, nil when the call or its workflow is missing for that user.
 	FindCall(ctx context.Context, userID, workflowID, callID uuid.UUID) (*CallView, error)
+	// ListContextStatics returns workflow statics for the context panel.
+	// Secret values are not loaded (Value is empty when Secret is true).
+	// Empty when the workflow is missing or unowned.
+	ListContextStatics(ctx context.Context, userID, workflowID uuid.UUID) ([]ContextStaticView, error)
+	// ListContextExtractions returns call-scoped variable definitions ordered by
+	// call position (for the context variables panel). Empty when missing/unowned.
+	ListContextExtractions(ctx context.Context, userID, workflowID uuid.UUID) ([]ContextExtractionView, error)
+}
+
+// ContextStaticView is one static variable for the context panel.
+type ContextStaticView struct {
+	Name   string
+	Value  string // empty when Secret
+	Secret bool
+}
+
+// Context variable scopes for GET .../context/variables.
+const (
+	ContextScopeGlobal   = "global"
+	ContextScopeStatic   = "static"
+	ContextScopeWorkflow = "workflow"
+
+	ContextVarStatusOK      = "ok"
+	ContextVarStatusMissing = "missing"
+
+	// ContextValueMaxChars is the display truncation for context variable values.
+	ContextValueMaxChars = 200
+)
+
+// ContextExtractionView is one call variable definition (no runtime value).
+type ContextExtractionView struct {
+	Name     string
+	Secret   bool
+	CallID   uuid.UUID
+	CallName string
+	Position int
+}
+
+// ContextVariableView is one row of GET .../context/variables.
+type ContextVariableView struct {
+	Scope      string
+	Name       string
+	Value      *string
+	Secret     bool
+	Truncated  bool
+	ProducedBy *ContextProducerView
+	Status     string // ok|missing for workflow scope; empty otherwise
+}
+
+// ContextProducerView identifies the call that extracts a workflow variable.
+type ContextProducerView struct {
+	CallID uuid.UUID
+	Name   string
 }
 
 type ListView struct {

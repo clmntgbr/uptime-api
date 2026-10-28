@@ -288,6 +288,84 @@ type callDetailRow struct {
 	ProxyURL  *string      `gorm:"column:proxy_url"`
 }
 
+func (r *workflowQueryRepository) ListContextStatics(ctx context.Context, userID, workflowID uuid.UUID) ([]domainworkflow.ContextStaticView, error) {
+	owned, err := r.ownedWorkflow(ctx, userID, workflowID)
+	if err != nil || !owned {
+		return []domainworkflow.ContextStaticView{}, err
+	}
+	type row struct {
+		Name   string `gorm:"column:name"`
+		Value  string `gorm:"column:value"`
+		Secret bool   `gorm:"column:secret"`
+	}
+	var rows []row
+	err = r.db.WithContext(ctx).
+		Table("variables").
+		Select("name, CASE WHEN secret THEN '' ELSE value END AS value, secret").
+		Where("workflow_id = ? AND type = ? AND call_id IS NULL", workflowID, "static").
+		Order("name").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domainworkflow.ContextStaticView, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domainworkflow.ContextStaticView{
+			Name: row.Name, Value: row.Value, Secret: row.Secret,
+		})
+	}
+	return out, nil
+}
+
+func (r *workflowQueryRepository) ListContextExtractions(ctx context.Context, userID, workflowID uuid.UUID) ([]domainworkflow.ContextExtractionView, error) {
+	owned, err := r.ownedWorkflow(ctx, userID, workflowID)
+	if err != nil || !owned {
+		return []domainworkflow.ContextExtractionView{}, err
+	}
+	type row struct {
+		Name     string    `gorm:"column:name"`
+		Secret   bool      `gorm:"column:secret"`
+		CallID   uuid.UUID `gorm:"column:call_id"`
+		CallName string    `gorm:"column:call_name"`
+		Position int       `gorm:"column:position"`
+	}
+	var rows []row
+	err = r.db.WithContext(ctx).
+		Table("variables v").
+		Select("v.name, v.secret, v.call_id, c.name AS call_name, c.position").
+		Joins("JOIN calls c ON c.id = v.call_id").
+		Where("v.workflow_id = ? AND v.type = ? AND v.call_id IS NOT NULL", workflowID, "call").
+		Order("c.position, v.name").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domainworkflow.ContextExtractionView, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domainworkflow.ContextExtractionView{
+			Name: row.Name, Secret: row.Secret, CallID: row.CallID,
+			CallName: row.CallName, Position: row.Position,
+		})
+	}
+	return out, nil
+}
+
+func (r *workflowQueryRepository) ownedWorkflow(ctx context.Context, userID, workflowID uuid.UUID) (bool, error) {
+	var id uuid.UUID
+	err := r.db.WithContext(ctx).
+		Table("workflows").
+		Select("id").
+		Where("id = ? AND user_id = ? AND deleted_at IS NULL", workflowID, userID).
+		Take(&id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func (r *workflowQueryRepository) FindCall(ctx context.Context, userID, workflowID, callID uuid.UUID) (*domainworkflow.CallView, error) {
 	var row callDetailRow
 	err := r.db.WithContext(ctx).

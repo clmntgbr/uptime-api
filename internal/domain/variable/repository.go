@@ -16,6 +16,9 @@ type GlobalRepository interface {
 	Delete(ctx context.Context, userID, id uuid.UUID) error
 	// ListByUser returns every global of the user with secret values decrypted.
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]Global, error)
+	// ListForContext returns globals for the context panel. Secret values are
+	// not decrypted or returned (Value is empty when Secret is true).
+	ListForContext(ctx context.Context, userID uuid.UUID) ([]Global, error)
 	// Names returns the global names of the user, without reading any value.
 	Names(ctx context.Context, userID uuid.UUID) ([]string, error)
 }

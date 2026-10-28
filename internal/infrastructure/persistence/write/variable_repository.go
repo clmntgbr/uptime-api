@@ -3,6 +3,7 @@ package write
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go-api/internal/domain/port"
 	"go-api/internal/domain/variable"
@@ -106,6 +107,35 @@ func (r *globalVariableRepository) ListByUser(ctx context.Context, userID uuid.U
 			return nil, err
 		}
 		out = append(out, g)
+	}
+	return out, nil
+}
+
+func (r *globalVariableRepository) ListForContext(ctx context.Context, userID uuid.UUID) ([]variable.Global, error) {
+	type row struct {
+		ID        uuid.UUID `gorm:"column:id"`
+		UserID    uuid.UUID `gorm:"column:user_id"`
+		Name      string    `gorm:"column:name"`
+		Value     string    `gorm:"column:value"`
+		Secret    bool      `gorm:"column:secret"`
+		CreatedAt time.Time `gorm:"column:created_at"`
+		UpdatedAt time.Time `gorm:"column:updated_at"`
+	}
+	var rows []row
+	err := r.globals(ctx).
+		Select("id, user_id, name, CASE WHEN secret THEN '' ELSE value END AS value, secret, created_at, updated_at").
+		Where("user_id = ?", userID).
+		Order("name").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]variable.Global, 0, len(rows))
+	for _, m := range rows {
+		out = append(out, variable.Global{
+			ID: m.ID, UserID: m.UserID, Name: m.Name, Value: m.Value, Secret: m.Secret,
+			CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+		})
 	}
 	return out, nil
 }

@@ -30,9 +30,36 @@ type ReadRepository interface {
 	ListByWorkflow(ctx context.Context, userID, workflowID uuid.UUID, q paginate.PaginateQuery) ([]View, int64, error)
 	// FindByID returns nil, nil when the run does not exist for that user.
 	FindByID(ctx context.Context, userID, runID uuid.UUID) (*DetailView, error)
+	// FindLatestTerminalByWorkflow returns the newest finished run
+	// (success|failed|error|skipped) with lean call rows for the context panel.
+	// nil, nil when the workflow has no terminal run (or is missing / not owned).
+	FindLatestTerminalByWorkflow(ctx context.Context, userID, workflowID uuid.UUID) (*LatestView, error)
+	// FindLatestExtractedByWorkflow returns extracted variable values from the
+	// latest terminal run, keyed by call ID. Empty map when none.
+	FindLatestExtractedByWorkflow(ctx context.Context, userID, workflowID uuid.UUID) (map[uuid.UUID]map[string]string, error)
 	// LatestResponseKeysForCall returns JSON paths from the most recent call_run
 	// that recorded keys for that call. Empty slice when none yet.
 	LatestResponseKeysForCall(ctx context.Context, userID, workflowID, callID uuid.UUID) ([]string, error)
+}
+
+// LatestView is the lean read model for GET .../context/runs/latest.
+type LatestView struct {
+	ID         uuid.UUID
+	Status     Status
+	StartedAt  time.Time
+	DurationMS int
+	Calls      []LatestCallView
+}
+
+// LatestCallView is one cascade bar for the latest-run card.
+type LatestCallView struct {
+	CallID     *uuid.UUID
+	Name       string
+	Position   int
+	Status     CallStatus
+	OffsetMS   int64
+	DurationMS int64
+	HTTPStatus *int
 }
 
 type View struct {

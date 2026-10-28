@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"go-api/internal/contract"
 	"go-api/internal/domain/paginate"
 	domainrun "go-api/internal/domain/run"
+	"go-api/internal/infrastructure/persistence/dbtype"
 	"go-api/internal/infrastructure/persistence/write"
 
 	"github.com/google/uuid"
@@ -110,6 +112,127 @@ func (r *runQueryRepository) FindByID(ctx context.Context, userID, runID uuid.UU
 		detail.Calls = append(detail.Calls, view)
 	}
 	return detail, nil
+}
+
+func (r *runQueryRepository) FindLatestTerminalByWorkflow(ctx context.Context, userID, workflowID uuid.UUID) (*domainrun.LatestView, error) {
+	var model write.RunModel
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND workflow_id = ?", userID, workflowID).
+		Where("status IN ?", []string{
+			string(domainrun.StatusSuccess),
+			string(domainrun.StatusFailed),
+			string(domainrun.StatusError),
+			string(domainrun.StatusSkipped),
+		}).
+		Order("started_at DESC").
+		Limit(1).
+		Take(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	type leanCall struct {
+		CallID     *uuid.UUID `gorm:"column:call_id"`
+		Name       string     `gorm:"column:name"`
+		Position   int        `gorm:"column:position"`
+		Status     string     `gorm:"column:status"`
+		HTTPStatus *int       `gorm:"column:http_status"`
+		StartedAt  *time.Time `gorm:"column:started_at"`
+		FinishedAt *time.Time `gorm:"column:finished_at"`
+	}
+	var calls []leanCall
+	err = r.db.WithContext(ctx).
+		Table("call_runs").
+		Select("call_id, name, position, status, http_status, started_at, finished_at").
+		Where("run_id = ?", model.ID).
+		Order("position").
+		Find(&calls).Error
+	if err != nil {
+		return nil, err
+	}
+
+	out := &domainrun.LatestView{
+		ID:         model.ID,
+		Status:     domainrun.Status(model.Status),
+		StartedAt:  model.StartedAt,
+		DurationMS: model.DurationMS,
+		Calls:      make([]domainrun.LatestCallView, 0, len(calls)),
+	}
+	for _, c := range calls {
+		view := domainrun.LatestCallView{
+			CallID:   c.CallID,
+			Name:     c.Name,
+			Position: c.Position,
+			Status:   domainrun.CallStatus(c.Status),
+		}
+		if c.StartedAt != nil {
+			view.OffsetMS = c.StartedAt.Sub(model.StartedAt).Milliseconds()
+			if c.FinishedAt != nil {
+				view.DurationMS = c.FinishedAt.Sub(*c.StartedAt).Milliseconds()
+			}
+		}
+		if c.Status == string(domainrun.CallSkipped) {
+			view.DurationMS = 0
+		} else if c.HTTPStatus != nil {
+			view.HTTPStatus = c.HTTPStatus
+		}
+		out.Calls = append(out.Calls, view)
+	}
+	return out, nil
+}
+
+func (r *runQueryRepository) FindLatestExtractedByWorkflow(ctx context.Context, userID, workflowID uuid.UUID) (map[uuid.UUID]map[string]string, error) {
+	var runID uuid.UUID
+	err := r.db.WithContext(ctx).
+		Model(&write.RunModel{}).
+		Select("id").
+		Where("user_id = ? AND workflow_id = ?", userID, workflowID).
+		Where("status IN ?", []string{
+			string(domainrun.StatusSuccess),
+			string(domainrun.StatusFailed),
+			string(domainrun.StatusError),
+			string(domainrun.StatusSkipped),
+		}).
+		Order("started_at DESC").
+		Limit(1).
+		Take(&runID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return map[uuid.UUID]map[string]string{}, nil
+		}
+		return nil, err
+	}
+
+	type row struct {
+		CallID             *uuid.UUID   `gorm:"column:call_id"`
+		ExtractedVariables dbtype.JSONB `gorm:"column:extracted_variables"`
+	}
+	var rows []row
+	err = r.db.WithContext(ctx).
+		Table("call_runs").
+		Select("call_id, extracted_variables").
+		Where("run_id = ?", runID).
+		Order("position").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[uuid.UUID]map[string]string, len(rows))
+	for _, row := range rows {
+		if row.CallID == nil {
+			continue
+		}
+		values := map[string]string{}
+		if err := unmarshalOptional(row.ExtractedVariables, &values); err != nil {
+			return nil, err
+		}
+		out[*row.CallID] = values
+	}
+	return out, nil
 }
 
 func (r *runQueryRepository) LatestResponseKeysForCall(ctx context.Context, userID, workflowID, callID uuid.UUID) ([]string, error) {
