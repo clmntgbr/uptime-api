@@ -58,10 +58,7 @@ func writeVariableError(c fiber.Ctx, err error, fallback string) error {
 	var verr *domainworkflow.ValidationError
 	switch {
 	case errors.As(err, &verr):
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": verr.Error(),
-			"code":    "INVALID_WORKFLOW",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(validationErrorBody(verr))
 	case errors.Is(err, variable.ErrAlreadyExists):
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
 			"message": "Variable already exists",

@@ -106,10 +106,7 @@ func writeCallError(c fiber.Ctx, err error, fallback string) error {
 			"code":    "INVALID_CALL_ORDER",
 		})
 	case errors.As(err, &verr):
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": verr.Error(),
-			"code":    "INVALID_WORKFLOW",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(validationErrorBody(verr))
 	case errors.Is(err, domainworkflow.ErrCallNotFound):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"message": "Call not found",

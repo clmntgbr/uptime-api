@@ -75,16 +75,32 @@ func validateScheduleFields(c fiber.Ctx, scheduleType domainworkflow.ScheduleTyp
 	return validation.ErrValidationFailed
 }
 
+// validationErrorBody maps a domain ValidationError to the HTTP envelope.
+// ErrVarOutOfOrder adds a structured data payload for the client.
+func validationErrorBody(verr *domainworkflow.ValidationError) fiber.Map {
+	body := fiber.Map{
+		"message": verr.Error(),
+		"code":    "INVALID_WORKFLOW",
+	}
+	if errors.Is(verr, domainworkflow.ErrVarOutOfOrder) {
+		body["code"] = "VAR_OUT_OF_ORDER"
+		body["data"] = fiber.Map{
+			"call":         verr.Call,
+			"variable":     verr.Variable,
+			"conflictCall": verr.ConflictCall,
+			"reason":       verr.Reason,
+		}
+	}
+	return body
+}
+
 // writeWorkflowError maps domain errors; validation messages name the call and
 // the variable at fault and are part of the contract.
 func writeWorkflowError(c fiber.Ctx, err error, fallback string) error {
 	var verr *domainworkflow.ValidationError
 	switch {
 	case errors.As(err, &verr):
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": verr.Error(),
-			"code":    "INVALID_WORKFLOW",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(validationErrorBody(verr))
 	case errors.Is(err, domainworkflow.ErrNotFound), errors.Is(err, domainworkflow.ErrWrongOwner):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"message": "Workflow not found",

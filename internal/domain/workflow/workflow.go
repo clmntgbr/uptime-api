@@ -356,11 +356,24 @@ func validateVariables(statics []StaticVariable, calls []domaincall.Call, global
 				continue
 			}
 			if from, ok := producer[name]; ok {
-				msg := fmt.Sprintf("produced by call %q, which runs after it", from)
 				if from == c.Name {
-					msg = "a call cannot use a variable it extracts itself"
+					return &ValidationError{
+						Call:         c.Name,
+						Variable:     name,
+						ConflictCall: from,
+						Reason:       ReasonSelfReference,
+						Message:      "a call cannot use a variable it extracts itself",
+						Kind:         ErrVarOutOfOrder,
+					}
 				}
-				return &ValidationError{Call: c.Name, Variable: name, Message: msg, Kind: ErrVarOutOfOrder}
+				return &ValidationError{
+					Call:         c.Name,
+					Variable:     name,
+					ConflictCall: from,
+					Reason:       ReasonProducedByLaterCall,
+					Message:      fmt.Sprintf("produced by call %q, which runs after it", from),
+					Kind:         ErrVarOutOfOrder,
+				}
 			}
 			return &ValidationError{Call: c.Name, Variable: name, Message: "unknown variable", Kind: ErrUnknownVar}
 		}

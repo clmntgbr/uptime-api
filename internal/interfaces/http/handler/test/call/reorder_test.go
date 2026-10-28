@@ -89,18 +89,28 @@ func TestCallHandler_Reorder_HandlerError_WorkflowNotFound(t *testing.T) {
 	assertStatus(t, resp, http.StatusNotFound)
 }
 
-func TestCallHandler_Reorder_HandlerError_InvalidWorkflow(t *testing.T) {
+func TestCallHandler_Reorder_HandlerError_VarOutOfOrder(t *testing.T) {
 	m := newMocks()
 	m.reorder.err = &domainworkflow.ValidationError{
-		Call: "orders", Variable: "token", Message: "produced by a later call",
-		Kind: domainworkflow.ErrVarOutOfOrder,
+		Call:         "Order call",
+		Variable:     "orderId",
+		ConflictCall: "Orders call",
+		Reason:       domainworkflow.ReasonProducedByLaterCall,
+		Message:      `produced by call "Orders call", which runs after it`,
+		Kind:         domainworkflow.ErrVarOutOfOrder,
 	}
 	resp := doJSON(t, m, true, http.MethodPut, reorderPath(), map[string]any{
 		"callIds": []string{testCallID.String()},
 	})
 	assertStatus(t, resp, http.StatusBadRequest)
-	if out := testutil.DecodeJSONMap(t, resp); out["code"] != "INVALID_WORKFLOW" {
+	out := testutil.DecodeJSONMap(t, resp)
+	if out["code"] != "VAR_OUT_OF_ORDER" {
 		t.Fatalf("unexpected body %v", out)
+	}
+	data, _ := out["data"].(map[string]any)
+	if data["call"] != "Order call" || data["variable"] != "orderId" ||
+		data["conflictCall"] != "Orders call" || data["reason"] != "PRODUCED_BY_LATER_CALL" {
+		t.Fatalf("unexpected data %v", data)
 	}
 }
 

@@ -25,12 +25,22 @@ var (
 
 // ValidationError names the call and the variable at fault, so the message can
 // be shown as is: `call "detail": {{first_id}} is produced by "liste", placed after it`.
+// ConflictCall / Reason are filled for ErrVarOutOfOrder so HTTP can expose a
+// structured `data` payload for the client.
 type ValidationError struct {
-	Call     string
-	Variable string
-	Message  string
-	Kind     error
+	Call         string
+	Variable     string
+	ConflictCall string // producer call when Kind is ErrVarOutOfOrder
+	Reason       string // machine-readable reason (e.g. PRODUCED_BY_LATER_CALL)
+	Message      string
+	Kind         error
 }
+
+// Stable reasons for ErrVarOutOfOrder (HTTP data.reason).
+const (
+	ReasonProducedByLaterCall = "PRODUCED_BY_LATER_CALL"
+	ReasonSelfReference       = "SELF_REFERENCE"
+)
 
 func (e *ValidationError) Error() string {
 	switch {
