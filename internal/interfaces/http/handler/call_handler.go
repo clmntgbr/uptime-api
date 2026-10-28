@@ -10,12 +10,13 @@ import (
 )
 
 type CallHandler struct {
-	createHandler callCreateHandler
-	copyHandler   callCopyHandler
-	updateHandler callUpdateHandler
-	deleteHandler callDeleteHandler
-	listHandler   callListHandler
-	getHandler    callGetHandler
+	createHandler  callCreateHandler
+	copyHandler    callCopyHandler
+	updateHandler  callUpdateHandler
+	deleteHandler  callDeleteHandler
+	reorderHandler callReorderHandler
+	listHandler    callListHandler
+	getHandler     callGetHandler
 }
 
 func NewCallHandler(
@@ -23,16 +24,18 @@ func NewCallHandler(
 	copyHandler callCopyHandler,
 	updateHandler callUpdateHandler,
 	deleteHandler callDeleteHandler,
+	reorderHandler callReorderHandler,
 	listHandler callListHandler,
 	getHandler callGetHandler,
 ) *CallHandler {
 	return &CallHandler{
-		createHandler: createHandler,
-		copyHandler:   copyHandler,
-		updateHandler: updateHandler,
-		deleteHandler: deleteHandler,
-		listHandler:   listHandler,
-		getHandler:    getHandler,
+		createHandler:  createHandler,
+		copyHandler:    copyHandler,
+		updateHandler:  updateHandler,
+		deleteHandler:  deleteHandler,
+		reorderHandler: reorderHandler,
+		listHandler:    listHandler,
+		getHandler:     getHandler,
 	}
 }
 
@@ -168,4 +171,29 @@ func (h *CallHandler) Delete(c fiber.Ctx) error {
 		return writeCallError(c, err, "Failed to delete call")
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *CallHandler) Reorder(c fiber.Ctx) error {
+	user, err := httpctx.GetUser(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "Unauthorized"})
+	}
+	workflowID, err := parseWorkflowID(c)
+	if err != nil {
+		return err
+	}
+	callIDs, err := bindReorderCallIDs(c)
+	if err != nil {
+		return err
+	}
+
+	calls, err := h.reorderHandler.Handle(c.Context(), callcmd.ReorderCallsCommand{
+		UserID:     user.ID,
+		WorkflowID: workflowID,
+		CallIDs:    callIDs,
+	})
+	if err != nil {
+		return writeCallError(c, err, "Failed to reorder calls")
+	}
+	return c.Status(fiber.StatusOK).JSON(presenter.NewCallListResponseFromCalls(calls))
 }

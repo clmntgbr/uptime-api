@@ -18,6 +18,9 @@ var (
 	ErrNoRunInProgress  = errors.New("no run is in progress")
 	ErrNoCalls          = errors.New("workflow has no calls")
 	ErrVariableInUse    = errors.New("variable is used by a call")
+	// ErrInvalidCallOrder is returned when reorder callIds is not an exact
+	// permutation of the workflow calls (missing, extra, or duplicate).
+	ErrInvalidCallOrder = errors.New("callIds must list every call exactly once")
 )
 
 // ValidationError names the call and the variable at fault, so the message can

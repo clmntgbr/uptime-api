@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -148,6 +149,105 @@ func TestDuplicateCall_CopiesFieldsAndRulesKeepsTemplates(t *testing.T) {
 	}
 	if len(w.Calls[1].Extractions) != 1 || w.Calls[1].Extractions[0].Name != "orderId" {
 		t.Fatalf("source extractions must stay untouched: %+v", w.Calls[1].Extractions)
+	}
+}
+
+func TestReorderCalls_Success(t *testing.T) {
+	w, err := New(uuid.New(), Definition{
+		Name: "wf", Interval: MinInterval, Enabled: true,
+		Calls: []domaincall.Definition{
+			{Name: "a", Method: "GET", URL: "https://example.com/a"},
+			{Name: "b", Method: "GET", URL: "https://example.com/b"},
+			{Name: "c", Method: "GET", URL: "https://example.com/c"},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b, c := w.Calls[0].ID, w.Calls[1].ID, w.Calls[2].ID
+
+	if err := w.ReorderCalls([]uuid.UUID{c, a, b}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if w.Calls[0].ID != c || w.Calls[0].Position != 1 ||
+		w.Calls[1].ID != a || w.Calls[1].Position != 2 ||
+		w.Calls[2].ID != b || w.Calls[2].Position != 3 {
+		t.Fatalf("unexpected order %+v", w.Calls)
+	}
+}
+
+func TestReorderCalls_RejectsProducerAfterConsumer(t *testing.T) {
+	w, err := New(uuid.New(), Definition{
+		Name: "wf", Interval: MinInterval, Enabled: true,
+		Calls: []domaincall.Definition{
+			{
+				Name: "login", Method: "POST", URL: "https://example.com/login",
+				Extractions: []domaincall.Extraction{{
+					Name: "token", Source: domaincall.ExtractJSON, Expression: "$.token",
+				}},
+			},
+			{
+				Name: "orders", Method: "GET", URL: "https://example.com/orders?t={{token}}",
+			},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	login, orders := w.Calls[0].ID, w.Calls[1].ID
+
+	err = w.ReorderCalls([]uuid.UUID{orders, login}, nil)
+	var verr *ValidationError
+	if err == nil || !errors.As(err, &verr) {
+		t.Fatalf("got %v want ValidationError", err)
+	}
+}
+
+func TestReorderCalls_IncompleteList(t *testing.T) {
+	w, err := New(uuid.New(), Definition{
+		Name: "wf", Interval: MinInterval, Enabled: true,
+		Calls: []domaincall.Definition{
+			{Name: "a", Method: "GET", URL: "https://example.com/a"},
+			{Name: "b", Method: "GET", URL: "https://example.com/b"},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.ReorderCalls([]uuid.UUID{w.Calls[0].ID}, nil); err != ErrInvalidCallOrder {
+		t.Fatalf("got %v want ErrInvalidCallOrder", err)
+	}
+}
+
+func TestReorderCalls_UnknownID(t *testing.T) {
+	w, err := New(uuid.New(), Definition{
+		Name: "wf", Interval: MinInterval, Enabled: true,
+		Calls: []domaincall.Definition{
+			{Name: "a", Method: "GET", URL: "https://example.com/a"},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.ReorderCalls([]uuid.UUID{uuid.New()}, nil); err != ErrInvalidCallOrder {
+		t.Fatalf("got %v want ErrInvalidCallOrder", err)
+	}
+}
+
+func TestReorderCalls_DuplicateID(t *testing.T) {
+	w, err := New(uuid.New(), Definition{
+		Name: "wf", Interval: MinInterval, Enabled: true,
+		Calls: []domaincall.Definition{
+			{Name: "a", Method: "GET", URL: "https://example.com/a"},
+			{Name: "b", Method: "GET", URL: "https://example.com/b"},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := w.Calls[0].ID
+	if err := w.ReorderCalls([]uuid.UUID{id, id}, nil); err != ErrInvalidCallOrder {
+		t.Fatalf("got %v want ErrInvalidCallOrder", err)
 	}
 }
 

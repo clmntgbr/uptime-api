@@ -38,6 +38,26 @@ func parseWorkflowID(c fiber.Ctx) (uuid.UUID, error) {
 	return workflowID, nil
 }
 
+func bindReorderCallIDs(c fiber.Ctx) ([]uuid.UUID, error) {
+	var body dto.ReorderCallsRequest
+	if err := validation.BindBody(c, &body); err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, 0, len(body.CallIDs))
+	for _, raw := range body.CallIDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": "Validation failed",
+				"errors":  map[string]string{"callIds": "must be valid UUIDs"},
+			})
+			return nil, validation.ErrValidationFailed
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
 func bindCallDefinition(c fiber.Ctx) (domaincall.Definition, error) {
 	var body dto.CallRequest
 	if err := validation.BindBody(c, &body); err != nil {
@@ -80,6 +100,11 @@ func bindCallDefinition(c fiber.Ctx) (domaincall.Definition, error) {
 func writeCallError(c fiber.Ctx, err error, fallback string) error {
 	var verr *domainworkflow.ValidationError
 	switch {
+	case errors.Is(err, domainworkflow.ErrInvalidCallOrder):
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
+			"message": "callIds must list every call exactly once",
+			"code":    "INVALID_CALL_ORDER",
+		})
 	case errors.As(err, &verr):
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": verr.Error(),

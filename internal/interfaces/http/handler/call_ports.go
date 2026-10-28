@@ -25,6 +25,10 @@ type callDeleteHandler interface {
 	Handle(ctx context.Context, cmd callcmd.DeleteCallCommand) error
 }
 
+type callReorderHandler interface {
+	Handle(ctx context.Context, cmd callcmd.ReorderCallsCommand) ([]domaincall.Call, error)
+}
+
 type callListHandler interface {
 	Handle(ctx context.Context, q querycall.ListCallsQuery) ([]domainworkflow.CallListView, error)
 }

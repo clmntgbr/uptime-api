@@ -112,6 +112,43 @@ func copyStringMap(in map[string]string) map[string]string {
 	return out
 }
 
+// ReorderCalls sets call positions from an ordered list of IDs (drag-and-drop).
+// orderedIDs must be a permutation of the current call set; variable order is
+// re-validated so a producer cannot move after a consumer.
+func (w *Workflow) ReorderCalls(orderedIDs []uuid.UUID, globalNames []string) error {
+	if len(orderedIDs) != len(w.Calls) {
+		return ErrInvalidCallOrder
+	}
+
+	byID := make(map[uuid.UUID]domaincall.Call, len(w.Calls))
+	for _, c := range w.Calls {
+		byID[c.ID] = c
+	}
+
+	next := make([]domaincall.Call, 0, len(orderedIDs))
+	seen := make(map[uuid.UUID]struct{}, len(orderedIDs))
+	for _, id := range orderedIDs {
+		if _, dup := seen[id]; dup {
+			return ErrInvalidCallOrder
+		}
+		c, ok := byID[id]
+		if !ok {
+			return ErrInvalidCallOrder
+		}
+		seen[id] = struct{}{}
+		next = append(next, c)
+	}
+	for i := range next {
+		next[i].Position = i + 1
+	}
+	if err := validateVariables(w.Statics, next, globalNames); err != nil {
+		return err
+	}
+	w.Calls = next
+	w.recordCallMutation()
+	return nil
+}
+
 // RemoveCall deletes a call and renumbers the remaining positions.
 func (w *Workflow) RemoveCall(callID uuid.UUID, globalNames []string) error {
 	next := make([]domaincall.Call, 0, len(w.Calls))

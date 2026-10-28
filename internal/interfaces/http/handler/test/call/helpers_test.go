@@ -103,6 +103,35 @@ func (m *mockDeleteHandler) Handle(_ context.Context, cmd callcmd.DeleteCallComm
 	return m.err
 }
 
+type mockReorderHandler struct {
+	calls int
+	got   callcmd.ReorderCallsCommand
+	list  []domaincall.Call
+	err   error
+}
+
+func (m *mockReorderHandler) Handle(_ context.Context, cmd callcmd.ReorderCallsCommand) ([]domaincall.Call, error) {
+	m.calls++
+	m.got = cmd
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.list != nil {
+		return m.list, nil
+	}
+	out := make([]domaincall.Call, 0, len(cmd.CallIDs))
+	for i, id := range cmd.CallIDs {
+		out = append(out, domaincall.Call{
+			ID:       id,
+			Name:     "call",
+			Method:   "GET",
+			URL:      "https://example.com",
+			Position: i + 1,
+		})
+	}
+	return out, nil
+}
+
 type mockListHandler struct {
 	calls int
 	got   querycall.ListCallsQuery
@@ -152,33 +181,36 @@ func sampleCallView() *domainworkflow.CallView {
 }
 
 type mocks struct {
-	create *mockCreateHandler
-	copy   *mockCopyHandler
-	update *mockUpdateHandler
-	delete *mockDeleteHandler
-	list   *mockListHandler
-	get    *mockGetHandler
+	create  *mockCreateHandler
+	copy    *mockCopyHandler
+	update  *mockUpdateHandler
+	delete  *mockDeleteHandler
+	reorder *mockReorderHandler
+	list    *mockListHandler
+	get     *mockGetHandler
 }
 
 func newMocks() mocks {
 	return mocks{
-		create: &mockCreateHandler{},
-		copy:   &mockCopyHandler{},
-		update: &mockUpdateHandler{},
-		delete: &mockDeleteHandler{},
-		list:   &mockListHandler{},
-		get:    &mockGetHandler{},
+		create:  &mockCreateHandler{},
+		copy:    &mockCopyHandler{},
+		update:  &mockUpdateHandler{},
+		delete:  &mockDeleteHandler{},
+		reorder: &mockReorderHandler{},
+		list:    &mockListHandler{},
+		get:     &mockGetHandler{},
 	}
 }
 
 func mountRoutes(m mocks, authenticated bool) *fiber.App {
-	h := handler.NewCallHandler(m.create, m.copy, m.update, m.delete, m.list, m.get)
+	h := handler.NewCallHandler(m.create, m.copy, m.update, m.delete, m.reorder, m.list, m.get)
 	app := testutil.NewTestApp()
 	if authenticated {
 		app.Use(testutil.WithUserWithoutProject(testutil.TestUserID))
 	}
 	app.Get("/workflows/:id/calls", h.List)
 	app.Post("/workflows/:id/calls", h.Create)
+	app.Put("/workflows/:id/calls/reorder", h.Reorder)
 	app.Get("/workflows/:id/calls/:callId", h.GetByID)
 	app.Post("/workflows/:id/calls/:callId/copy", h.Copy)
 	app.Put("/workflows/:id/calls/:callId", h.Update)

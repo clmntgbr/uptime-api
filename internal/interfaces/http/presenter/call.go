@@ -51,6 +51,14 @@ func NewCallResponseFromCall(c domaincall.Call) CallResponse {
 	}
 }
 
+func NewCallListResponseFromCalls(calls []domaincall.Call) []CallResponse {
+	out := make([]CallResponse, 0, len(calls))
+	for _, c := range calls {
+		out = append(out, NewCallResponseFromCall(c))
+	}
+	return out
+}
+
 func NewCallListResponseFromViews(views []domainworkflow.CallListView) []CallResponse {
 	out := make([]CallResponse, 0, len(views))
 	for _, v := range views {

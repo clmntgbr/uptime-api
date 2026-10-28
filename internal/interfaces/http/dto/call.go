@@ -1,5 +1,11 @@
 package dto
 
+// ReorderCallsRequest is the body of PUT /workflows/:id/calls/reorder.
+// callIds must be a permutation of every call in the workflow (drag-and-drop order).
+type ReorderCallsRequest struct {
+	CallIDs []string `json:"callIds" validate:"max=20,dive,uuid"`
+}
+
 // CallRequest is the body of POST /workflows/:id/calls and PUT /workflows/:id/calls/:callId.
 // Call variables are managed via /workflows/:id/calls/:callId/variables, not this payload.
 type CallRequest struct {
