@@ -16,9 +16,8 @@ const (
 	MaxThresholds     = 20
 	MinThresholdDays  = 1
 	MaxThresholdDays  = 365
-	StaleAfter        = 7 * 24 * time.Hour
-	ExpiredAlertDays  = 7
-	DefaultThresholds = "30,14,7,1"
+	StaleAfter       = 7 * 24 * time.Hour
+	ExpiredAlertDays = 7
 )
 
 type ItemState string
@@ -38,9 +37,6 @@ const (
 	SeverityCritical Severity = "critical"
 )
 
-// DefaultThresholdsDays is applied when no policy row exists.
-var DefaultThresholdsDays = []int{30, 14, 7, 1}
-
 type Policy struct {
 	ID             uuid.UUID
 	UserID         uuid.UUID
@@ -51,16 +47,25 @@ type Policy struct {
 	UpdatedAt      time.Time
 }
 
-// DefaultPolicy is the virtual policy when the workflow has no row yet.
+// DefaultPolicy is the virtual policy when the workflow has no row yet:
+// alerts off, no thresholds — configure at create or via PUT.
 func DefaultPolicy(userID, workflowID uuid.UUID, t Type) Policy {
 	return Policy{
 		UserID:         userID,
 		WorkflowID:     workflowID,
 		Type:           t,
-		Enabled:        true,
-		ThresholdsDays: append([]int(nil), DefaultThresholdsDays...),
+		Enabled:        false,
+		ThresholdsDays: []int{},
 		UpdatedAt:      time.Now().UTC(),
 	}
+}
+
+// NormalizePolicyThresholds allows empty thresholds only when disabled.
+func NormalizePolicyThresholds(enabled bool, in []int) ([]int, error) {
+	if !enabled && len(in) == 0 {
+		return []int{}, nil
+	}
+	return NormalizeThresholds(in)
 }
 
 type Item struct {

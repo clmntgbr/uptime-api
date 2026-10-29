@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	domainexpiry "go-api/internal/domain/expiry"
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/interfaces/http/presenter"
 	"go-api/internal/interfaces/http/testutil"
@@ -63,11 +64,31 @@ func TestWorkflowHandler_Create_Success(t *testing.T) {
 	}
 	cmd := m.create.got
 	def := cmd.Definition
-	if cmd.UserID != testutil.TestUserID || def.Name != "Checkout" || def.ScheduleType != domainworkflow.ScheduleInterval || def.Interval != 5*time.Minute || !def.Enabled {
+	if cmd.UserID != testutil.TestUserID || def.Name != "Checkout" || def.ScheduleType != domainworkflow.ScheduleInterval || def.Interval != 5*time.Minute || def.Enabled {
 		t.Fatalf("unexpected command %+v", cmd)
 	}
 	if len(def.Statics) != 0 || len(def.Calls) != 0 {
 		t.Fatalf("create must not accept statics or calls in the body, got statics=%+v calls=%+v", def.Statics, def.Calls)
+	}
+}
+
+func TestWorkflowHandler_Create_EnabledDefaultsFalse(t *testing.T) {
+	m := newMocks()
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", validWorkflowBody())
+	assertStatus(t, resp, http.StatusCreated)
+	if m.create.got.Definition.Enabled {
+		t.Fatal("omitted enabled must default to false")
+	}
+}
+
+func TestWorkflowHandler_Create_EnabledExplicitTrue(t *testing.T) {
+	m := newMocks()
+	body := validWorkflowBody()
+	body["enabled"] = true
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
+	assertStatus(t, resp, http.StatusCreated)
+	if !m.create.got.Definition.Enabled {
+		t.Fatal("enabled=true must be passed to the command")
 	}
 }
 
@@ -79,6 +100,65 @@ func TestWorkflowHandler_Create_DisabledWorkflow(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	if m.create.got.Definition.Enabled {
 		t.Fatal("enabled=false must be passed to the command")
+	}
+}
+
+func TestWorkflowHandler_Create_WithExpiryPolicies(t *testing.T) {
+	m := newMocks()
+	body := validWorkflowBody()
+	body["expiryPolicies"] = []map[string]any{
+		{"type": "tls_certificate", "enabled": false, "thresholdsDays": []int{}},
+	}
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
+	assertStatus(t, resp, http.StatusCreated)
+	if len(m.create.got.ExpiryPolicies) != 1 {
+		t.Fatalf("expected 1 expiry policy, got %+v", m.create.got.ExpiryPolicies)
+	}
+	p := m.create.got.ExpiryPolicies[0]
+	if p.Type != "tls_certificate" || p.Enabled || len(p.ThresholdsDays) != 0 {
+		t.Fatalf("unexpected policy %+v", p)
+	}
+}
+
+func TestWorkflowHandler_Create_ExpiryPolicies_EnabledEmpty(t *testing.T) {
+	m := newMocks()
+	body := validWorkflowBody()
+	body["expiryPolicies"] = []map[string]any{
+		{"type": "tls_certificate", "enabled": true, "thresholdsDays": []int{}},
+	}
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
+	assertStatus(t, resp, http.StatusUnprocessableEntity)
+	if m.create.calls != 0 {
+		t.Fatal("create must not be called")
+	}
+}
+
+func TestWorkflowHandler_Create_ExpiryPolicies_DuplicateType(t *testing.T) {
+	m := newMocks()
+	body := validWorkflowBody()
+	body["expiryPolicies"] = []map[string]any{
+		{"type": "tls_certificate", "enabled": false, "thresholdsDays": []int{}},
+		{"type": "tls_certificate", "enabled": true, "thresholdsDays": []int{30}},
+	}
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
+	assertStatus(t, resp, http.StatusBadRequest)
+	if m.create.calls != 0 {
+		t.Fatal("create must not be called")
+	}
+}
+
+func TestWorkflowHandler_Create_ExpiryPolicies_HandlerInvalidThresholds(t *testing.T) {
+	m := newMocks()
+	m.create.err = fmt.Errorf("create workflow: %w", domainexpiry.ErrInvalidThresholds)
+	body := validWorkflowBody()
+	body["expiryPolicies"] = []map[string]any{
+		{"type": "tls_certificate", "enabled": true, "thresholdsDays": []int{30}},
+	}
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
+	assertStatus(t, resp, http.StatusUnprocessableEntity)
+	out := testutil.DecodeJSONMap(t, resp)
+	if out["code"] != "INVALID_THRESHOLDS" {
+		t.Fatalf("unexpected body %v", out)
 	}
 }
 

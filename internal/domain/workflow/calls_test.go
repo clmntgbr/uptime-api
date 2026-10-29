@@ -288,6 +288,33 @@ func TestAddCall_AllowsDuplicateNames(t *testing.T) {
 	}
 }
 
+func TestNew_RejectsEnabledWithoutCalls(t *testing.T) {
+	_, err := New(uuid.New(), Definition{
+		Name: "empty", Interval: MinInterval, Enabled: true,
+	}, nil)
+	if err != ErrNoCalls {
+		t.Fatalf("got %v want ErrNoCalls", err)
+	}
+}
+
+func TestRemoveCall_DisablesWhenEmpty(t *testing.T) {
+	w, err := New(uuid.New(), Definition{
+		Name: "wf", Interval: MinInterval, Enabled: true,
+		Calls: []domaincall.Definition{
+			{Name: "only", Method: "GET", URL: "https://example.com"},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.RemoveCall(w.Calls[0].ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if w.Enabled || len(w.Calls) != 0 {
+		t.Fatalf("expected disabled empty workflow, got enabled=%v calls=%d", w.Enabled, len(w.Calls))
+	}
+}
+
 func TestApply_PreservesExtractionIDsByCallName(t *testing.T) {
 	userID := uuid.New()
 	extID := uuid.New()

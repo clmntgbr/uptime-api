@@ -49,14 +49,15 @@ func (h *WorkflowHandler) Create(c fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "Unauthorized"})
 	}
 
-	def, err := bindWorkflowDefinition(c)
+	bound, err := bindWorkflowRequest(c)
 	if err != nil {
 		return err
 	}
 
 	w, err := h.createHandler.Handle(c.Context(), workflowcmd.CreateWorkflowCommand{
-		UserID:     user.ID,
-		Definition: def,
+		UserID:         user.ID,
+		Definition:     bound.Definition,
+		ExpiryPolicies: bound.ExpiryPolicies,
 	})
 	if err != nil {
 		return writeWorkflowError(c, err, "Failed to create workflow")
@@ -108,7 +109,7 @@ func (h *WorkflowHandler) Update(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid workflow id"})
 	}
 
-	def, err := bindWorkflowDefinition(c)
+	bound, err := bindWorkflowRequest(c)
 	if err != nil {
 		return err
 	}
@@ -116,7 +117,7 @@ func (h *WorkflowHandler) Update(c fiber.Ctx) error {
 	w, err := h.updateHandler.Handle(c.Context(), workflowcmd.UpdateWorkflowCommand{
 		UserID:     user.ID,
 		WorkflowID: workflowID,
-		Definition: def,
+		Definition: bound.Definition,
 	})
 	if err != nil {
 		return writeWorkflowError(c, err, "Failed to update workflow")

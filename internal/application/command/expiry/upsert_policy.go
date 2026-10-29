@@ -39,20 +39,7 @@ func (h *UpsertPolicyHandler) Handle(ctx context.Context, cmd UpsertPolicyComman
 	if wf == nil {
 		return domainexpiry.Policy{}, domainworkflow.ErrNotFound
 	}
-	if !cmd.Enabled {
-		// Persist disabled even with empty thresholds (use defaults stored for reactivation).
-		thresholds := cmd.ThresholdsDays
-		if len(thresholds) == 0 {
-			thresholds = append([]int(nil), domainexpiry.DefaultThresholdsDays...)
-		} else {
-			thresholds, err = domainexpiry.NormalizeThresholds(thresholds)
-			if err != nil {
-				return domainexpiry.Policy{}, err
-			}
-		}
-		return h.save(ctx, cmd, thresholds)
-	}
-	thresholds, err := domainexpiry.NormalizeThresholds(cmd.ThresholdsDays)
+	thresholds, err := domainexpiry.NormalizePolicyThresholds(cmd.Enabled, cmd.ThresholdsDays)
 	if err != nil {
 		return domainexpiry.Policy{}, err
 	}

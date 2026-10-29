@@ -28,7 +28,8 @@ func NewExpiryPoliciesResponse(policies []domainexpiry.Policy) ExpiryPoliciesRes
 }
 
 func NewExpiryPolicyResponse(p domainexpiry.Policy) ExpiryPolicyResponse {
-	days := append([]int(nil), p.ThresholdsDays...)
+	days := make([]int, 0, len(p.ThresholdsDays))
+	days = append(days, p.ThresholdsDays...)
 	resp := ExpiryPolicyResponse{
 		Type: string(p.Type), Enabled: p.Enabled, ThresholdsDays: days,
 	}

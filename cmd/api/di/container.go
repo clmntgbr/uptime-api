@@ -137,7 +137,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		RealtimeHandler:   httphandler.NewRealtimeHandler(centrifugo.NewConnectionInfoCreator(env)),
 		StatisticsHandler: httphandler.NewStatisticsHandler(querystatistics.NewGetDashboardHandler(statisticsRepo)),
 		WorkflowHandler: httphandler.NewWorkflowHandler(
-			workflowcmd.NewCreateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo, clock),
+			workflowcmd.NewCreateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, write.NewExpiryPolicyRepository(db), outboxRepo, clock),
 			workflowcmd.NewUpdateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo, clock),
 			queryworkflow.NewListWorkflowsHandler(workflowReadRepo),
 			queryworkflow.NewGetWorkflowHandler(workflowReadRepo),
@@ -166,7 +166,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			callcmd.NewCreateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
 			callcmd.NewCopyCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
 			callcmd.NewUpdateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
-			callcmd.NewDeleteCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			callcmd.NewDeleteCallHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo),
 			callcmd.NewReorderCallsHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
 			querycall.NewListCallsHandler(workflowReadRepo),
 			querycall.NewGetCallHandler(workflowReadRepo),

@@ -223,6 +223,9 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 	if err := validateVariables(statics, calls, globalNames); err != nil {
 		return err
 	}
+	if def.Enabled && len(calls) == 0 {
+		return ErrNoCalls
+	}
 
 	w.Name = name
 	w.ScheduleType = scheduleType

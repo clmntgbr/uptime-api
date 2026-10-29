@@ -170,6 +170,9 @@ func (w *Workflow) RemoveCall(callID uuid.UUID, globalNames []string) error {
 		return err
 	}
 	w.Calls = next
+	if len(next) == 0 {
+		w.Enabled = false
+	}
 	w.recordCallMutation()
 	return nil
 }

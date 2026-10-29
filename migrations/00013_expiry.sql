@@ -1,19 +1,21 @@
 -- +goose Up
 -- +goose StatementBegin
 -- Generic expiry inventory (phase 1: tls_certificate). Policies are optional:
--- missing rows mean defaults (enabled, thresholds 30/14/7/1).
+-- missing rows mean defaults (disabled, empty thresholds). Empty arrays are
+-- allowed when disabled; length 1–20 is enforced in the application when enabled.
+-- 00014 relaxes the CHECK to 0–20 for environments that already applied 00013.
 
 CREATE TABLE expiry_policies (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     workflow_id UUID NOT NULL REFERENCES workflows (id) ON DELETE CASCADE,
     type TEXT NOT NULL,
-    enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    thresholds_days JSONB NOT NULL DEFAULT '[30,14,7,1]'::jsonb,
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    thresholds_days JSONB NOT NULL DEFAULT '[]'::jsonb,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT expiry_policies_workflow_type UNIQUE (workflow_id, type),
     CONSTRAINT expiry_policies_type CHECK (type IN ('tls_certificate')),
-    CONSTRAINT expiry_policies_thresholds_len CHECK (jsonb_typeof(thresholds_days) = 'array' AND jsonb_array_length(thresholds_days) BETWEEN 1 AND 20)
+    CONSTRAINT expiry_policies_thresholds_len CHECK (jsonb_typeof(thresholds_days) = 'array' AND jsonb_array_length(thresholds_days) BETWEEN 0 AND 20)
 );
 
 CREATE TABLE expiry_items (

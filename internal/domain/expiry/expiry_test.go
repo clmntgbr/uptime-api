@@ -27,6 +27,20 @@ func TestNormalizeThresholds(t *testing.T) {
 	}
 }
 
+func TestNormalizePolicyThresholds(t *testing.T) {
+	got, err := NormalizePolicyThresholds(false, nil)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("disabled empty: got %v err %v", got, err)
+	}
+	if _, err := NormalizePolicyThresholds(true, nil); err == nil {
+		t.Fatal("enabled empty must fail")
+	}
+	got, err = NormalizePolicyThresholds(false, []int{7, 30})
+	if err != nil || len(got) != 2 || got[0] != 30 {
+		t.Fatalf("disabled with values: got %v err %v", got, err)
+	}
+}
+
 func TestCrossedAndNotifyThreshold(t *testing.T) {
 	crossed := CrossedThresholds([]int{30, 14, 7, 1}, 5)
 	if len(crossed) != 3 || NotifyThreshold(crossed, 5) != 7 {

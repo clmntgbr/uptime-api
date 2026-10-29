@@ -22,7 +22,7 @@ func TestExpiryHandler_ListPolicies_Success(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	var out presenter.ExpiryPoliciesResponse
 	testutil.DecodeJSON(t, resp, &out)
-	if len(out.Policies) != 1 || out.Policies[0].Type != "tls_certificate" || !out.Policies[0].Enabled {
+	if len(out.Policies) != 1 || out.Policies[0].Type != "tls_certificate" || out.Policies[0].Enabled || len(out.Policies[0].ThresholdsDays) != 0 {
 		t.Fatalf("unexpected %+v", out)
 	}
 }

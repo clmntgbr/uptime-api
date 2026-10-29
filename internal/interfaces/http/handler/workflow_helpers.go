@@ -2,8 +2,11 @@ package handler
 
 import (
 	"errors"
+	"strconv"
 	"time"
 
+	workflowcmd "go-api/internal/application/command/workflow"
+	domainexpiry "go-api/internal/domain/expiry"
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/interfaces/http/dto"
 	"go-api/internal/interfaces/http/validation"
@@ -11,12 +14,17 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// bindWorkflowDefinition validates the body and maps it to a domain definition.
-// Calls and statics are omitted: they are managed by dedicated endpoints.
-func bindWorkflowDefinition(c fiber.Ctx) (domainworkflow.Definition, error) {
+type boundWorkflowRequest struct {
+	Definition     domainworkflow.Definition
+	ExpiryPolicies []workflowcmd.ExpiryPolicyInput
+}
+
+// bindWorkflowRequest validates the body and maps it to a domain definition
+// (and optional create-time expiry policies). Calls/statics use dedicated endpoints.
+func bindWorkflowRequest(c fiber.Ctx) (boundWorkflowRequest, error) {
 	var body dto.WorkflowRequest
 	if err := validation.BindBody(c, &body); err != nil {
-		return domainworkflow.Definition{}, err
+		return boundWorkflowRequest{}, err
 	}
 
 	scheduleType := domainworkflow.ScheduleType(body.ScheduleType)
@@ -25,19 +33,59 @@ func bindWorkflowDefinition(c fiber.Ctx) (domainworkflow.Definition, error) {
 	}
 
 	if err := validateScheduleFields(c, scheduleType, body); err != nil {
-		return domainworkflow.Definition{}, err
+		return boundWorkflowRequest{}, err
+	}
+
+	policies, err := mapExpiryPolicies(c, body.ExpiryPolicies)
+	if err != nil {
+		return boundWorkflowRequest{}, err
 	}
 
 	def := domainworkflow.Definition{
 		Name:         body.Name,
 		ScheduleType: scheduleType,
-		Enabled:      body.Enabled == nil || *body.Enabled,
-		RunAt:        body.RunAt,
+		// Omitted enabled defaults to false (workflows start paused until they have calls).
+		Enabled: body.Enabled != nil && *body.Enabled,
+		RunAt:   body.RunAt,
 	}
 	if scheduleType == domainworkflow.ScheduleInterval && body.IntervalSeconds != nil {
 		def.Interval = time.Duration(*body.IntervalSeconds) * time.Second
 	}
-	return def, nil
+	return boundWorkflowRequest{Definition: def, ExpiryPolicies: policies}, nil
+}
+
+func mapExpiryPolicies(c fiber.Ctx, in []dto.WorkflowExpiryPolicyInput) ([]workflowcmd.ExpiryPolicyInput, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	seen := map[domainexpiry.Type]struct{}{}
+	out := make([]workflowcmd.ExpiryPolicyInput, 0, len(in))
+	for i, p := range in {
+		// Type already constrained by DTO oneof=tls_certificate.
+		t := domainexpiry.Type(p.Type)
+		if _, ok := seen[t]; ok {
+			_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": "Validation failed",
+				"errors":  map[string]string{"expiryPolicies": "duplicate type"},
+			})
+			return nil, validation.ErrValidationFailed
+		}
+		seen[t] = struct{}{}
+		if p.Enabled && len(p.ThresholdsDays) == 0 {
+			_ = c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
+				"message": "thresholdsDays is required when enabled",
+				"code":    "INVALID_THRESHOLDS",
+				"errors": map[string]string{
+					"expiryPolicies." + strconv.Itoa(i) + ".thresholdsDays": "required when enabled",
+				},
+			})
+			return nil, validation.ErrValidationFailed
+		}
+		out = append(out, workflowcmd.ExpiryPolicyInput{
+			Type: t, Enabled: p.Enabled, ThresholdsDays: p.ThresholdsDays,
+		})
+	}
+	return out, nil
 }
 
 func validateScheduleFields(c fiber.Ctx, scheduleType domainworkflow.ScheduleType, body dto.WorkflowRequest) error {
@@ -101,6 +149,11 @@ func writeWorkflowError(c fiber.Ctx, err error, fallback string) error {
 	switch {
 	case errors.As(err, &verr):
 		return c.Status(fiber.StatusBadRequest).JSON(validationErrorBody(verr))
+	case errors.Is(err, domainexpiry.ErrInvalidThresholds):
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
+			"message": err.Error(),
+			"code":    "INVALID_THRESHOLDS",
+		})
 	case errors.Is(err, domainworkflow.ErrNotFound), errors.Is(err, domainworkflow.ErrWrongOwner):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"message": "Workflow not found",

@@ -74,6 +74,19 @@ func TestWorkflowHandler_Update_ValidationFailed(t *testing.T) {
 	}
 }
 
+func TestWorkflowHandler_Update_HandlerError_NoCalls(t *testing.T) {
+	m := newMocks()
+	m.update.err = domainworkflow.ErrNoCalls
+	body := validWorkflowBody()
+	body["enabled"] = true
+	resp := doJSON(t, m, true, http.MethodPut, updatePath, body)
+	assertStatus(t, resp, http.StatusBadRequest)
+	out := testutil.DecodeJSONMap(t, resp)
+	if out["message"] != "Workflow has no calls" || out["code"] != "NO_CALLS" {
+		t.Fatalf("unexpected body %v", out)
+	}
+}
+
 func TestWorkflowHandler_Update_HandlerError_NotFound(t *testing.T) {
 	for name, err := range map[string]error{
 		"not found":   domainworkflow.ErrNotFound,
