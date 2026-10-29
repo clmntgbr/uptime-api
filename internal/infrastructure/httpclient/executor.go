@@ -4,8 +4,10 @@ package httpclient
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -322,6 +324,8 @@ func inspectTLS(cs tls.ConnectionState, host string, roots *x509.CertPool) *cont
 	info.Issuer = leaf.Issuer.String()
 	info.SerialNumber = leaf.SerialNumber.String()
 	info.ExpiresAt = leaf.NotAfter.UTC()
+	sum := sha256.Sum256(leaf.Raw)
+	info.FingerprintSHA256 = hex.EncodeToString(sum[:])
 
 	intermediates := x509.NewCertPool()
 	for _, c := range cs.PeerCertificates[1:] {

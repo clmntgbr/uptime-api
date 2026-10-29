@@ -38,6 +38,12 @@ TOPICS=(
   "events 6 $((7 * DAY_MS))"
   "events.retry 6 $((7 * DAY_MS))"
   "events.dlq 6 $((30 * DAY_MS))"
+  "notifications.requests 6 $((3 * DAY_MS))"
+  "notifications.requests.retry 6 $((3 * DAY_MS))"
+  "notifications.requests.dlq 6 $((30 * DAY_MS))"
+  "notifications.results 6 $((3 * DAY_MS))"
+  "notifications.results.retry 6 $((3 * DAY_MS))"
+  "notifications.results.dlq 6 $((30 * DAY_MS))"
 )
 
 echo "Waiting for Kafka at ${BOOTSTRAP}..."
@@ -77,14 +83,15 @@ acl() {
 }
 
 create_user api "${KAFKA_API_PASSWORD:?}"
-create_user scheduler "${KAFKA_SCHEDULER_PASSWORD:?}"
+create_user worker-scheduler "${KAFKA_SCHEDULER_PASSWORD:?}"
 create_user worker "${KAFKA_WORKER_PASSWORD:?}"
 create_user worker-calls "${KAFKA_WORKER_CALLS_PASSWORD:?}"
+create_user worker-notify "${KAFKA_WORKER_NOTIFY_PASSWORD:?}"
 
-# api + scheduler: write jobs (manual runs and the tick).
+# api + worker-scheduler: write jobs (manual runs and the tick).
 acl --allow-principal User:api --operation Write --operation Describe --topic workflow.jobs
 acl --allow-principal User:api --operation Write --operation Describe --topic workflow.cancels
-acl --allow-principal User:scheduler --operation Write --operation Describe --topic workflow.jobs
+acl --allow-principal User:worker-scheduler --operation Write --operation Describe --topic workflow.jobs
 
 # worker-calls: read jobs (+retry), write results, its own retry and dlq.
 acl --allow-principal User:worker-calls --operation Read --operation Describe \
@@ -99,11 +106,24 @@ acl --allow-principal User:worker-calls --operation Read \
 
 # worker: read results and events (+retry), write events, retry and dlq of what it reads.
 acl --allow-principal User:worker --operation Read --operation Describe \
-  --topic workflow.results --topic workflow.results.retry --topic events --topic events.retry
+  --topic workflow.results --topic workflow.results.retry --topic events --topic events.retry \
+  --topic notifications.results --topic notifications.results.retry
 acl --allow-principal User:worker --operation Write --operation Describe \
   --topic events --topic events.retry --topic events.dlq \
-  --topic workflow.results.retry --topic workflow.results.dlq
+  --topic workflow.results.retry --topic workflow.results.dlq \
+  --topic notifications.requests --topic notifications.results.retry --topic notifications.results.dlq
 acl --allow-principal User:worker --operation Read \
   --group worker --group worker.retry --group worker-events --group worker-events.retry
+
+# worker-notify: read notification requests, write results (+retry/dlq).
+acl --allow-principal User:worker-notify --operation Read --operation Describe \
+  --topic notifications.requests --topic notifications.requests.retry
+acl --allow-principal User:worker-notify --operation Write --operation Describe \
+  --topic notifications.results --topic notifications.requests.retry --topic notifications.requests.dlq
+acl --allow-principal User:worker-notify --operation Read \
+  --group worker-notify --group worker-notify.retry
+
+# worker-scheduler: may publish notification requests from the daily expiry scan.
+acl --allow-principal User:worker-scheduler --operation Write --operation Describe --topic notifications.requests
 
 echo "Kafka users and ACLs configured"

@@ -20,8 +20,7 @@ const (
 	SubjectBody         Subject = "body"
 	SubjectJSON         Subject = "json"
 	SubjectHeader       Subject = "header"
-	SubjectSize         Subject = "size"
-	SubjectCertificate  Subject = "certificate"
+	SubjectSize Subject = "size"
 )
 
 type Operator string
@@ -35,10 +34,7 @@ const (
 	OpContains      Operator = "contains"
 	OpNotContains   Operator = "not_contains"
 	OpExists        Operator = "exists"
-	OpNotExists     Operator = "not_exists"
-	OpExpiresWithin Operator = "expires_within"
-	OpChainInvalid  Operator = "chain_invalid"
-	OpNameMismatch  Operator = "name_mismatch"
+	OpNotExists Operator = "not_exists"
 )
 
 var allowedOperators = map[Subject][]Operator{
@@ -47,8 +43,7 @@ var allowedOperators = map[Subject][]Operator{
 	SubjectBody:         {OpContains, OpNotContains},
 	SubjectJSON:         {OpIs, OpIsNot, OpExists, OpNotExists, OpExceeds, OpBelow},
 	SubjectHeader:       {OpIs, OpContains, OpExists},
-	SubjectSize:         {OpExceeds},
-	SubjectCertificate:  {OpExpiresWithin, OpChainInvalid, OpNameMismatch},
+	SubjectSize: {OpExceeds},
 }
 
 // IsAlertCondition tells how a rule reads. Threshold operators describe the bad
@@ -56,7 +51,7 @@ var allowedOperators = map[Subject][]Operator{
 // operators describe the expected state ("status is 200" fails when it is not).
 func (o Operator) IsAlertCondition() bool {
 	switch o {
-	case OpExceeds, OpBelow, OpExpiresWithin, OpChainInvalid, OpNameMismatch:
+	case OpExceeds, OpBelow:
 		return true
 	}
 	return false
@@ -64,7 +59,7 @@ func (o Operator) IsAlertCondition() bool {
 
 func (o Operator) needsValue() bool {
 	switch o {
-	case OpExists, OpNotExists, OpChainInvalid, OpNameMismatch:
+	case OpExists, OpNotExists:
 		return false
 	}
 	return true
@@ -88,7 +83,6 @@ var (
 	statusPattern = regexp.MustCompile(`^[1-5]([0-9]{2}|xx)$`)
 	durationValue = regexp.MustCompile(`^(\d+(?:\.\d+)?)\s*(ms|s)?$`)
 	sizeValue     = regexp.MustCompile(`^(\d+(?:\.\d+)?)\s*(b|bytes|kb|ko|mb|mo)?$`)
-	daysValue     = regexp.MustCompile(`^(\d+)\s*(days?)?$`)
 	numberValue   = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
 )
 
@@ -162,16 +156,6 @@ func normalizeValue(subject Subject, operator Operator, value string) (string, e
 			return "", err
 		}
 		return strconv.FormatInt(bytes, 10), nil
-	case SubjectCertificate:
-		m := daysValue.FindStringSubmatch(strings.ToLower(value))
-		if m == nil {
-			return "", fmt.Errorf("%w: %q is not a number of days", ErrInvalid, value)
-		}
-		days, _ := strconv.Atoi(m[1])
-		if days <= 0 {
-			return "", fmt.Errorf("%w: certificate days must be positive", ErrInvalid)
-		}
-		return strconv.Itoa(days), nil
 	case SubjectJSON:
 		if (operator == OpExceeds || operator == OpBelow) && !numberValue.MatchString(value) {
 			return "", fmt.Errorf("%w: %q is not a number", ErrInvalid, value)
@@ -235,15 +219,6 @@ func (r Rule) Text() string {
 			return "size exceeds " + FormatBytes(n)
 		}
 		return "size exceeds " + r.Value
-	case SubjectCertificate:
-		switch r.Operator {
-		case OpChainInvalid:
-			return "certificate chain is invalid"
-		case OpNameMismatch:
-			return "certificate name does not match"
-		default:
-			return "certificate expires in less than " + withUnit(r.Value, " days")
-		}
 	}
 	return string(r.Subject) + " " + string(r.Operator) + " " + r.Value
 }

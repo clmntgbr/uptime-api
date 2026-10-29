@@ -47,14 +47,20 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -a -installsuffix cgo \
     -ldflags="-w -s" \
-    -o scheduler \
-    ./cmd/scheduler
+    -o worker-scheduler \
+    ./cmd/worker-scheduler
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -a -installsuffix cgo \
     -ldflags="-w -s" \
     -o worker-calls \
     ./cmd/worker-calls
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -a -installsuffix cgo \
+    -ldflags="-w -s" \
+    -o worker-notify \
+    ./cmd/worker-notify
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -a -installsuffix cgo \
@@ -77,8 +83,9 @@ WORKDIR /home/appuser
 
 COPY --from=builder --chown=appuser:appuser /app/api .
 COPY --from=builder --chown=appuser:appuser /app/worker .
-COPY --from=builder --chown=appuser:appuser /app/scheduler .
+COPY --from=builder --chown=appuser:appuser /app/worker-scheduler .
 COPY --from=builder --chown=appuser:appuser /app/worker-calls .
+COPY --from=builder --chown=appuser:appuser /app/worker-notify .
 COPY --from=builder --chown=appuser:appuser /app/cli .
 
 USER appuser

@@ -167,7 +167,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 		t.Fatalf("run must succeed: %+v", result.Calls)
 	}
 
-	record := commandrun.NewRecordResultHandler(states, workflows, runs, write.NewCertificateRepository(db), claimer, outboxRepo)
+	record := commandrun.NewRecordResultHandler(states, workflows, runs, write.NewCertificateRepository(db), nil, nil, claimer, outboxRepo, nil)
 	payload, _ := json.Marshal(result)
 	for i := 0; i < 2; i++ {
 		if err := record.Handle(ctx, payload); err != nil {

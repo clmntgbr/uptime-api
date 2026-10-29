@@ -7,7 +7,6 @@ import (
 
 // Parse reads the sentence form used in workflow files, e.g.
 // "status is 200", "response time exceeds 800 ms", "json $.items exists",
-// "certificate expires in less than 14 days".
 func Parse(text string) (Rule, error) {
 	s := strings.Join(strings.Fields(text), " ")
 	lower := strings.ToLower(s)
@@ -72,16 +71,6 @@ func Parse(text string) (Rule, error) {
 	case strings.HasPrefix(lower, "size "):
 		if v, ok := cut("size exceeds "); ok {
 			return New(SubjectSize, OpExceeds, "", v)
-		}
-	case strings.HasPrefix(lower, "certificate "):
-		if v, ok := cut("certificate expires in less than "); ok {
-			return New(SubjectCertificate, OpExpiresWithin, "", v)
-		}
-		if lower == "certificate chain is invalid" {
-			return New(SubjectCertificate, OpChainInvalid, "", "")
-		}
-		if lower == "certificate name does not match" {
-			return New(SubjectCertificate, OpNameMismatch, "", "")
 		}
 	}
 	return Rule{}, invalid

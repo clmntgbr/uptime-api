@@ -23,8 +23,8 @@ type CallRequest struct {
 }
 
 type CallRuleRequest struct {
-	Subject  string `json:"subject" validate:"required,oneof=status response_time body json header size certificate"`
-	Operator string `json:"operator" validate:"required,oneof=is is_not in exceeds below contains not_contains exists not_exists expires_within chain_invalid name_mismatch"`
+	Subject  string `json:"subject" validate:"required,oneof=status response_time body json header size"`
+	Operator string `json:"operator" validate:"required,oneof=is is_not in exceeds below contains not_contains exists not_exists"`
 	Target   string `json:"target" validate:"max=512"`
 	Value    string `json:"value" validate:"max=1024"`
 }

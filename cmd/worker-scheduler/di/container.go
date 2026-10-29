@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	cmdexpiry "go-api/internal/application/command/expiry"
 	"go-api/internal/application/command/schedule"
 	"go-api/internal/domain/port"
 	"go-api/internal/infrastructure/config"
@@ -18,9 +19,11 @@ import (
 )
 
 type Container struct {
-	Dispatch *schedule.DispatchDueRunsHandler
-	Maintain *schedule.MaintainResultsHandler
-	Producer *kafka.Producer
+	Dispatch   *schedule.DispatchDueRunsHandler
+	Maintain   *schedule.MaintainResultsHandler
+	ExpiryScan *cmdexpiry.ScanHandler
+	Notify     *kafka.NotificationPublisher
+	Producer   *kafka.Producer
 }
 
 func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger) (*Container, error) {
@@ -57,5 +60,19 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 		time.Duration(env.RetentionDays)*24*time.Hour,
 		logger,
 	)
-	return &Container{Dispatch: dispatch, Maintain: maintain, Producer: producer}, nil
+	expiryEvaluate := cmdexpiry.NewEvaluateHandler(
+		write.NewExpiryPolicyRepository(db),
+		write.NewExpiryAlertRepository(db),
+	)
+	expiryScan := cmdexpiry.NewScanHandler(
+		write.NewExpiryItemRepository(db),
+		expiryEvaluate,
+		logger,
+	)
+	return &Container{
+		Dispatch: dispatch, Maintain: maintain,
+		ExpiryScan: expiryScan,
+		Notify:     kafka.NewNotificationPublisher(producer),
+		Producer:   producer,
+	}, nil
 }

@@ -7,11 +7,11 @@ Go/Fiber API template with **Clean Architecture**, **CQRS**, **Outbox pattern**,
 - CQRS: command / query / event handlers under `internal/application`
 - Domain events (`user.created.v1`) + transactional outbox
 - Kafka worker (outbox relay + consumer + handler registry) on the `events` topic
-- API workflow monitoring: `scheduler` (leases + jobs on `workflow.jobs`), `worker-calls` (HTTP execution, no database access), `worker` (records results from `workflow.results`)
+- API workflow monitoring: `worker-scheduler` (leases + jobs on `workflow.jobs`), `worker-calls` (HTTP execution, no database access), `worker` (records results from `workflow.results`)
 - Centrifugo realtime (outbox → worker → publish to `users:{id}`)
 - Offset pagination + query validation helpers
 - Clerk JWT auth + webhook sync (Svix)
-- Docker Compose local stack (API, worker, scheduler, worker-calls, Postgres, Kafka, Centrifugo, ngrok)
+- Docker Compose local stack (API, worker, worker-scheduler, worker-calls, Postgres, Kafka, Centrifugo, ngrok)
 
 ## Tech Stack
 
@@ -32,7 +32,7 @@ Go/Fiber API template with **Clean Architecture**, **CQRS**, **Outbox pattern**,
 cmd/
   api/          HTTP server
   worker/       Outbox relay + Kafka consumers (events, workflow results)
-  scheduler/    Leases due workflows at hh:mm:00, publishes jobs, expires old runs
+  worker-scheduler/  Leases due workflows at hh:mm:00, publishes jobs, expires old runs
   worker-calls/ Executes jobs (HTTP calls, rules), publishes results
   cli/          Migrations, workflow:import, variable:set, keys:generate
 internal/

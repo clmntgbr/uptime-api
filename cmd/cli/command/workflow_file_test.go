@@ -44,7 +44,7 @@ calls:
   - name: detail
     url: "{{base_url}}/orders/{{first_id}}"
     rules:
-      - certificate expires in less than 14 days
+      - status is 200
 `
 
 func TestParseWorkflowFile(t *testing.T) {

@@ -2,7 +2,9 @@ package di
 
 import (
 	"log"
+	"log/slog"
 
+	cmdexpiry "go-api/internal/application/command/expiry"
 	commandrun "go-api/internal/application/command/run"
 	"go-api/internal/application/event/dedup"
 	eventrun "go-api/internal/application/event/run"
@@ -140,13 +142,24 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	stateRepo := write.NewStateRepository(db)
 	runWriteRepo := write.NewRunWriteRepository(db)
 	claimer := processed.NewTxClaimer(db)
+	expiryEvaluate := cmdexpiry.NewEvaluateHandler(
+		write.NewExpiryPolicyRepository(db),
+		write.NewExpiryAlertRepository(db),
+	)
+	expiryRecord := cmdexpiry.NewRecordObservationsHandler(
+		write.NewExpiryItemRepository(db),
+		expiryEvaluate,
+	)
 	recordResult := commandrun.NewRecordResultHandler(
 		stateRepo,
 		write.NewWorkflowWriteRepository(db, cipher),
 		runWriteRepo,
 		write.NewCertificateRepository(db),
+		expiryRecord,
+		kafka.NewNotificationPublisher(producer),
 		claimer,
 		outboxRepo,
+		slog.Default(),
 	)
 	recordProgress := commandrun.NewRecordCallProgressHandler(stateRepo, runWriteRepo, claimer, outboxRepo)
 	resultsRouter := commandrun.NewResultsRouter(recordResult, recordProgress)

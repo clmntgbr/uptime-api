@@ -39,15 +39,15 @@ services:
     deploy:
       replicas: 2
 
-  scheduler:
+  worker-scheduler:
     <<: *go-prod
-    command: ["./scheduler"]
+    command: ["./worker-scheduler"]
     env_file: [.env]
     environment:
       <<: *kafka-client-env
       DATABASE_URL: ${SCHEDULER_DATABASE_URL}
-      KAFKA_CLIENT_ID: scheduler
-      KAFKA_USERNAME: scheduler
+      KAFKA_CLIENT_ID: worker-scheduler
+      KAFKA_USERNAME: worker-scheduler
       KAFKA_PASSWORD: ${KAFKA_SCHEDULER_PASSWORD}
     volumes:
       - ./deploy/kafka/secrets/ca.pem:/run/secrets/kafka-ca.pem:ro
@@ -156,7 +156,7 @@ networks:
   data:
     internal: true
   egress:
-  # Outbound only, for the scheduler heartbeat to the external watchdog.
+  # Outbound only, for the worker-scheduler heartbeat to the external watchdog.
   heartbeat:
 
 volumes:

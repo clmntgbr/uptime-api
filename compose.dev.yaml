@@ -56,14 +56,14 @@ services:
         condition: service_started
     networks: [edge, backend, data]
 
-  scheduler:
+  worker-scheduler:
     <<: *go-dev
-    container_name: scheduler
-    command: ["go", "run", "./cmd/scheduler"]
+    container_name: worker-scheduler
+    command: ["go", "run", "./cmd/worker-scheduler"]
     env_file:
       - .env
     environment:
-      KAFKA_CLIENT_ID: scheduler
+      KAFKA_CLIENT_ID: worker-scheduler
     depends_on:
       database:
         condition: service_healthy
@@ -89,7 +89,6 @@ services:
         condition: service_started
     networks: [backend, data]
 
-  # No env_file on purpose: worker-calls must never receive database or Clerk credentials.
   worker-calls:
     <<: *go-dev
     container_name: worker-calls
@@ -109,6 +108,18 @@ services:
       kc:
         condition: service_completed_successfully
       mc:
+        condition: service_completed_successfully
+    networks: [egress, backend]
+
+  worker-notify:
+    <<: *go-dev
+    container_name: worker-notify
+    command: ["go", "run", "./cmd/worker-notify"]
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: worker-notify
+    depends_on:
+      kc:
         condition: service_completed_successfully
     networks: [egress, backend]
 

@@ -7,8 +7,8 @@ COMPOSE_DEV := docker compose -f compose.dev.yaml
 dev:
 	$(COMPOSE_DEV) up -d
 
-restart:
-	$(COMPOSE_DEV) restart api worker worker-calls scheduler
+restart: 
+	$(COMPOSE_DEV) restart api worker worker-calls worker-scheduler worker-notify
 
 build:
 	$(COMPOSE_DEV) up -d --build
@@ -17,7 +17,7 @@ dev-down:
 	$(COMPOSE_DEV) down
 
 dev-logs:
-	$(COMPOSE_DEV) logs -f api worker worker-calls scheduler
+	$(COMPOSE_DEV) logs -f api worker worker-calls worker-scheduler worker-notify
 
 api-logs:
 	$(COMPOSE_DEV) logs -f api
@@ -28,11 +28,11 @@ worker-logs:
 worker-calls-logs:
 	$(COMPOSE_DEV) logs -f worker-calls
 
-scheduler-logs:
-	$(COMPOSE_DEV) logs -f scheduler
+worker-scheduler-logs:
+	$(COMPOSE_DEV) logs -f worker-scheduler
 
 dev-restart:
-	$(COMPOSE_DEV) restart api worker worker-calls scheduler
+	$(COMPOSE_DEV) restart api worker worker-calls worker-scheduler worker-notify
 
 lint:
 	$(COMPOSE_DEV) exec api golangci-lint run --fix

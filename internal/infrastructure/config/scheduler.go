@@ -30,6 +30,6 @@ func LoadScheduler() *SchedulerConfig {
 		MaxJitter:            getEnvDuration("SCHEDULER_MAX_JITTER", 5*time.Second),
 		HeartbeatURL:         getEnvOrDefault("HEARTBEAT_URL", ""),
 		MetricsAddr:          getEnvOrDefault("METRICS_ADDR", ":9100"),
-		Kafka:                loadKafka("scheduler"),
+		Kafka:                loadKafka("worker-scheduler"),
 	}
 }

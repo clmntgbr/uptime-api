@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
+	cmdexpiry "go-api/internal/application/command/expiry"
 	"go-api/internal/application/command/schedule"
 	"go-api/internal/application/messaging"
 	"go-api/internal/contract"
 	"go-api/internal/domain/certificate"
+	domainexpiry "go-api/internal/domain/expiry"
 	"go-api/internal/domain/port"
 	domainrun "go-api/internal/domain/run"
 	domainschedule "go-api/internal/domain/schedule"
@@ -18,13 +21,20 @@ import (
 	"github.com/google/uuid"
 )
 
+type notificationPublisher interface {
+	PublishRequest(ctx context.Context, req contract.NotificationRequest) error
+}
+
 type RecordResultHandler struct {
 	states       domainschedule.Repository
 	workflows    domainworkflow.WriteRepository
 	runs         domainrun.WriteRepository
 	certificates certificate.Repository
+	expiry       *cmdexpiry.RecordObservationsHandler
+	notify       notificationPublisher
 	processed    port.ProcessedEventRepository
 	outbox       port.OutboxRepository
+	logger       *slog.Logger
 }
 
 func NewRecordResultHandler(
@@ -32,12 +42,19 @@ func NewRecordResultHandler(
 	workflows domainworkflow.WriteRepository,
 	runs domainrun.WriteRepository,
 	certificates certificate.Repository,
+	expiry *cmdexpiry.RecordObservationsHandler,
+	notify notificationPublisher,
 	processed port.ProcessedEventRepository,
 	outbox port.OutboxRepository,
+	logger *slog.Logger,
 ) *RecordResultHandler {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &RecordResultHandler{
 		states: states, workflows: workflows, runs: runs,
-		certificates: certificates, processed: processed, outbox: outbox,
+		certificates: certificates, expiry: expiry, notify: notify,
+		processed: processed, outbox: outbox, logger: logger,
 	}
 }
 
@@ -53,6 +70,7 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 		return messaging.NonRetryable(err)
 	}
 	r, certs := toRun(result)
+	var notes []domainexpiry.NotificationRequest
 
 	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
 		claimed, err := h.processed.MarkProcessed(txCtx, result.RunID, schedule.RecordRunHandlerName)
@@ -76,6 +94,12 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 		if err := h.certificates.Upsert(txCtx, certs); err != nil {
 			return err
 		}
+		if h.expiry != nil {
+			notes, err = h.expiry.Handle(txCtx, r.UserID, r.WorkflowID, observationsFromResult(result))
+			if err != nil {
+				return err
+			}
+		}
 
 		// Schedule and manual runs both hold a lease; release it on completion.
 		if r.Trigger == contract.TriggerSchedule || r.Trigger == contract.TriggerManual {
@@ -97,7 +121,19 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 	if err != nil {
 		return messaging.Retryable(fmt.Errorf("record run %s: %w", result.RunID, err))
 	}
+	h.publishExpiryNotes(ctx, notes)
 	return nil
+}
+
+func (h *RecordResultHandler) publishExpiryNotes(ctx context.Context, notes []domainexpiry.NotificationRequest) {
+	if h.notify == nil || len(notes) == 0 {
+		return
+	}
+	for _, req := range toContractNotifications(notes) {
+		if err := h.notify.PublishRequest(ctx, req); err != nil {
+			h.logger.Error("publish expiry notification failed", "workflow_id", req.WorkflowID, "error", err)
+		}
+	}
 }
 
 // finishOneShot parks and disables once/at workflows after their scheduled fire.

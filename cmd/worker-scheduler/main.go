@@ -11,7 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"go-api/cmd/scheduler/di"
+	"go-api/cmd/worker-scheduler/di"
+	"go-api/internal/contract"
 	"go-api/internal/infrastructure/config"
 	"go-api/internal/infrastructure/observability"
 
@@ -24,32 +25,32 @@ const leaderLockKey int64 = 0x5c4ed01e
 
 var (
 	lagSeconds = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "scheduler_lag_seconds",
+		Name: "worker_scheduler_lag_seconds",
 		Help: "Delay between the planned run time of the oldest due workflow and its dispatch.",
 	})
 	runsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "scheduler_runs_total",
-		Help: "Runs handled by the scheduler, by outcome.",
+		Name: "worker_scheduler_runs_total",
+		Help: "Runs handled by the worker-scheduler, by outcome.",
 	}, []string{"outcome"})
 	tickDuration = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "scheduler_tick_duration_seconds",
+		Name:    "worker_scheduler_tick_duration_seconds",
 		Help:    "Duration of a dispatch tick, publication included.",
 		Buckets: prometheus.DefBuckets,
 	})
 	isLeader = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "scheduler_leader",
+		Name: "worker_scheduler_leader",
 		Help: "1 when this instance holds the scheduling lock.",
 	})
 )
 
 func main() {
-	logger := observability.NewLogger("scheduler")
+	logger := observability.NewLogger("worker-scheduler")
 	env := config.LoadScheduler()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	shutdownTracing, err := observability.SetupTracing(ctx, "scheduler")
+	shutdownTracing, err := observability.SetupTracing(ctx, "worker-scheduler")
 	if err != nil {
 		logger.Error("tracing setup failed", "error", err)
 		os.Exit(1)
@@ -80,16 +81,16 @@ func main() {
 			}
 			continue
 		}
-		logger.Info("scheduler is leader")
+		logger.Info("worker-scheduler is leader")
 		isLeader.Set(1)
 		s.lead(ctx, conn)
 		isLeader.Set(0)
 		_ = conn.Close()
 	}
-	logger.Info("scheduler stopped")
+	logger.Info("worker-scheduler stopped")
 }
 
-var errNotLeader = errors.New("another scheduler holds the lock")
+var errNotLeader = errors.New("another worker-scheduler holds the lock")
 
 // acquireLeadership takes the advisory lock on a dedicated connection; the
 // lock lives as long as that connection.
@@ -156,7 +157,34 @@ func (s *scheduler) tick(ctx context.Context, at time.Time) {
 	if at.Minute() == 7 {
 		s.purgeExpiredRuns(ctx)
 	}
+	// Daily expiry threshold scan at 08:00 UTC.
+	if at.Hour() == 8 && at.Minute() == 0 {
+		s.scanExpiry(ctx)
+	}
 	s.heartbeat(ctx)
+}
+
+func (s *scheduler) scanExpiry(ctx context.Context) {
+	notes, err := s.container.ExpiryScan.Handle(ctx)
+	if err != nil {
+		s.logger.Error("expiry scan failed", "error", err)
+		return
+	}
+	for _, n := range notes {
+		req := contract.NotificationRequest{
+			V: contract.NotificationRequestV1, Kind: n.Kind, Type: string(n.Type),
+			UserID: n.UserID.String(), WorkflowID: n.WorkflowID.String(),
+			ItemID: n.ItemID.String(), Subject: n.Subject,
+			DaysLeft: n.DaysLeft, ThresholdDays: n.ThresholdDays,
+			ExpiresAt: n.ExpiresAt, Severity: string(n.Severity), Message: n.Message,
+		}
+		if err := s.container.Notify.PublishRequest(ctx, req); err != nil {
+			s.logger.Error("publish expiry notification failed", "workflow_id", n.WorkflowID, "error", err)
+		}
+	}
+	if len(notes) > 0 {
+		s.logger.Info("expiry scan", "notifications", len(notes))
+	}
 }
 
 func (s *scheduler) purgeExpiredRuns(ctx context.Context) {

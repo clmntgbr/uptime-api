@@ -424,12 +424,11 @@ func TestRun_AllRulesEvaluated(t *testing.T) {
 		{ID: "4", Subject: "json", Operator: "exceeds", Target: "$.count", Value: "10"},
 		{ID: "5", Subject: "header", Operator: "contains", Target: "x-version", Value: "2."},
 		{ID: "6", Subject: "body", Operator: "not_contains", Value: "error"},
-		{ID: "7", Subject: "certificate", Operator: "expires_within", Value: "14"},
 	}})
 	result := newRunner(exec, nil).Run(context.Background(), job, nil)
 	rules := result.Calls[0].Rules
 
-	want := []bool{false, false, false, true, true, true, false}
+	want := []bool{false, false, false, true, true, true}
 	if len(rules) != len(want) {
 		t.Fatalf("every rule must be evaluated, got %d", len(rules))
 	}
@@ -440,26 +439,6 @@ func TestRun_AllRulesEvaluated(t *testing.T) {
 	}
 	if rules[1].Observed != "1240 ms" || rules[1].Text != "response time exceeds 800 ms" {
 		t.Errorf("unexpected response time result %+v", rules[1])
-	}
-}
-
-func TestRun_CertificateRule(t *testing.T) {
-	now := time.Now()
-	exec := &fakeExecutor{handler: func(req Request) (*Response, error) {
-		r := jsonResponse(200, `{}`)
-		r.TLS = &contract.TLSInfo{ExpiresAt: now.Add(90 * 24 * time.Hour), ChainExpiresAt: now.Add(10 * 24 * time.Hour), ChainValid: true, NameMatch: true}
-		return r, nil
-	}}
-	job := newJob(contract.JobCall{Name: "tls", URL: "https://api.example.com/", Rules: []contract.JobRule{
-		{ID: "1", Subject: "certificate", Operator: "expires_within", Value: "14"},
-		{ID: "2", Subject: "certificate", Operator: "chain_invalid"},
-	}})
-	rules := newRunner(exec, nil).Run(context.Background(), job, nil).Calls[0].Rules
-	if rules[0].Passed || !strings.HasPrefix(rules[0].Observed, "9 days left") {
-		t.Fatalf("an intermediate expiring in 10 days must trip the 14 days rule: %+v", rules[0])
-	}
-	if !rules[1].Passed {
-		t.Fatalf("valid chain must pass: %+v", rules[1])
 	}
 }
 

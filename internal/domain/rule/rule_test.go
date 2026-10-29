@@ -20,8 +20,6 @@ func TestParse(t *testing.T) {
 		{"json $.status is {{expected}}", SubjectJSON, OpIs, "$.status", "{{expected}}"},
 		{"header Content-Type contains json", SubjectHeader, OpContains, "Content-Type", "json"},
 		{"size exceeds 64 KB", SubjectSize, OpExceeds, "", "65536"},
-		{"certificate expires in less than 14 days", SubjectCertificate, OpExpiresWithin, "", "14"},
-		{"certificate chain is invalid", SubjectCertificate, OpChainInvalid, "", ""},
 	}
 	for _, c := range cases {
 		r, err := Parse(c.text)
@@ -47,7 +45,6 @@ func TestText_RoundTrip(t *testing.T) {
 		"response time exceeds 800 ms",
 		"size exceeds 64 KB",
 		"json $.count is below 3",
-		"certificate expires in less than 14 days",
 	} {
 		r, err := Parse(text)
 		if err != nil {

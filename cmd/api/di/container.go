@@ -12,8 +12,10 @@ import (
 	usercmd "go-api/internal/application/command/user"
 	variablecmd "go-api/internal/application/command/variable"
 	workflowcmd "go-api/internal/application/command/workflow"
+	cmdexpiry "go-api/internal/application/command/expiry"
 	querycall "go-api/internal/application/query/call"
 	querycontext "go-api/internal/application/query/contextpanel"
+	queryexpiry "go-api/internal/application/query/expiry"
 	queryrun "go-api/internal/application/query/run"
 	querystatistics "go-api/internal/application/query/statistics"
 	queryuser "go-api/internal/application/query/user"
@@ -46,6 +48,7 @@ type Container struct {
 	RunHandler             *httphandler.RunHandler
 	CallHandler            *httphandler.CallHandler
 	ContextHandler         *httphandler.ContextHandler
+	ExpiryHandler          *httphandler.ExpiryHandler
 	VariableHandler        *httphandler.VariableHandler
 	KafkaProducer          *kafka.Producer
 }
@@ -149,6 +152,15 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		ContextHandler: httphandler.NewContextHandler(
 			querycontext.NewGetLatestRunHandler(workflowReadRepo, runReadRepo),
 			querycontext.NewListVariablesHandler(workflowReadRepo, globalVariableRepo, runReadRepo),
+		),
+		ExpiryHandler: httphandler.NewExpiryHandler(
+			queryexpiry.NewListPoliciesHandler(workflowReadRepo, write.NewExpiryPolicyRepository(db)),
+			cmdexpiry.NewUpsertPolicyHandler(workflowReadRepo, write.NewExpiryPolicyRepository(db)),
+			queryexpiry.NewListItemsHandler(
+				workflowReadRepo,
+				write.NewExpiryPolicyRepository(db),
+				write.NewExpiryItemRepository(db),
+			),
 		),
 		CallHandler: httphandler.NewCallHandler(
 			callcmd.NewCreateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),

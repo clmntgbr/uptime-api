@@ -2,8 +2,6 @@ package engine
 
 import (
 	"errors"
-	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -96,36 +94,6 @@ func evaluate(rule domainrule.Rule, obs observation) contract.RuleRun {
 
 	case domainrule.SubjectJSON:
 		return evaluateJSON(rule, obs, pass)
-
-	case domainrule.SubjectCertificate:
-		if obs.tls == nil {
-			return pass("no certificate", "a TLS certificate", false)
-		}
-		switch rule.Operator {
-		case domainrule.OpChainInvalid:
-			observed := "valid"
-			if !obs.tls.ChainValid {
-				observed = "invalid"
-				if obs.tls.VerifyError != "" {
-					observed += " (" + obs.tls.VerifyError + ")"
-				}
-			}
-			return pass(observed, "valid", obs.tls.ChainValid)
-		case domainrule.OpNameMismatch:
-			return pass(map[bool]string{true: "matches", false: "does not match"}[obs.tls.NameMatch], "matches", obs.tls.NameMatch)
-		default:
-			days, err := strconv.Atoi(rule.Value)
-			if err != nil {
-				return pass("", rule.Value, false)
-			}
-			expiry := obs.tls.ChainExpiresAt
-			if expiry.IsZero() {
-				expiry = obs.tls.ExpiresAt
-			}
-			left := expiry.Sub(obs.now)
-			observed := fmt.Sprintf("%d days left (%s)", int(math.Floor(left.Hours()/24)), expiry.UTC().Format("2006-01-02"))
-			return pass(observed, fmt.Sprintf("at least %d days", days), left >= time.Duration(days)*24*time.Hour)
-		}
 	}
 	return pass("", rule.Value, false)
 }
