@@ -10,16 +10,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// Type is where a variable comes from. All three share one namespace and are
-// referenced with the same `{{name}}` syntax.
 type Type string
 
 const (
-	// TypeGlobal belongs to the user and is shared by all their workflows; may be secret.
 	TypeGlobal Type = "global"
-	// TypeStatic is typed on a workflow.
 	TypeStatic Type = "static"
-	// TypeCall is extracted from a call response, visible only to the calls after it.
 	TypeCall Type = "call"
 )
 
@@ -31,7 +26,6 @@ const (
 	MaxValueBytes = 4 * 1024
 	MaxNameLength = 64
 
-	// MaskedValue replaces secret values in logs, traces and results.
 	MaskedValue = "••••"
 )
 
@@ -45,20 +39,17 @@ var (
 	ErrAlreadyExists = errors.New("variable already exists")
 )
 
-// Available is a variable usable when rendering a given call: globals, workflow
-// statics, or extractions from earlier calls.
 type Available struct {
 	Name     string
 	Type     Type
-	Path     string // extraction expression for TypeCall (JSONPath, header, …)
-	Source   string // extraction source for TypeCall
+	Path     string
+	Source   string
 	CallID   uuid.UUID
 	CallName string
 	Secret   bool
-	Value    string // static value; empty for call; cleartext for global (mask at HTTP)
+	Value    string
 }
 
-// Builtins are always available and cannot be redefined.
 func Builtins() []string {
 	return []string{BuiltinTimestamp, BuiltinUUID, BuiltinRunID}
 }
@@ -89,8 +80,6 @@ func ValidateValue(name, value string) error {
 	return nil
 }
 
-// Global is a user-level variable. Value is in clear in the domain; persistence
-// encrypts it at rest when Secret is set.
 type Global struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
