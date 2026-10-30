@@ -135,7 +135,7 @@ Handler HTTP tests live under `internal/interfaces/http/handler/test/`. See [doc
 
 ```bash
 go test ./internal/interfaces/http/handler/test/... -race \
-  -coverpkg=./internal/interfaces/http/handler/...
+  -coverpkg=go-api/internal/interfaces/http/handler
 ```
 
 CI enforces ≥95% handler statement coverage (Codecov flag `handler`, patch 100%).

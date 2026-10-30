@@ -45,7 +45,7 @@ tests:
 	$(COMPOSE_DEV) exec api go test ./internal/interfaces/http/handler/test/... -v -count=1
 
 coverage:
-	$(COMPOSE_DEV) exec api go test -coverprofile=coverage.out ./internal/interfaces/http/handler/test/... -coverpkg=./internal/interfaces/http/handler/...
+	$(COMPOSE_DEV) exec api go test -coverprofile=coverage.out ./internal/interfaces/http/handler/test/... -coverpkg=go-api/internal/interfaces/http/handler
 
 coverage-html: coverage
 	$(COMPOSE_DEV) exec api go tool cover -html=coverage.out -o coverage.html

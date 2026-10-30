@@ -49,7 +49,7 @@ jobs:
             -timeout=5m \
             -coverprofile=coverage.txt \
             -covermode=atomic \
-            -coverpkg=./internal/interfaces/http/handler/...
+            -coverpkg=go-api/internal/interfaces/http/handler
 
       - name: Add coverage to job summary
         run: |
@@ -57,7 +57,7 @@ jobs:
             echo '## Handler coverage'
             echo ''
             echo 'Packages under test: `internal/interfaces/http/handler/test/...`'
-            echo 'Coverage scope: `internal/interfaces/http/handler/...`'
+            echo 'Coverage scope: `go-api/internal/interfaces/http/handler`'
             echo ''
             echo '### Total'
             echo '```'

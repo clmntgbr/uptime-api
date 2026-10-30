@@ -353,7 +353,7 @@ Add focused tests for branches that are hard to reach via DTO validation only (r
 - Before replicating the test pattern on a new resource, run `go tool cover -func=coverage.out` on the reference handler and fix uncovered branches — a large test count does not guarantee full coverage.
 - **CI floor:** total handler statement coverage must stay ≥ **95%** (enforced by `MIN_COVERAGE` in `.github/workflows/tests.yml`, and by the Codecov `project` status for flag `handler` in `codecov.yml`).
 - **Patch requirement:** Codecov also enforces `patch` at **100%** with a 0% threshold on flag `handler` — every line a PR adds or changes in `internal/interfaces/http/handler/` must be covered. The 95% floor applies to the project total and does not exempt new code.
-- Run: `go test ./internal/interfaces/http/handler/test/... -race -coverpkg=./internal/interfaces/http/handler/...`
+- Run: `go test ./internal/interfaces/http/handler/test/... -race -coverpkg=go-api/internal/interfaces/http/handler`
 - Local shortcuts: `make tests`, `make coverage`, `make coverage-html` (via Docker `api` container).
 
 ### CI
