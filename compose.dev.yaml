@@ -115,13 +115,22 @@ services:
     <<: *go-dev
     container_name: worker-notify
     command: ["go", "run", "./cmd/worker-notify"]
+    env_file:
+      - .env
     environment:
       KAFKA_BROKERS: kafka:9092
       KAFKA_CLIENT_ID: worker-notify
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_FROM: noreply@uptime.local
     depends_on:
       kc:
         condition: service_completed_successfully
-    networks: [egress, backend]
+      mailpit:
+        condition: service_started
+      database:
+        condition: service_healthy
+    networks: [egress, backend, data]
 
   database:
     container_name: datastore

@@ -12,8 +12,12 @@ import (
 
 	"go-api/internal/contract"
 	"go-api/internal/infrastructure/config"
+	"go-api/internal/infrastructure/mail"
 	"go-api/internal/infrastructure/messaging/kafka"
 	"go-api/internal/infrastructure/observability"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -30,6 +34,23 @@ func main() {
 	}
 	defer producer.Close()
 
+	var db *gorm.DB
+	if env.DatabaseURL != "" {
+		db = config.ConnectDatabaseURL(env.DatabaseURL)
+	} else {
+		logger.Warn("DATABASE_URL unset: cannot resolve recipient emails")
+	}
+
+	sender := mail.NewSender(mail.SMTPConfig{
+		Host: env.SMTP.Host, Port: env.SMTP.Port, From: env.SMTP.From,
+		User: env.SMTP.User, Password: env.SMTP.Password,
+	})
+	if !sender.Enabled() {
+		logger.Warn("SMTP_HOST unset: notifications will be logged only")
+	} else {
+		logger.Info("smtp enabled", "host", env.SMTP.Host, "port", env.SMTP.Port, "from", env.SMTP.From)
+	}
+
 	publisher := kafka.NewNotificationPublisher(producer)
 	handler := func(ctx context.Context, payload []byte) error {
 		var req contract.NotificationRequest
@@ -41,21 +62,40 @@ func main() {
 			logger.Error("invalid notification", "error", err)
 			return nil
 		}
-		// Phase 1: log only — real channels come later.
+
 		logger.Info("notification",
 			"kind", req.Kind,
 			"type", req.Type,
 			"workflow_id", req.WorkflowID,
-			"subject", req.Subject,
+			"user_id", req.UserID,
 			"severity", req.Severity,
 			"message", req.Message,
-			"days_left", req.DaysLeft,
-			"threshold_days", req.ThresholdDays,
 		)
+
+		status := "sent"
+		var sendErr string
+		if sender.Enabled() {
+			to, err := resolveEmail(ctx, db, req.UserID)
+			if err != nil || to == "" {
+				logger.Error("resolve recipient failed", "user_id", req.UserID, "error", err)
+				status = "failed"
+				sendErr = "recipient not found"
+			} else {
+				subject, body := mail.Render(req)
+				if err := sender.Send(to, subject, body); err != nil {
+					logger.Error("smtp send failed", "to", to, "kind", req.Kind, "error", err)
+					status = "failed"
+					sendErr = err.Error()
+				} else {
+					logger.Info("smtp sent", "to", to, "kind", req.Kind, "subject", subject)
+				}
+			}
+		}
+
 		return publisher.PublishResult(ctx, contract.NotificationResult{
 			V: contract.NotificationResultV1, Kind: req.Kind,
 			WorkflowID: req.WorkflowID, ItemID: req.ItemID,
-			Status: "sent", SentAt: time.Now().UTC(),
+			Status: status, Error: sendErr, SentAt: time.Now().UTC(),
 		})
 	}
 
@@ -74,4 +114,22 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("worker-notify stopped")
+}
+
+func resolveEmail(ctx context.Context, db *gorm.DB, userIDRaw string) (string, error) {
+	if db == nil {
+		return "", nil
+	}
+	id, err := uuid.Parse(userIDRaw)
+	if err != nil {
+		return "", err
+	}
+	var email string
+	err = db.WithContext(ctx).
+		Table("users").
+		Select("email").
+		Where("id = ?", id).
+		Limit(1).
+		Scan(&email).Error
+	return email, err
 }
