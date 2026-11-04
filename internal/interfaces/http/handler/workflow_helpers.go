@@ -7,6 +7,7 @@ import (
 
 	workflowcmd "go-api/internal/application/command/workflow"
 	domainexpiry "go-api/internal/domain/expiry"
+	domainnotify "go-api/internal/domain/notifysettings"
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/interfaces/http/dto"
 	"go-api/internal/interfaces/http/validation"
@@ -15,8 +16,9 @@ import (
 )
 
 type boundWorkflowRequest struct {
-	Definition     domainworkflow.Definition
-	ExpiryPolicies []workflowcmd.ExpiryPolicyInput
+	Definition         domainworkflow.Definition
+	ExpiryPolicies     []workflowcmd.ExpiryPolicyInput
+	NotificationEmails *[]string
 }
 
 // bindWorkflowRequest validates the body and maps it to a domain definition
@@ -51,7 +53,10 @@ func bindWorkflowRequest(c fiber.Ctx) (boundWorkflowRequest, error) {
 	if scheduleType == domainworkflow.ScheduleInterval && body.IntervalSeconds != nil {
 		def.Interval = time.Duration(*body.IntervalSeconds) * time.Second
 	}
-	return boundWorkflowRequest{Definition: def, ExpiryPolicies: policies}, nil
+	return boundWorkflowRequest{
+		Definition: def, ExpiryPolicies: policies,
+		NotificationEmails: body.NotificationEmails,
+	}, nil
 }
 
 func mapExpiryPolicies(c fiber.Ctx, in []dto.WorkflowExpiryPolicyInput) ([]workflowcmd.ExpiryPolicyInput, error) {
@@ -153,6 +158,11 @@ func writeWorkflowError(c fiber.Ctx, err error, fallback string) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
 			"message": err.Error(),
 			"code":    "INVALID_THRESHOLDS",
+		})
+	case errors.Is(err, domainnotify.ErrInvalid):
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
+			"message": err.Error(),
+			"code":    "INVALID_NOTIFICATION_SETTINGS",
 		})
 	case errors.Is(err, domainworkflow.ErrNotFound), errors.Is(err, domainworkflow.ErrWrongOwner):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{

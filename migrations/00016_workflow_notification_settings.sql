@@ -6,17 +6,13 @@ CREATE TABLE workflow_notification_settings (
     emails TEXT[] NOT NULL DEFAULT '{}',
     incidents_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     tls_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    runs_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-    run_statuses TEXT[] NOT NULL DEFAULT '{}',
-    run_mode TEXT NOT NULL DEFAULT 'transition',
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT workflow_notification_settings_run_mode CHECK (run_mode IN ('every', 'transition'))
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Backfill existing workflows with creator email (incidents+TLS on, runs off).
+-- Backfill existing workflows with creator email (incidents+TLS on).
 INSERT INTO workflow_notification_settings (
     workflow_id, user_id, emails,
-    incidents_enabled, tls_enabled, runs_enabled, run_statuses, run_mode, updated_at
+    incidents_enabled, tls_enabled, updated_at
 )
 SELECT
     w.id,
@@ -25,7 +21,7 @@ SELECT
         WHEN COALESCE(NULLIF(trim(u.email), ''), '') = '' THEN '{}'::text[]
         ELSE ARRAY[lower(trim(u.email))]
     END,
-    TRUE, TRUE, FALSE, '{}'::text[], 'transition', NOW()
+    TRUE, TRUE, NOW()
 FROM workflows w
 JOIN users u ON u.id = w.user_id
 WHERE w.deleted_at IS NULL

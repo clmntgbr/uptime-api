@@ -62,8 +62,7 @@ func (h *NotifySettingsHandler) Upsert(c fiber.Ctx) error {
 	s, err := h.upsert.Handle(c.Context(), cmdnotify.UpsertCommand{
 		UserID: user.ID, WorkflowID: workflowID,
 		Emails: body.Emails, IncidentsEnabled: body.IncidentsEnabled,
-		TLSEnabled: body.TLSEnabled, RunsEnabled: body.RunsEnabled,
-		RunStatuses: body.RunStatuses, RunMode: body.RunMode,
+		TLSEnabled: body.TLSEnabled,
 	})
 	if err != nil {
 		return writeNotifySettingsError(c, err, "Failed to save notification settings")

@@ -2,7 +2,6 @@ package notifysettings
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	domainnotify "go-api/internal/domain/notifysettings"
@@ -17,9 +16,6 @@ type UpsertCommand struct {
 	Emails           []string
 	IncidentsEnabled bool
 	TLSEnabled       bool
-	RunsEnabled      bool
-	RunStatuses       []string
-	RunMode          string
 }
 
 type UpsertHandler struct {
@@ -46,24 +42,9 @@ func (h *UpsertHandler) Handle(ctx context.Context, cmd UpsertCommand) (domainno
 	if err := domainnotify.ValidateEmails(emails); err != nil {
 		return domainnotify.Settings{}, err
 	}
-	statuses, err := domainnotify.ParseRunStatuses(cmd.RunStatuses)
-	if err != nil {
-		return domainnotify.Settings{}, err
-	}
-	mode := domainnotify.RunModeTransition
-	if cmd.RunMode != "" {
-		mode, err = domainnotify.ParseRunMode(cmd.RunMode)
-		if err != nil {
-			return domainnotify.Settings{}, err
-		}
-	}
-	if cmd.RunsEnabled && len(statuses) == 0 {
-		return domainnotify.Settings{}, fmt.Errorf("%w: select at least one run status when runs are enabled", domainnotify.ErrInvalid)
-	}
 	s := domainnotify.Settings{
 		WorkflowID: cmd.WorkflowID, UserID: cmd.UserID, Emails: emails,
 		IncidentsEnabled: cmd.IncidentsEnabled, TLSEnabled: cmd.TLSEnabled,
-		RunsEnabled: cmd.RunsEnabled, RunStatuses: statuses, RunMode: mode,
 		UpdatedAt: time.Now().UTC(),
 	}
 	if err := h.settings.Upsert(ctx, s); err != nil {

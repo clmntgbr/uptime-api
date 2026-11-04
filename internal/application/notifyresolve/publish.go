@@ -15,7 +15,6 @@ type Family string
 const (
 	FamilyIncident Family = "incident"
 	FamilyTLS      Family = "tls"
-	FamilyRun      Family = "run"
 )
 
 // PrepareRequest loads settings and returns false when the family must not send.
@@ -46,11 +45,6 @@ func PrepareRequest(
 		if !settings.AllowsTLS() {
 			return req, false
 		}
-	case FamilyRun:
-		// caller already checked AllowsRun
-		if len(settings.Emails) == 0 {
-			return req, false
-		}
 	default:
 		if len(settings.Emails) == 0 {
 			return req, false
@@ -58,21 +52,4 @@ func PrepareRequest(
 	}
 	req.Recipients = append([]string(nil), settings.Emails...)
 	return req, true
-}
-
-// ShouldNotifyRun reports whether a finished run should emit a notification.
-func ShouldNotifyRun(
-	ctx context.Context,
-	repo domainnotify.Repository,
-	userID, workflowID uuid.UUID,
-	status, previousStatus string,
-) (domainnotify.Settings, bool, error) {
-	if repo == nil {
-		return domainnotify.Settings{}, false, nil
-	}
-	settings, err := Resolve(ctx, repo, userID, workflowID)
-	if err != nil {
-		return domainnotify.Settings{}, false, err
-	}
-	return settings, settings.AllowsRun(status, previousStatus), nil
 }

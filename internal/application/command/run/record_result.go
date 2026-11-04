@@ -87,7 +87,6 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 	r, certs := toRun(result)
 	var notes []domainexpiry.NotificationRequest
 	var incidentNotes []cmdincident.NotifyIntent
-	var previousStatus string
 	var recorded bool
 
 	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
@@ -106,7 +105,6 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 			// The workflow was deleted while it ran: nothing to attach the run to.
 			return nil
 		}
-		previousStatus = state.LastStatus
 		if err := h.runs.Save(txCtx, r); err != nil {
 			return err
 		}
@@ -167,7 +165,6 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 	}
 	h.publishExpiryNotes(ctx, notes)
 	h.publishIncidentNotes(ctx, incidentNotes)
-	h.publishRunNote(ctx, r, previousStatus)
 	return nil
 }
 
@@ -192,32 +189,6 @@ func (h *RecordResultHandler) publishIncidentNotes(ctx context.Context, notes []
 		if err := h.notify.PublishRequest(ctx, req); err != nil {
 			h.logger.Error("publish incident notification failed", "incident_id", n.IncidentID, "error", err)
 		}
-	}
-}
-
-func (h *RecordResultHandler) publishRunNote(ctx context.Context, r *domainrun.Run, previousStatus string) {
-	if h.notify == nil || h.notifySettings == nil {
-		return
-	}
-	settings, ok, err := notifyresolve.ShouldNotifyRun(
-		ctx, h.notifySettings, r.UserID, r.WorkflowID, string(r.Status), previousStatus,
-	)
-	if err != nil {
-		h.logger.Error("run notification settings failed", "run_id", r.ID, "error", err)
-		return
-	}
-	if !ok {
-		return
-	}
-	req := contract.NotificationRequest{
-		V: contract.NotificationRequestV1, Kind: "run.finished",
-		UserID: r.UserID.String(), WorkflowID: r.WorkflowID.String(),
-		ItemID: r.ID.String(), Type: string(r.Status),
-		Message: fmt.Sprintf("Workflow run finished with status %s", r.Status),
-		Recipients: append([]string(nil), settings.Emails...),
-	}
-	if err := h.notify.PublishRequest(ctx, req); err != nil {
-		h.logger.Error("publish run notification failed", "run_id", r.ID, "error", err)
 	}
 }
 

@@ -16,25 +16,12 @@ func TestNormalizeAndValidateEmails(t *testing.T) {
 	}
 }
 
-func TestAllowsRunTransition(t *testing.T) {
+func TestDefaultDisablesNothingExceptEmptyRuns(t *testing.T) {
 	s := DefaultSettings(uuid.New(), uuid.New(), "a@b.com")
-	s.RunsEnabled = true
-	s.RunStatuses = []RunStatus{RunFailed, RunSuccess}
-	s.RunMode = RunModeTransition
-	if s.AllowsRun("failed", "") {
-		t.Fatal("no previous status should not notify in transition mode")
-	}
-	if !s.AllowsRun("failed", "success") {
-		t.Fatal("success→failed must notify")
-	}
-	if s.AllowsRun("failed", "failed") {
-		t.Fatal("same status must not notify")
-	}
-}
-
-func TestDefaultDisablesRuns(t *testing.T) {
-	s := DefaultSettings(uuid.New(), uuid.New(), "a@b.com")
-	if s.RunsEnabled || !s.IncidentsEnabled || !s.TLSEnabled || len(s.Emails) != 1 {
+	if !s.IncidentsEnabled || !s.TLSEnabled || len(s.Emails) != 1 {
 		t.Fatalf("%+v", s)
+	}
+	if !s.AllowsIncident() || !s.AllowsTLS() {
+		t.Fatal("defaults should allow incident and TLS mail")
 	}
 }

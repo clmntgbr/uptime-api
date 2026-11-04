@@ -13,9 +13,6 @@ type WorkflowNotificationSettingsModel struct {
 	Emails           pq.StringArray `gorm:"column:emails;type:text[]"`
 	IncidentsEnabled bool           `gorm:"column:incidents_enabled"`
 	TLSEnabled       bool           `gorm:"column:tls_enabled"`
-	RunsEnabled      bool           `gorm:"column:runs_enabled"`
-	RunStatuses      pq.StringArray `gorm:"column:run_statuses;type:text[]"`
-	RunMode          string         `gorm:"column:run_mode"`
 	UpdatedAt        time.Time      `gorm:"column:updated_at"`
 }
 

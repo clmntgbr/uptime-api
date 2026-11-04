@@ -49,7 +49,6 @@ func (m *mockUpsert) Handle(_ context.Context, cmd cmdnotify.UpsertCommand) (dom
 	return domainnotify.Settings{
 		WorkflowID: cmd.WorkflowID, UserID: cmd.UserID, Emails: cmd.Emails,
 		IncidentsEnabled: cmd.IncidentsEnabled, TLSEnabled: cmd.TLSEnabled,
-		RunsEnabled: cmd.RunsEnabled, RunMode: domainnotify.RunModeTransition,
 	}, nil
 }
 
@@ -90,6 +89,9 @@ func TestNotifySettingsHandler_Get_Success(t *testing.T) {
 	emails, _ := out["emails"].([]any)
 	if len(emails) != 1 || emails[0] != "a@b.com" {
 		t.Fatalf("emails %#v", out["emails"])
+	}
+	if _, ok := out["runsEnabled"]; ok {
+		t.Fatal("runsEnabled must not be exposed")
 	}
 }
 
@@ -132,7 +134,6 @@ func TestNotifySettingsHandler_Upsert_Success(t *testing.T) {
 	app := mount(t, &mockGet{}, up, true)
 	resp := doJSON(t, app, http.MethodPut, "/api/workflows/"+testWorkflowID.String()+"/notification-settings", map[string]any{
 		"emails": []string{"a@b.com"}, "incidentsEnabled": true, "tlsEnabled": true,
-		"runsEnabled": false, "runStatuses": []string{}, "runMode": "transition",
 	})
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
@@ -147,7 +148,6 @@ func TestNotifySettingsHandler_Upsert_Unauthorized(t *testing.T) {
 	app := mount(t, &mockGet{}, &mockUpsert{}, false)
 	resp := doJSON(t, app, http.MethodPut, "/api/workflows/"+testWorkflowID.String()+"/notification-settings", map[string]any{
 		"emails": []string{"a@b.com"}, "incidentsEnabled": true, "tlsEnabled": true,
-		"runsEnabled": false, "runStatuses": []string{}, "runMode": "transition",
 	})
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -159,7 +159,6 @@ func TestNotifySettingsHandler_Upsert_Invalid(t *testing.T) {
 	app := mount(t, &mockGet{}, up, true)
 	resp := doJSON(t, app, http.MethodPut, "/api/workflows/"+testWorkflowID.String()+"/notification-settings", map[string]any{
 		"emails": []string{"bad"}, "incidentsEnabled": true, "tlsEnabled": true,
-		"runsEnabled": false, "runStatuses": []string{}, "runMode": "transition",
 	})
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -169,7 +168,7 @@ func TestNotifySettingsHandler_Upsert_Invalid(t *testing.T) {
 func TestNotifySettingsHandler_Upsert_BadWorkflowID(t *testing.T) {
 	app := mount(t, &mockGet{}, &mockUpsert{}, true)
 	resp := doJSON(t, app, http.MethodPut, "/api/workflows/bad/notification-settings", map[string]any{
-		"emails": []string{"a@b.com"}, "runMode": "transition",
+		"emails": []string{"a@b.com"},
 	})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -181,20 +180,8 @@ func TestNotifySettingsHandler_Upsert_InternalError(t *testing.T) {
 	app := mount(t, &mockGet{}, up, true)
 	resp := doJSON(t, app, http.MethodPut, "/api/workflows/"+testWorkflowID.String()+"/notification-settings", map[string]any{
 		"emails": []string{"a@b.com"}, "incidentsEnabled": true, "tlsEnabled": true,
-		"runsEnabled": false, "runStatuses": []string{}, "runMode": "transition",
 	})
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status %d", resp.StatusCode)
-	}
-}
-
-func TestNotifySettingsHandler_Upsert_ValidationFailed(t *testing.T) {
-	app := mount(t, &mockGet{}, &mockUpsert{}, true)
-	resp := doJSON(t, app, http.MethodPut, "/api/workflows/"+testWorkflowID.String()+"/notification-settings", map[string]any{
-		"emails": []string{"a@b.com"}, "runMode": "never",
-	})
-	if resp.StatusCode != http.StatusBadRequest {
-		b, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status %d body %s", resp.StatusCode, b)
 	}
 }

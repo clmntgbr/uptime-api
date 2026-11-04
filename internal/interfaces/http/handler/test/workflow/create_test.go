@@ -120,6 +120,31 @@ func TestWorkflowHandler_Create_WithExpiryPolicies(t *testing.T) {
 	}
 }
 
+func TestWorkflowHandler_Create_WithNotificationEmails(t *testing.T) {
+	m := newMocks()
+	body := validWorkflowBody()
+	body["notificationEmails"] = []string{"ops@example.com", "oncall@example.com"}
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
+	assertStatus(t, resp, http.StatusCreated)
+	if m.create.got.NotificationEmails == nil || len(*m.create.got.NotificationEmails) != 2 {
+		t.Fatalf("expected notification emails, got %+v", m.create.got.NotificationEmails)
+	}
+}
+
+func TestWorkflowHandler_Create_NotificationEmailsEmpty(t *testing.T) {
+	m := newMocks()
+	body := validWorkflowBody()
+	body["notificationEmails"] = []string{}
+	resp := doJSON(t, m, true, http.MethodPost, "/workflows", body)
+	assertStatus(t, resp, http.StatusCreated)
+	if m.create.got.NotificationEmails == nil {
+		t.Fatal("empty notificationEmails must be passed (not nil)")
+	}
+	if len(*m.create.got.NotificationEmails) != 0 {
+		t.Fatalf("expected empty slice, got %+v", *m.create.got.NotificationEmails)
+	}
+}
+
 func TestWorkflowHandler_Create_ExpiryPolicies_EnabledEmpty(t *testing.T) {
 	m := newMocks()
 	body := validWorkflowBody()

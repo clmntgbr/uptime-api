@@ -23,10 +23,12 @@ type ExpiryPolicyInput struct {
 }
 
 type CreateWorkflowCommand struct {
-	UserID         uuid.UUID
-	CreatorEmail   string
-	Definition     domainworkflow.Definition
-	ExpiryPolicies []ExpiryPolicyInput
+	UserID             uuid.UUID
+	CreatorEmail       string
+	Definition         domainworkflow.Definition
+	ExpiryPolicies     []ExpiryPolicyInput
+	// NotificationEmails when non-nil overrides the creator email default (empty = no recipients).
+	NotificationEmails *[]string
 }
 
 type CreateWorkflowHandler struct {
@@ -73,6 +75,14 @@ func (h *CreateWorkflowHandler) Handle(ctx context.Context, cmd CreateWorkflowCo
 		})
 	}
 
+	notifyEmails := domainnotify.NormalizeEmails([]string{cmd.CreatorEmail})
+	if cmd.NotificationEmails != nil {
+		notifyEmails = domainnotify.NormalizeEmails(*cmd.NotificationEmails)
+		if err := domainnotify.ValidateEmails(notifyEmails); err != nil {
+			return nil, err
+		}
+	}
+
 	w, err := domainworkflow.New(cmd.UserID, cmd.Definition, globals)
 	if err != nil {
 		return nil, err
@@ -104,7 +114,8 @@ func (h *CreateWorkflowHandler) Handle(ctx context.Context, cmd CreateWorkflowCo
 			}
 		}
 		if h.notifySettings != nil {
-			ns := domainnotify.DefaultSettings(cmd.UserID, w.ID, cmd.CreatorEmail)
+			ns := domainnotify.DefaultSettings(cmd.UserID, w.ID, "")
+			ns.Emails = notifyEmails
 			ns.UpdatedAt = now
 			if err := h.notifySettings.Upsert(txCtx, ns); err != nil {
 				return fmt.Errorf("save notification settings: %w", err)
