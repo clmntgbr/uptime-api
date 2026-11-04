@@ -51,7 +51,7 @@ func DefaultPolicy(userID, workflowID uuid.UUID, kind Kind) Policy {
 		p.Severity = SeverityWarning
 		p.Enabled = false
 		p.OpenAfter = 1
-		p.CloseAfter = 1
+		p.CloseAfter = DefaultCloseAfter
 		p.Params = map[string]any{
 			"threshold":         DefaultAvailThreshold,
 			"recoveryThreshold": DefaultAvailRecovery,

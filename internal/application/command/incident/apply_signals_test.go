@@ -81,6 +81,19 @@ func (m *memIncidents) Update(_ context.Context, inc domainincident.Incident) er
 func (m *memIncidents) GetByID(_ context.Context, _ uuid.UUID, id uuid.UUID) (*domainincident.Incident, error) {
 	return m.byID[id], nil
 }
+func (m *memIncidents) GetByIDForUpdate(ctx context.Context, userID, id uuid.UUID) (*domainincident.Incident, error) {
+	return m.GetByID(ctx, userID, id)
+}
+func (m *memIncidents) ClaimReminder(_ context.Context, id uuid.UUID, expectedCount int, now time.Time) (bool, error) {
+	inc := m.byID[id]
+	if inc == nil || inc.State != domainincident.StateOpen || inc.ReminderCount != expectedCount {
+		return false, nil
+	}
+	inc.ReminderCount++
+	t := now
+	inc.LastReminderAt = &t
+	return true, nil
+}
 func (m *memIncidents) ListByWorkflow(context.Context, uuid.UUID, uuid.UUID, []domainincident.State, []domainincident.Severity, paginate.PaginateQuery) ([]domainincident.Incident, int64, error) {
 	return nil, 0, nil
 }

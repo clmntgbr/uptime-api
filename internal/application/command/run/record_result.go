@@ -124,7 +124,9 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 				})
 				if applyErr != nil {
 					h.logger.Error("incident evaluation failed", "run_id", r.ID, "error", applyErr)
-					_ = h.nestedTx.RollbackTo(txCtx, sp)
+					if rbErr := h.nestedTx.RollbackTo(txCtx, sp); rbErr != nil {
+						return fmt.Errorf("incident eval rollback: %w", rbErr)
+					}
 				} else {
 					incidentNotes = applied.Notifications
 				}
@@ -249,7 +251,7 @@ func signalsFromRun(r *domainrun.Run, result contract.Result) []domainincident.S
 				CallID: &callID, Subject: subject, RunID: &runID, ObservedAt: obs,
 			})
 		}
-		slowFail := false
+		var slowFails []map[string]any
 		slowSeen := false
 		for _, rule := range c.Rules {
 			if rule.Subject != "response_time" {
@@ -257,17 +259,18 @@ func signalsFromRun(r *domainrun.Run, result contract.Result) []domainincident.S
 			}
 			slowSeen = true
 			if !rule.Passed {
-				slowFail = true
-				out = append(out, domainincident.Signal{
-					Kind: domainincident.KindCallSlow, Failing: true,
-					CallID: &callID, Subject: subject, RunID: &runID, ObservedAt: obs,
-					Cause: map[string]any{
-						"subject": rule.Subject, "observed": rule.Observed, "expected": rule.Expected,
-					},
+				slowFails = append(slowFails, map[string]any{
+					"subject": rule.Subject, "observed": rule.Observed, "expected": rule.Expected,
 				})
 			}
 		}
-		if slowSeen && !slowFail {
+		if len(slowFails) > 0 {
+			out = append(out, domainincident.Signal{
+				Kind: domainincident.KindCallSlow, Failing: true,
+				CallID: &callID, Subject: subject, RunID: &runID, ObservedAt: obs,
+				Cause: map[string]any{"rules": slowFails},
+			})
+		} else if slowSeen {
 			out = append(out, domainincident.Signal{
 				Kind: domainincident.KindCallSlow, Failing: false,
 				CallID: &callID, Subject: subject, RunID: &runID, ObservedAt: obs,

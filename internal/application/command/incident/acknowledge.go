@@ -41,7 +41,7 @@ func NewAcknowledgeHandler(
 func (h *AcknowledgeHandler) Handle(ctx context.Context, cmd AcknowledgeCommand) (domainincident.Incident, error) {
 	var out domainincident.Incident
 	err := h.tx.WithTransaction(ctx, func(txCtx context.Context) error {
-		inc, err := h.incidents.GetByID(txCtx, cmd.UserID, cmd.IncidentID)
+		inc, err := h.incidents.GetByIDForUpdate(txCtx, cmd.UserID, cmd.IncidentID)
 		if err != nil {
 			return err
 		}

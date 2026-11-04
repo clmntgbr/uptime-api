@@ -79,7 +79,7 @@ func TestApplyReopenResetsReminders(t *testing.T) {
 
 func TestDefaultPolicyAvailability(t *testing.T) {
 	p := DefaultPolicy(uuid.New(), uuid.New(), KindAvailabilityLow)
-	if p.Enabled || p.OpenAfter != 1 {
+	if p.Enabled || p.OpenAfter != 1 || p.CloseAfter != DefaultCloseAfter {
 		t.Fatalf("unexpected %+v", p)
 	}
 	th, rec := p.AvailabilityThresholds()
@@ -103,8 +103,9 @@ func TestTLSSignal(t *testing.T) {
 	if sig := TLSSignal("a.com:443", 40, thresholds, now); sig == nil || sig.Failing {
 		t.Fatalf("above all thresholds must be healthy: %+v", sig)
 	}
-	if sig := TLSSignal("a.com:443", 10, thresholds, now); sig != nil {
-		t.Fatalf("between last and higher must be nil: %+v", sig)
+	// Renewal often lands between higher thresholds; daysLeft > last must close.
+	if sig := TLSSignal("a.com:443", 20, thresholds, now); sig == nil || sig.Failing {
+		t.Fatalf("above last threshold must be healthy (renewal): %+v", sig)
 	}
 	if sig := TLSSignal("a.com:443", 5, thresholds, now); sig == nil || !sig.Failing {
 		t.Fatalf("at/below last must fail: %+v", sig)

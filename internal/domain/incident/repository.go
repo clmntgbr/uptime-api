@@ -27,8 +27,13 @@ type IncidentRepository interface {
 	Insert(ctx context.Context, inc Incident) error
 	Update(ctx context.Context, inc Incident) error
 	GetByID(ctx context.Context, userID, id uuid.UUID) (*Incident, error)
+	// GetByIDForUpdate locks the incident row FOR UPDATE (must run in a transaction).
+	GetByIDForUpdate(ctx context.Context, userID, id uuid.UUID) (*Incident, error)
 	ListByWorkflow(ctx context.Context, userID, workflowID uuid.UUID, states []State, severities []Severity, q paginate.PaginateQuery) ([]Incident, int64, error)
 	ListOpenForReminders(ctx context.Context, now time.Time) ([]Incident, error)
+	// ClaimReminder increments reminder_count only while state is still open.
+	// Returns false when the row was resolved/acked or already advanced.
+	ClaimReminder(ctx context.Context, id uuid.UUID, expectedCount int, now time.Time) (bool, error)
 }
 
 type EventRepository interface {

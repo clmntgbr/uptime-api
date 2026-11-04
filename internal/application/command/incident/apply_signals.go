@@ -110,7 +110,11 @@ func (h *ApplySignalsHandler) Handle(ctx context.Context, cmd ApplySignalsComman
 			if err != nil {
 				return result, err
 			}
-			if resolved != nil && domainincident.ShouldReopen(resolved.ResolvedAt, now) {
+			reopenAt := now
+			if !sig.ObservedAt.IsZero() {
+				reopenAt = sig.ObservedAt.UTC()
+			}
+			if resolved != nil && domainincident.ShouldReopen(resolved.ResolvedAt, reopenAt) {
 				resolved.ApplyReopen(now, sig.Cause, sig.RunID, severity)
 				if err := h.incidents.Update(ctx, *resolved); err != nil {
 					return result, err

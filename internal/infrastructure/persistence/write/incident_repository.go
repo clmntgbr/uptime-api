@@ -178,6 +178,36 @@ func (r *incidentRepository) GetByID(ctx context.Context, userID, id uuid.UUID) 
 	return incidentFromModel(m)
 }
 
+func (r *incidentRepository) GetByIDForUpdate(ctx context.Context, userID, id uuid.UUID) (*incident.Incident, error) {
+	var m IncidentModel
+	err := DBWithContext(ctx, r.db).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ? AND user_id = ?", id, userID).
+		Take(&m).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return incidentFromModel(m)
+}
+
+func (r *incidentRepository) ClaimReminder(ctx context.Context, id uuid.UUID, expectedCount int, now time.Time) (bool, error) {
+	res := DBWithContext(ctx, r.db).Exec(`
+UPDATE incidents
+SET reminder_count = reminder_count + 1, last_reminder_at = @now
+WHERE id = @id AND state = @state AND reminder_count = @expected
+`, map[string]any{
+		"id": id, "state": string(incident.StateOpen),
+		"expected": expectedCount, "now": now.UTC(),
+	})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
+}
+
 func (r *incidentRepository) ListByWorkflow(
 	ctx context.Context,
 	userID, workflowID uuid.UUID,

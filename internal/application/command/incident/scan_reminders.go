@@ -7,7 +7,6 @@ import (
 	"time"
 
 	domainincident "go-api/internal/domain/incident"
-	"go-api/internal/domain/port"
 
 	"github.com/google/uuid"
 )
@@ -16,7 +15,6 @@ type ScanRemindersHandler struct {
 	tx        txRunner
 	incidents domainincident.IncidentRepository
 	events    domainincident.EventRepository
-	outbox    port.OutboxRepository
 	logger    *slog.Logger
 	clock     func() time.Time
 }
@@ -25,19 +23,19 @@ func NewScanRemindersHandler(
 	tx txRunner,
 	incidents domainincident.IncidentRepository,
 	events domainincident.EventRepository,
-	outbox port.OutboxRepository,
 	logger *slog.Logger,
 ) *ScanRemindersHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &ScanRemindersHandler{
-		tx: tx, incidents: incidents, events: events, outbox: outbox,
+		tx: tx, incidents: incidents, events: events,
 		logger: logger, clock: time.Now,
 	}
 }
 
 // Handle sends 1h then 24h reminders for open (unacknowledged) incidents.
+// ClaimReminder is conditional on state=open so a concurrent resolve wins.
 func (h *ScanRemindersHandler) Handle(ctx context.Context) (ApplyResult, error) {
 	var result ApplyResult
 	now := h.clock().UTC()
@@ -48,7 +46,7 @@ func (h *ScanRemindersHandler) Handle(ctx context.Context) (ApplyResult, error) 
 	for _, inc := range open {
 		var note NotifyIntent
 		err := h.tx.WithTransaction(ctx, func(txCtx context.Context) error {
-			fresh, err := h.incidents.GetByID(txCtx, inc.UserID, inc.ID)
+			fresh, err := h.incidents.GetByIDForUpdate(txCtx, inc.UserID, inc.ID)
 			if err != nil {
 				return err
 			}
@@ -56,22 +54,24 @@ func (h *ScanRemindersHandler) Handle(ctx context.Context) (ApplyResult, error) 
 				return nil
 			}
 			age := now.Sub(fresh.OpenedAt)
+			expected := fresh.ReminderCount
 			switch {
-			case fresh.ReminderCount == 0 && age >= domainincident.ReminderAfter:
-			case fresh.ReminderCount == 1 && age >= domainincident.ReminderSecondAfter:
+			case expected == 0 && age >= domainincident.ReminderAfter:
+			case expected == 1 && age >= domainincident.ReminderSecondAfter:
 			default:
 				return nil
 			}
-			fresh.ReminderCount++
-			t := now
-			fresh.LastReminderAt = &t
-			if err := h.incidents.Update(txCtx, *fresh); err != nil {
+			claimed, err := h.incidents.ClaimReminder(txCtx, fresh.ID, expected, now)
+			if err != nil {
 				return err
+			}
+			if !claimed {
+				return nil
 			}
 			if err := h.events.Append(txCtx, domainincident.Event{
 				ID: uuid.New(), IncidentID: fresh.ID, At: now,
 				Type:    domainincident.EventReminder,
-				Payload: map[string]any{"reminderCount": fresh.ReminderCount},
+				Payload: map[string]any{"reminderCount": expected + 1},
 			}); err != nil {
 				return err
 			}

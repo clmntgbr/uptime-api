@@ -93,7 +93,6 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 		stateRepo,
 		write.NewIncidentRepository(db),
 		write.NewIncidentEventRepository(db),
-		outboxRepo,
 		logger,
 	)
 	scanTLS := cmdincident.NewScanTLSHandler(stateRepo, expiryItemRepo, expiryPolicyRepo, incidentApply, logger)

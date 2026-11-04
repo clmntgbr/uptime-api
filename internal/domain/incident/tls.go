@@ -4,17 +4,15 @@ import (
 	"time"
 )
 
-// TLSSignal returns a tls_expiry signal for one observation, or nil when the
-// observation sits between the last threshold and a higher one (notification-only).
-// lastThreshold is the smallest configured threshold (most urgent); 0 means none.
+// TLSSignal returns a tls_expiry signal for one observation.
+// Failing when expired or at/below the last (smallest) threshold.
+// Healthy when daysLeft is above that last threshold (covers renewal and OK state).
+// Between higher thresholds while still above last: healthy (counters only; no open spam).
 func TLSSignal(subject string, daysLeft int, thresholds []int, observedAt time.Time) *Signal {
-	last, maxT := 0, 0
+	last := 0
 	for _, t := range thresholds {
 		if last == 0 || t < last {
 			last = t
-		}
-		if t > maxT {
-			maxT = t
 		}
 	}
 	obs := observedAt.UTC()
@@ -33,14 +31,12 @@ func TLSSignal(subject string, daysLeft int, thresholds []int, observedAt time.T
 			Severity: &sev,
 			Cause:    map[string]any{"daysLeft": daysLeft, "lastThreshold": last},
 		}
-	case last == 0 || daysLeft > maxT:
+	default:
+		// daysLeft > last, or no thresholds configured and not expired.
 		return &Signal{
 			Kind: KindTLSExpiry, Failing: false, Subject: subject, ObservedAt: obs,
 			Cause: map[string]any{"daysLeft": daysLeft},
 		}
-	default:
-		// Between last and a higher threshold: expiry notifications only.
-		return nil
 	}
 }
 
