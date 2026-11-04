@@ -66,6 +66,9 @@ func setupWorkflowRoutes(api fiber.Router, container *di.Container) {
 	api.Get("/incidents/:id", container.IncidentHandler.GetByID)
 	api.Post("/incidents/:id/acknowledge", container.IncidentHandler.Acknowledge)
 
+	api.Get("/workflows/:id/notification-settings", container.NotifySettingsHandler.Get)
+	api.Put("/workflows/:id/notification-settings", container.NotifySettingsHandler.Upsert)
+
 	api.Get("/workflows/:id/runs", container.RunHandler.List)
 	api.Post("/workflows/:id/runs", container.WorkflowHandler.Run)
 	api.Get("/workflows/:id/runs/:runId", container.RunHandler.GetByID)

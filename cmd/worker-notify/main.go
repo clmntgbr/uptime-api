@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -68,6 +69,7 @@ func main() {
 			"type", req.Type,
 			"workflow_id", req.WorkflowID,
 			"user_id", req.UserID,
+			"recipients", len(req.Recipients),
 			"severity", req.Severity,
 			"message", req.Message,
 		)
@@ -75,18 +77,20 @@ func main() {
 		status := "sent"
 		var sendErr string
 		if sender.Enabled() {
-			to, err := resolveEmail(ctx, db, req.UserID)
-			if err != nil || to == "" {
-				logger.Error("resolve recipient failed", "user_id", req.UserID, "error", err)
+			recipients, err := resolveRecipients(ctx, db, req)
+			if err != nil || len(recipients) == 0 {
+				logger.Error("resolve recipients failed", "user_id", req.UserID, "error", err)
 				status = "failed"
-				sendErr = "recipient not found"
+				sendErr = "no recipients"
 			} else {
 				subject, body := mail.Render(req)
-				if err := sender.Send(to, subject, body); err != nil {
-					logger.Error("smtp send failed", "to", to, "kind", req.Kind, "error", err)
-					status = "failed"
-					sendErr = err.Error()
-				} else {
+				for _, to := range recipients {
+					if err := sender.Send(to, subject, body); err != nil {
+						logger.Error("smtp send failed", "to", to, "kind", req.Kind, "error", err)
+						status = "failed"
+						sendErr = err.Error()
+						break
+					}
 					logger.Info("smtp sent", "to", to, "kind", req.Kind, "subject", subject)
 				}
 			}
@@ -116,13 +120,23 @@ func main() {
 	logger.Info("worker-notify stopped")
 }
 
-func resolveEmail(ctx context.Context, db *gorm.DB, userIDRaw string) (string, error) {
-	if db == nil {
-		return "", nil
+func resolveRecipients(ctx context.Context, db *gorm.DB, req contract.NotificationRequest) ([]string, error) {
+	if len(req.Recipients) > 0 {
+		out := make([]string, 0, len(req.Recipients))
+		for _, r := range req.Recipients {
+			e := strings.ToLower(strings.TrimSpace(r))
+			if e != "" {
+				out = append(out, e)
+			}
+		}
+		return out, nil
 	}
-	id, err := uuid.Parse(userIDRaw)
+	if db == nil {
+		return nil, nil
+	}
+	id, err := uuid.Parse(req.UserID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	var email string
 	err = db.WithContext(ctx).
@@ -131,5 +145,8 @@ func resolveEmail(ctx context.Context, db *gorm.DB, userIDRaw string) (string, e
 		Where("id = ?", id).
 		Limit(1).
 		Scan(&email).Error
-	return email, err
+	if err != nil || email == "" {
+		return nil, err
+	}
+	return []string{strings.ToLower(strings.TrimSpace(email))}, nil
 }

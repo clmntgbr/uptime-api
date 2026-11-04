@@ -42,7 +42,12 @@ func NewContainer() (*Container, error) {
 
 	return &Container{
 		users:             write.NewUserWriteRepository(db),
-		CreateWorkflow:    appworkflow.NewCreateWorkflowHandler(workflows, write.NewStateRepository(db), globals, write.NewExpiryPolicyRepository(db), outboxRepo, port.SystemClock{}),
+		CreateWorkflow: appworkflow.NewCreateWorkflowHandler(
+			workflows, write.NewStateRepository(db), globals,
+			write.NewExpiryPolicyRepository(db),
+			write.NewNotifySettingsRepository(db),
+			outboxRepo, port.SystemClock{},
+		),
 		SetGlobalVariable: appvariable.NewSetGlobalVariableHandler(globals, workflows),
 	}, nil
 }

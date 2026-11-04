@@ -56,6 +56,7 @@ func (h *WorkflowHandler) Create(c fiber.Ctx) error {
 
 	w, err := h.createHandler.Handle(c.Context(), workflowcmd.CreateWorkflowCommand{
 		UserID:         user.ID,
+		CreatorEmail:   user.Email,
 		Definition:     bound.Definition,
 		ExpiryPolicies: bound.ExpiryPolicies,
 	})

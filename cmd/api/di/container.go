@@ -14,10 +14,12 @@ import (
 	workflowcmd "go-api/internal/application/command/workflow"
 	cmdexpiry "go-api/internal/application/command/expiry"
 	cmdincident "go-api/internal/application/command/incident"
+	cmdnotify "go-api/internal/application/command/notifysettings"
 	querycall "go-api/internal/application/query/call"
 	querycontext "go-api/internal/application/query/contextpanel"
 	queryexpiry "go-api/internal/application/query/expiry"
 	queryincident "go-api/internal/application/query/incident"
+	querynotify "go-api/internal/application/query/notifysettings"
 	queryrun "go-api/internal/application/query/run"
 	querystatistics "go-api/internal/application/query/statistics"
 	queryuser "go-api/internal/application/query/user"
@@ -52,6 +54,7 @@ type Container struct {
 	ContextHandler         *httphandler.ContextHandler
 	ExpiryHandler          *httphandler.ExpiryHandler
 	IncidentHandler        *httphandler.IncidentHandler
+	NotifySettingsHandler  *httphandler.NotifySettingsHandler
 	VariableHandler        *httphandler.VariableHandler
 	KafkaProducer          *kafka.Producer
 }
@@ -140,7 +143,12 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		RealtimeHandler:   httphandler.NewRealtimeHandler(centrifugo.NewConnectionInfoCreator(env)),
 		StatisticsHandler: httphandler.NewStatisticsHandler(querystatistics.NewGetDashboardHandler(statisticsRepo)),
 		WorkflowHandler: httphandler.NewWorkflowHandler(
-			workflowcmd.NewCreateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, write.NewExpiryPolicyRepository(db), outboxRepo, clock),
+			workflowcmd.NewCreateWorkflowHandler(
+				workflowWriteRepo, stateRepo, globalVariableRepo,
+				write.NewExpiryPolicyRepository(db),
+				write.NewNotifySettingsRepository(db),
+				outboxRepo, clock,
+			),
 			workflowcmd.NewUpdateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo, clock),
 			queryworkflow.NewListWorkflowsHandler(workflowReadRepo),
 			queryworkflow.NewGetWorkflowHandler(workflowReadRepo),
@@ -176,6 +184,10 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 				write.NewIncidentEventRepository(db),
 				outboxRepo,
 			),
+		),
+		NotifySettingsHandler: httphandler.NewNotifySettingsHandler(
+			querynotify.NewGetHandler(workflowReadRepo, write.NewNotifySettingsRepository(db)),
+			cmdnotify.NewUpsertHandler(workflowReadRepo, write.NewNotifySettingsRepository(db)),
 		),
 		CallHandler: httphandler.NewCallHandler(
 			callcmd.NewCreateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),

@@ -16,9 +16,23 @@ func Render(req contract.NotificationRequest) (subject, htmlBody string) {
 		return renderTLS(req)
 	case strings.HasPrefix(req.Kind, "incident."):
 		return renderIncident(req)
+	case strings.HasPrefix(req.Kind, "run."):
+		return renderRun(req)
 	default:
 		return renderBase(req.Kind, req.Severity, req.Message, nil)
 	}
+}
+
+func renderRun(req contract.NotificationRequest) (string, string) {
+	status := fallback(req.Type, "finished")
+	subject := fmt.Sprintf("[Uptime] Run · %s", status)
+	rows := []kv{
+		{"Event", req.Kind},
+		{"Status", status},
+		{"Run", fallback(req.ItemID, "—")},
+		{"Workflow", req.WorkflowID},
+	}
+	return subject, wrap("Run finished", req.Message, rows)
 }
 
 func renderTLS(req contract.NotificationRequest) (string, string) {

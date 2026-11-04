@@ -8,6 +8,7 @@ import (
 	cmdexpiry "go-api/internal/application/command/expiry"
 	cmdincident "go-api/internal/application/command/incident"
 	"go-api/internal/application/command/schedule"
+	domainnotify "go-api/internal/domain/notifysettings"
 	"go-api/internal/domain/port"
 	"go-api/internal/infrastructure/config"
 	"go-api/internal/infrastructure/crypto"
@@ -27,6 +28,7 @@ type Container struct {
 	ScanAvailability  *cmdincident.ScanAvailabilityHandler
 	ScanReminders     *cmdincident.ScanRemindersHandler
 	ScanTLS           *cmdincident.ScanTLSHandler
+	NotifySettings    domainnotify.Repository
 	Notify            *kafka.NotificationPublisher
 	Producer          *kafka.Producer
 }
@@ -102,7 +104,8 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 		ExpiryScan: expiryScan,
 		ScanNoRun: scanNoRun, ScanAvailability: scanAvailability,
 		ScanReminders: scanReminders, ScanTLS: scanTLS,
-		Notify:   kafka.NewNotificationPublisher(producer),
-		Producer: producer,
+		NotifySettings: write.NewNotifySettingsRepository(db),
+		Notify:         kafka.NewNotificationPublisher(producer),
+		Producer:       producer,
 	}, nil
 }

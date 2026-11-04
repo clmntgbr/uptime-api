@@ -22,6 +22,8 @@ type NotificationRequest struct {
 	ExpiresAt     time.Time `json:"expires_at,omitempty"`
 	Severity      string    `json:"severity,omitempty"`
 	Message       string    `json:"message"`
+	// Recipients overrides the creator email when set (workflow notification settings).
+	Recipients []string `json:"recipients,omitempty"`
 }
 
 func (n NotificationRequest) Validate() error {

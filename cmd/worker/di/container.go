@@ -183,6 +183,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		expiryRecord,
 		expiryPolicyRepo,
 		incidentApply,
+		write.NewNotifySettingsRepository(db),
 		write.NewNestedTransaction(),
 		kafka.NewNotificationPublisher(producer),
 		claimer,

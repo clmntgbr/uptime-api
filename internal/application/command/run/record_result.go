@@ -12,10 +12,12 @@ import (
 	cmdincident "go-api/internal/application/command/incident"
 	"go-api/internal/application/command/schedule"
 	"go-api/internal/application/messaging"
+	"go-api/internal/application/notifyresolve"
 	"go-api/internal/contract"
 	"go-api/internal/domain/certificate"
 	domainexpiry "go-api/internal/domain/expiry"
 	domainincident "go-api/internal/domain/incident"
+	domainnotify "go-api/internal/domain/notifysettings"
 	"go-api/internal/domain/port"
 	domainrun "go-api/internal/domain/run"
 	domainschedule "go-api/internal/domain/schedule"
@@ -36,6 +38,7 @@ type RecordResultHandler struct {
 	expiry         *cmdexpiry.RecordObservationsHandler
 	expiryPolicies domainexpiry.PolicyRepository
 	incidents      *cmdincident.ApplySignalsHandler
+	notifySettings domainnotify.Repository
 	nestedTx       port.NestedTransaction
 	notify         notificationPublisher
 	processed      port.ProcessedEventRepository
@@ -51,6 +54,7 @@ func NewRecordResultHandler(
 	expiry *cmdexpiry.RecordObservationsHandler,
 	expiryPolicies domainexpiry.PolicyRepository,
 	incidents *cmdincident.ApplySignalsHandler,
+	notifySettings domainnotify.Repository,
 	nestedTx port.NestedTransaction,
 	notify notificationPublisher,
 	processed port.ProcessedEventRepository,
@@ -63,7 +67,8 @@ func NewRecordResultHandler(
 	return &RecordResultHandler{
 		states: states, workflows: workflows, runs: runs,
 		certificates: certificates, expiry: expiry, expiryPolicies: expiryPolicies,
-		incidents: incidents, nestedTx: nestedTx, notify: notify,
+		incidents: incidents, notifySettings: notifySettings,
+		nestedTx: nestedTx, notify: notify,
 		processed: processed, outbox: outbox, logger: logger,
 	}
 }
@@ -82,6 +87,8 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 	r, certs := toRun(result)
 	var notes []domainexpiry.NotificationRequest
 	var incidentNotes []cmdincident.NotifyIntent
+	var previousStatus string
+	var recorded bool
 
 	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
 		claimed, err := h.processed.MarkProcessed(txCtx, result.RunID, schedule.RecordRunHandlerName)
@@ -99,6 +106,7 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 			// The workflow was deleted while it ran: nothing to attach the run to.
 			return nil
 		}
+		previousStatus = state.LastStatus
 		if err := h.runs.Save(txCtx, r); err != nil {
 			return err
 		}
@@ -148,13 +156,18 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 				return err
 			}
 		}
+		recorded = true
 		return h.outbox.StoreEvents(txCtx, r.PullEvents())
 	})
 	if err != nil {
 		return messaging.Retryable(fmt.Errorf("record run %s: %w", result.RunID, err))
 	}
+	if !recorded {
+		return nil
+	}
 	h.publishExpiryNotes(ctx, notes)
 	h.publishIncidentNotes(ctx, incidentNotes)
+	h.publishRunNote(ctx, r, previousStatus)
 	return nil
 }
 
@@ -169,9 +182,42 @@ func (h *RecordResultHandler) publishIncidentNotes(ctx context.Context, notes []
 			ItemID: n.IncidentID.String(), IncidentID: n.IncidentID.String(),
 			Severity: string(n.Severity), Type: string(n.IncidentKind), Message: n.Message,
 		}
+		req, ok := notifyresolve.PrepareRequest(
+			ctx, h.notifySettings, n.UserID, n.WorkflowID,
+			notifyresolve.FamilyIncident, req, h.logger,
+		)
+		if !ok {
+			continue
+		}
 		if err := h.notify.PublishRequest(ctx, req); err != nil {
 			h.logger.Error("publish incident notification failed", "incident_id", n.IncidentID, "error", err)
 		}
+	}
+}
+
+func (h *RecordResultHandler) publishRunNote(ctx context.Context, r *domainrun.Run, previousStatus string) {
+	if h.notify == nil || h.notifySettings == nil {
+		return
+	}
+	settings, ok, err := notifyresolve.ShouldNotifyRun(
+		ctx, h.notifySettings, r.UserID, r.WorkflowID, string(r.Status), previousStatus,
+	)
+	if err != nil {
+		h.logger.Error("run notification settings failed", "run_id", r.ID, "error", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	req := contract.NotificationRequest{
+		V: contract.NotificationRequestV1, Kind: "run.finished",
+		UserID: r.UserID.String(), WorkflowID: r.WorkflowID.String(),
+		ItemID: r.ID.String(), Type: string(r.Status),
+		Message: fmt.Sprintf("Workflow run finished with status %s", r.Status),
+		Recipients: append([]string(nil), settings.Emails...),
+	}
+	if err := h.notify.PublishRequest(ctx, req); err != nil {
+		h.logger.Error("publish run notification failed", "run_id", r.ID, "error", err)
 	}
 }
 
@@ -313,7 +359,15 @@ func (h *RecordResultHandler) publishExpiryNotes(ctx context.Context, notes []do
 	if h.notify == nil || len(notes) == 0 {
 		return
 	}
-	for _, req := range toContractNotifications(notes) {
+	for _, n := range notes {
+		req := toContractNotifications([]domainexpiry.NotificationRequest{n})[0]
+		req, ok := notifyresolve.PrepareRequest(
+			ctx, h.notifySettings, n.UserID, n.WorkflowID,
+			notifyresolve.FamilyTLS, req, h.logger,
+		)
+		if !ok {
+			continue
+		}
 		if err := h.notify.PublishRequest(ctx, req); err != nil {
 			h.logger.Error("publish expiry notification failed", "workflow_id", req.WorkflowID, "error", err)
 		}

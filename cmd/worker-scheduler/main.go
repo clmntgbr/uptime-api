@@ -13,6 +13,7 @@ import (
 
 	"go-api/cmd/worker-scheduler/di"
 	cmdincident "go-api/internal/application/command/incident"
+	"go-api/internal/application/notifyresolve"
 	"go-api/internal/contract"
 	"go-api/internal/infrastructure/config"
 	"go-api/internal/infrastructure/observability"
@@ -220,6 +221,13 @@ func (s *scheduler) publishIncidentNotes(ctx context.Context, notes []cmdinciden
 			ItemID: n.IncidentID.String(), IncidentID: n.IncidentID.String(),
 			Severity: string(n.Severity), Type: string(n.IncidentKind), Message: n.Message,
 		}
+		req, ok := notifyresolve.PrepareRequest(
+			ctx, s.container.NotifySettings, n.UserID, n.WorkflowID,
+			notifyresolve.FamilyIncident, req, s.logger,
+		)
+		if !ok {
+			continue
+		}
 		if err := s.container.Notify.PublishRequest(ctx, req); err != nil {
 			s.logger.Error("publish incident notification failed", "incident_id", n.IncidentID, "error", err)
 		}
@@ -232,6 +240,7 @@ func (s *scheduler) scanExpiry(ctx context.Context) {
 		s.logger.Error("expiry scan failed", "error", err)
 		return
 	}
+	sent := 0
 	for _, n := range notes {
 		req := contract.NotificationRequest{
 			V: contract.NotificationRequestV1, Kind: n.Kind, Type: string(n.Type),
@@ -240,12 +249,21 @@ func (s *scheduler) scanExpiry(ctx context.Context) {
 			DaysLeft: n.DaysLeft, ThresholdDays: n.ThresholdDays,
 			ExpiresAt: n.ExpiresAt, Severity: string(n.Severity), Message: n.Message,
 		}
+		req, ok := notifyresolve.PrepareRequest(
+			ctx, s.container.NotifySettings, n.UserID, n.WorkflowID,
+			notifyresolve.FamilyTLS, req, s.logger,
+		)
+		if !ok {
+			continue
+		}
 		if err := s.container.Notify.PublishRequest(ctx, req); err != nil {
 			s.logger.Error("publish expiry notification failed", "workflow_id", n.WorkflowID, "error", err)
+			continue
 		}
+		sent++
 	}
-	if len(notes) > 0 {
-		s.logger.Info("expiry scan", "notifications", len(notes))
+	if sent > 0 {
+		s.logger.Info("expiry scan", "notifications", sent)
 	}
 }
 

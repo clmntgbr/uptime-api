@@ -6,6 +6,7 @@ import (
 	"time"
 
 	domainexpiry "go-api/internal/domain/expiry"
+	domainnotify "go-api/internal/domain/notifysettings"
 	"go-api/internal/domain/port"
 	"go-api/internal/domain/schedule"
 	"go-api/internal/domain/variable"
@@ -23,17 +24,19 @@ type ExpiryPolicyInput struct {
 
 type CreateWorkflowCommand struct {
 	UserID         uuid.UUID
+	CreatorEmail   string
 	Definition     domainworkflow.Definition
 	ExpiryPolicies []ExpiryPolicyInput
 }
 
 type CreateWorkflowHandler struct {
-	repo      domainworkflow.WriteRepository
-	states    schedule.Repository
-	variables variable.GlobalRepository
-	policies  domainexpiry.PolicyRepository
-	outbox    port.OutboxRepository
-	clock     port.Clock
+	repo           domainworkflow.WriteRepository
+	states         schedule.Repository
+	variables      variable.GlobalRepository
+	policies       domainexpiry.PolicyRepository
+	notifySettings domainnotify.Repository
+	outbox         port.OutboxRepository
+	clock          port.Clock
 }
 
 func NewCreateWorkflowHandler(
@@ -41,12 +44,14 @@ func NewCreateWorkflowHandler(
 	states schedule.Repository,
 	variables variable.GlobalRepository,
 	policies domainexpiry.PolicyRepository,
+	notifySettings domainnotify.Repository,
 	outbox port.OutboxRepository,
 	clock port.Clock,
 ) *CreateWorkflowHandler {
 	return &CreateWorkflowHandler{
 		repo: repo, states: states, variables: variables,
-		policies: policies, outbox: outbox, clock: clock,
+		policies: policies, notifySettings: notifySettings,
+		outbox: outbox, clock: clock,
 	}
 }
 
@@ -96,6 +101,13 @@ func (h *CreateWorkflowHandler) Handle(ctx context.Context, cmd CreateWorkflowCo
 			p.UpdatedAt = now
 			if err := h.policies.Upsert(txCtx, p); err != nil {
 				return fmt.Errorf("save expiry policy %s: %w", p.Type, err)
+			}
+		}
+		if h.notifySettings != nil {
+			ns := domainnotify.DefaultSettings(cmd.UserID, w.ID, cmd.CreatorEmail)
+			ns.UpdatedAt = now
+			if err := h.notifySettings.Upsert(txCtx, ns); err != nil {
+				return fmt.Errorf("save notification settings: %w", err)
 			}
 		}
 		return h.outbox.StoreEvents(txCtx, w.PullEvents())
