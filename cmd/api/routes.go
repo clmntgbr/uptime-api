@@ -60,6 +60,12 @@ func setupWorkflowRoutes(api fiber.Router, container *di.Container) {
 	api.Put("/workflows/:id/expiry-policies/:type", container.ExpiryHandler.UpsertPolicy)
 	api.Get("/workflows/:id/expiry-items", container.ExpiryHandler.ListItems)
 
+	api.Get("/workflows/:id/incident-policies", container.IncidentHandler.ListPolicies)
+	api.Put("/workflows/:id/incident-policies/:kind", container.IncidentHandler.UpsertPolicy)
+	api.Get("/workflows/:id/incidents", container.IncidentHandler.List)
+	api.Get("/incidents/:id", container.IncidentHandler.GetByID)
+	api.Post("/incidents/:id/acknowledge", container.IncidentHandler.Acknowledge)
+
 	api.Get("/workflows/:id/runs", container.RunHandler.List)
 	api.Post("/workflows/:id/runs", container.WorkflowHandler.Run)
 	api.Get("/workflows/:id/runs/:runId", container.RunHandler.GetByID)

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	cmdexpiry "go-api/internal/application/command/expiry"
+	cmdincident "go-api/internal/application/command/incident"
 	commandrun "go-api/internal/application/command/run"
 	"go-api/internal/application/event/dedup"
 	eventrun "go-api/internal/application/event/run"
@@ -150,12 +151,21 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		write.NewExpiryItemRepository(db),
 		expiryEvaluate,
 	)
+	incidentApply := cmdincident.NewApplySignalsHandler(
+		write.NewIncidentPolicyRepository(db),
+		write.NewSignalStateRepository(db),
+		write.NewIncidentRepository(db),
+		write.NewIncidentEventRepository(db),
+		outboxRepo,
+	)
 	recordResult := commandrun.NewRecordResultHandler(
 		stateRepo,
 		write.NewWorkflowWriteRepository(db, cipher),
 		runWriteRepo,
 		write.NewCertificateRepository(db),
 		expiryRecord,
+		incidentApply,
+		write.NewNestedTransaction(),
 		kafka.NewNotificationPublisher(producer),
 		claimer,
 		outboxRepo,
