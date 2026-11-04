@@ -15,6 +15,7 @@ type NotificationRequest struct {
 	UserID        string    `json:"user_id"`
 	WorkflowID    string    `json:"workflow_id"`
 	ItemID        string    `json:"item_id,omitempty"`
+	IncidentID    string    `json:"incident_id,omitempty"`
 	Subject       string    `json:"subject,omitempty"`
 	DaysLeft      int       `json:"days_left,omitempty"`
 	ThresholdDays int       `json:"threshold_days,omitempty"`

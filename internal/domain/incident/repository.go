@@ -35,3 +35,21 @@ type EventRepository interface {
 	Append(ctx context.Context, e Event) error
 	ListByIncident(ctx context.Context, incidentID uuid.UUID) ([]Event, error)
 }
+
+// EnabledWorkflow is a scheduler scan row for no_run evaluation.
+type EnabledWorkflow struct {
+	UserID       uuid.UUID
+	WorkflowID   uuid.UUID
+	Interval     time.Duration
+	LastRunAt    *time.Time
+	CreatedAt    time.Time
+}
+
+// ScanRepository provides read models for observation-kind scheduler passes.
+type ScanRepository interface {
+	ListEnabledIntervalWorkflows(ctx context.Context) ([]EnabledWorkflow, error)
+	ListAvailabilityEnabledWorkflows(ctx context.Context) ([]EnabledWorkflow, error)
+	// RunSuccessRatio24h is success / (success+failed+error) over the last 24h.
+	// total==0 means no finished runs in the window.
+	RunSuccessRatio24h(ctx context.Context, workflowID uuid.UUID, now time.Time) (ratio float64, total int64, err error)
+}

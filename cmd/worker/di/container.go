@@ -8,10 +8,12 @@ import (
 	cmdincident "go-api/internal/application/command/incident"
 	commandrun "go-api/internal/application/command/run"
 	"go-api/internal/application/event/dedup"
+	eventincident "go-api/internal/application/event/incident"
 	eventrun "go-api/internal/application/event/run"
 	eventuser "go-api/internal/application/event/user"
 	eventworkflow "go-api/internal/application/event/workflow"
 	"go-api/internal/application/registry"
+	domainincident "go-api/internal/domain/incident"
 	domainrun "go-api/internal/domain/run"
 	domainuser "go-api/internal/domain/user"
 	domainworkflow "go-api/internal/domain/workflow"
@@ -133,6 +135,20 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		publishRunRealtime.OnRecorded,
 	))
 
+	publishIncidentRealtime := eventincident.NewPublishRealtimeHandler(realtimePublisher)
+	reg.Register(domainincident.EventTypeOpened, dedup.With(
+		dedupRepo, "publish_incident_opened_realtime", publishIncidentRealtime.OnOpened,
+	))
+	reg.Register(domainincident.EventTypeAcknowledged, dedup.With(
+		dedupRepo, "publish_incident_acknowledged_realtime", publishIncidentRealtime.OnAcknowledged,
+	))
+	reg.Register(domainincident.EventTypeResolved, dedup.With(
+		dedupRepo, "publish_incident_resolved_realtime", publishIncidentRealtime.OnResolved,
+	))
+	reg.Register(domainincident.EventTypeReopened, dedup.With(
+		dedupRepo, "publish_incident_reopened_realtime", publishIncidentRealtime.OnReopened,
+	))
+
 	eventsConsumer := kafka.NewConsumer(
 		env.Kafka,
 		kafka.DefaultConsumerOptions(env.WorkerEventsGroup, kafka.TopicEvents, env.WorkerConcurrency, true),
@@ -143,8 +159,9 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	stateRepo := write.NewStateRepository(db)
 	runWriteRepo := write.NewRunWriteRepository(db)
 	claimer := processed.NewTxClaimer(db)
+	expiryPolicyRepo := write.NewExpiryPolicyRepository(db)
 	expiryEvaluate := cmdexpiry.NewEvaluateHandler(
-		write.NewExpiryPolicyRepository(db),
+		expiryPolicyRepo,
 		write.NewExpiryAlertRepository(db),
 	)
 	expiryRecord := cmdexpiry.NewRecordObservationsHandler(
@@ -164,6 +181,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		runWriteRepo,
 		write.NewCertificateRepository(db),
 		expiryRecord,
+		expiryPolicyRepo,
 		incidentApply,
 		write.NewNestedTransaction(),
 		kafka.NewNotificationPublisher(producer),

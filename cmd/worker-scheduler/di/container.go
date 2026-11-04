@@ -6,6 +6,7 @@ import (
 	"time"
 
 	cmdexpiry "go-api/internal/application/command/expiry"
+	cmdincident "go-api/internal/application/command/incident"
 	"go-api/internal/application/command/schedule"
 	"go-api/internal/domain/port"
 	"go-api/internal/infrastructure/config"
@@ -19,11 +20,15 @@ import (
 )
 
 type Container struct {
-	Dispatch   *schedule.DispatchDueRunsHandler
-	Maintain   *schedule.MaintainResultsHandler
-	ExpiryScan *cmdexpiry.ScanHandler
-	Notify     *kafka.NotificationPublisher
-	Producer   *kafka.Producer
+	Dispatch          *schedule.DispatchDueRunsHandler
+	Maintain          *schedule.MaintainResultsHandler
+	ExpiryScan        *cmdexpiry.ScanHandler
+	ScanNoRun         *cmdincident.ScanNoRunHandler
+	ScanAvailability  *cmdincident.ScanAvailabilityHandler
+	ScanReminders     *cmdincident.ScanRemindersHandler
+	ScanTLS           *cmdincident.ScanTLSHandler
+	Notify            *kafka.NotificationPublisher
+	Producer          *kafka.Producer
 }
 
 func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger) (*Container, error) {
@@ -60,19 +65,45 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 		time.Duration(env.RetentionDays)*24*time.Hour,
 		logger,
 	)
+	expiryPolicyRepo := write.NewExpiryPolicyRepository(db)
+	expiryItemRepo := write.NewExpiryItemRepository(db)
 	expiryEvaluate := cmdexpiry.NewEvaluateHandler(
-		write.NewExpiryPolicyRepository(db),
+		expiryPolicyRepo,
 		write.NewExpiryAlertRepository(db),
 	)
 	expiryScan := cmdexpiry.NewScanHandler(
-		write.NewExpiryItemRepository(db),
+		expiryItemRepo,
 		expiryEvaluate,
 		logger,
 	)
+
+	stateRepo := write.NewStateRepository(db)
+	outboxRepo := outbox.NewRepository(db)
+	incidentApply := cmdincident.NewApplySignalsHandler(
+		write.NewIncidentPolicyRepository(db),
+		write.NewSignalStateRepository(db),
+		write.NewIncidentRepository(db),
+		write.NewIncidentEventRepository(db),
+		outboxRepo,
+	)
+	scanRepo := write.NewIncidentScanRepository(db)
+	scanNoRun := cmdincident.NewScanNoRunHandler(stateRepo, scanRepo, incidentApply, logger)
+	scanAvailability := cmdincident.NewScanAvailabilityHandler(stateRepo, scanRepo, incidentApply, logger)
+	scanReminders := cmdincident.NewScanRemindersHandler(
+		stateRepo,
+		write.NewIncidentRepository(db),
+		write.NewIncidentEventRepository(db),
+		outboxRepo,
+		logger,
+	)
+	scanTLS := cmdincident.NewScanTLSHandler(stateRepo, expiryItemRepo, expiryPolicyRepo, incidentApply, logger)
+
 	return &Container{
 		Dispatch: dispatch, Maintain: maintain,
 		ExpiryScan: expiryScan,
-		Notify:     kafka.NewNotificationPublisher(producer),
-		Producer:   producer,
+		ScanNoRun: scanNoRun, ScanAvailability: scanAvailability,
+		ScanReminders: scanReminders, ScanTLS: scanTLS,
+		Notify:   kafka.NewNotificationPublisher(producer),
+		Producer: producer,
 	}, nil
 }

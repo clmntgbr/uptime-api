@@ -67,6 +67,19 @@ func (h *ApplySignalsHandler) Handle(ctx context.Context, cmd ApplySignalsComman
 		if !policy.Enabled {
 			continue
 		}
+		if sig.Kind == domainincident.KindChainBroken && sig.Failing {
+			skip, err := h.producerIncidentOpen(ctx, cmd.WorkflowID, sig.Cause)
+			if err != nil {
+				return result, err
+			}
+			if skip {
+				continue
+			}
+		}
+		severity := policy.Severity
+		if sig.Severity != nil {
+			severity = *sig.Severity
+		}
 		fp := domainincident.Fingerprint(cmd.WorkflowID, sig.Kind, sig.Subject)
 		state, err := h.states.LockGetOrCreate(ctx, cmd.WorkflowID, fp)
 		if err != nil {
@@ -98,7 +111,7 @@ func (h *ApplySignalsHandler) Handle(ctx context.Context, cmd ApplySignalsComman
 				return result, err
 			}
 			if resolved != nil && domainincident.ShouldReopen(resolved.ResolvedAt, now) {
-				resolved.ApplyReopen(now, sig.Cause, sig.RunID, policy.Severity)
+				resolved.ApplyReopen(now, sig.Cause, sig.RunID, severity)
 				if err := h.incidents.Update(ctx, *resolved); err != nil {
 					return result, err
 				}
@@ -116,7 +129,7 @@ func (h *ApplySignalsHandler) Handle(ctx context.Context, cmd ApplySignalsComman
 			inc := domainincident.Incident{
 				ID: uuid.New(), UserID: cmd.UserID, WorkflowID: cmd.WorkflowID,
 				Kind: sig.Kind, CallID: sig.CallID, Fingerprint: fp,
-				Severity: policy.Severity, State: domainincident.StateOpen,
+				Severity: severity, State: domainincident.StateOpen,
 				Cause: sig.Cause, OpenedAt: now, OpenedByRunID: sig.RunID,
 				LastFailureRunID: sig.RunID,
 			}
@@ -132,7 +145,7 @@ func (h *ApplySignalsHandler) Handle(ctx context.Context, cmd ApplySignalsComman
 		case sig.Failing && active != nil:
 			active.Cause = sig.Cause
 			active.LastFailureRunID = sig.RunID
-			active.Severity = policy.Severity
+			active.Severity = severity
 			if err := h.incidents.Update(ctx, *active); err != nil {
 				return result, err
 			}
@@ -177,6 +190,37 @@ func (h *ApplySignalsHandler) resolvePolicy(ctx context.Context, userID, workflo
 		return domainincident.DefaultPolicy(userID, workflowID, kind), nil
 	}
 	return *p, nil
+}
+
+// producerIncidentOpen is true when a chain_broken cause points at a producer
+// call that already has an active call_failed incident.
+func (h *ApplySignalsHandler) producerIncidentOpen(ctx context.Context, workflowID uuid.UUID, cause map[string]any) (bool, error) {
+	if cause == nil {
+		return false, nil
+	}
+	raw, ok := cause["producerCallId"]
+	if !ok || raw == nil {
+		return false, nil
+	}
+	var producerID uuid.UUID
+	switch v := raw.(type) {
+	case string:
+		id, err := uuid.Parse(v)
+		if err != nil {
+			return false, nil
+		}
+		producerID = id
+	case uuid.UUID:
+		producerID = v
+	default:
+		return false, nil
+	}
+	fp := domainincident.Fingerprint(workflowID, domainincident.KindCallFailed, domainincident.CallSubject(producerID))
+	active, err := h.incidents.FindActive(ctx, workflowID, fp)
+	if err != nil {
+		return false, err
+	}
+	return active != nil, nil
 }
 
 func (h *ApplySignalsHandler) appendEvent(ctx context.Context, incidentID uuid.UUID, typ domainincident.EventType, runID *uuid.UUID, payload map[string]any, at time.Time) error {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	cmdexpiry "go-api/internal/application/command/expiry"
@@ -28,17 +29,18 @@ type notificationPublisher interface {
 }
 
 type RecordResultHandler struct {
-	states       domainschedule.Repository
-	workflows    domainworkflow.WriteRepository
-	runs         domainrun.WriteRepository
-	certificates certificate.Repository
-	expiry       *cmdexpiry.RecordObservationsHandler
-	incidents    *cmdincident.ApplySignalsHandler
-	nestedTx     port.NestedTransaction
-	notify       notificationPublisher
-	processed    port.ProcessedEventRepository
-	outbox       port.OutboxRepository
-	logger       *slog.Logger
+	states         domainschedule.Repository
+	workflows      domainworkflow.WriteRepository
+	runs           domainrun.WriteRepository
+	certificates   certificate.Repository
+	expiry         *cmdexpiry.RecordObservationsHandler
+	expiryPolicies domainexpiry.PolicyRepository
+	incidents      *cmdincident.ApplySignalsHandler
+	nestedTx       port.NestedTransaction
+	notify         notificationPublisher
+	processed      port.ProcessedEventRepository
+	outbox         port.OutboxRepository
+	logger         *slog.Logger
 }
 
 func NewRecordResultHandler(
@@ -47,6 +49,7 @@ func NewRecordResultHandler(
 	runs domainrun.WriteRepository,
 	certificates certificate.Repository,
 	expiry *cmdexpiry.RecordObservationsHandler,
+	expiryPolicies domainexpiry.PolicyRepository,
 	incidents *cmdincident.ApplySignalsHandler,
 	nestedTx port.NestedTransaction,
 	notify notificationPublisher,
@@ -59,8 +62,8 @@ func NewRecordResultHandler(
 	}
 	return &RecordResultHandler{
 		states: states, workflows: workflows, runs: runs,
-		certificates: certificates, expiry: expiry, incidents: incidents,
-		nestedTx: nestedTx, notify: notify,
+		certificates: certificates, expiry: expiry, expiryPolicies: expiryPolicies,
+		incidents: incidents, nestedTx: nestedTx, notify: notify,
 		processed: processed, outbox: outbox, logger: logger,
 	}
 }
@@ -114,9 +117,10 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 			if err := h.nestedTx.SavePoint(txCtx, sp); err != nil {
 				h.logger.Error("incident savepoint failed", "run_id", r.ID, "error", err)
 			} else {
+				sigs := signalsFromRun(r, result)
+				sigs = append(sigs, h.tlsSignals(txCtx, r.UserID, r.WorkflowID, observationsFromResult(result))...)
 				applied, applyErr := h.incidents.Handle(txCtx, cmdincident.ApplySignalsCommand{
-					UserID: r.UserID, WorkflowID: r.WorkflowID,
-					Signals: signalsFromRun(r, result),
+					UserID: r.UserID, WorkflowID: r.WorkflowID, Signals: sigs,
 				})
 				if applyErr != nil {
 					h.logger.Error("incident evaluation failed", "run_id", r.ID, "error", applyErr)
@@ -160,8 +164,8 @@ func (h *RecordResultHandler) publishIncidentNotes(ctx context.Context, notes []
 		req := contract.NotificationRequest{
 			V: contract.NotificationRequestV1, Kind: n.Kind,
 			UserID: n.UserID.String(), WorkflowID: n.WorkflowID.String(),
-			ItemID: n.IncidentID.String(), Severity: string(n.Severity),
-			Type: string(n.IncidentKind), Message: n.Message,
+			ItemID: n.IncidentID.String(), IncidentID: n.IncidentID.String(),
+			Severity: string(n.Severity), Type: string(n.IncidentKind), Message: n.Message,
 		}
 		if err := h.notify.PublishRequest(ctx, req); err != nil {
 			h.logger.Error("publish incident notification failed", "incident_id", n.IncidentID, "error", err)
@@ -169,13 +173,40 @@ func (h *RecordResultHandler) publishIncidentNotes(ctx context.Context, notes []
 	}
 }
 
-// signalsFromRun builds incident signals for run-based kinds (phase 1 core).
+func (h *RecordResultHandler) tlsSignals(
+	ctx context.Context, userID, workflowID uuid.UUID, observations []domainexpiry.Observation,
+) []domainincident.Signal {
+	if h.expiryPolicies == nil || len(observations) == 0 {
+		return nil
+	}
+	var out []domainincident.Signal
+	for _, obs := range observations {
+		policy, err := cmdexpiry.ResolvePolicy(ctx, h.expiryPolicies, userID, workflowID, obs.Type)
+		if err != nil {
+			h.logger.Error("tls incident policy resolve failed", "error", err)
+			continue
+		}
+		daysLeft := domainexpiry.DaysLeft(obs.ExpiresAt, obs.ObservedAt)
+		if sig := domainincident.TLSSignal(obs.Subject, daysLeft, policy.ThresholdsDays, obs.ObservedAt); sig != nil {
+			out = append(out, *sig)
+		}
+	}
+	return out
+}
+
+// signalsFromRun builds incident signals for run-based kinds.
 func signalsFromRun(r *domainrun.Run, result contract.Result) []domainincident.Signal {
 	var out []domainincident.Signal
 	runID := r.ID
 	obs := r.StartedAt
 	if obs.IsZero() {
 		obs = r.FinishedAt
+	}
+	callsByName := map[string]uuid.UUID{}
+	for _, c := range r.Calls {
+		if c.CallID != nil && c.Name != "" {
+			callsByName[c.Name] = *c.CallID
+		}
 	}
 	for _, c := range r.Calls {
 		if c.CallID == nil {
@@ -185,8 +216,18 @@ func signalsFromRun(r *domainrun.Run, result contract.Result) []domainincident.S
 		subject := domainincident.CallSubject(callID)
 		switch c.Status {
 		case domainrun.CallSkipped:
+			if strings.HasPrefix(c.Reason, "missing variable") {
+				cause := map[string]any{"status": string(c.Status), "reason": c.Reason}
+				if producer := producerCallIDFromReason(c.Reason, callsByName); producer != nil {
+					cause["producerCallId"] = producer.String()
+				}
+				out = append(out, domainincident.Signal{
+					Kind: domainincident.KindChainBroken, Failing: true,
+					CallID: &callID, Subject: subject, RunID: &runID, ObservedAt: obs,
+					Cause: cause,
+				})
+			}
 			// Dependency skips are neither fail nor success for call_failed/call_slow.
-			// chain_broken is handled separately later.
 			continue
 		case domainrun.CallFailed, domainrun.CallError:
 			out = append(out, domainincident.Signal{
@@ -194,9 +235,17 @@ func signalsFromRun(r *domainrun.Run, result contract.Result) []domainincident.S
 				CallID: &callID, Subject: subject, RunID: &runID, ObservedAt: obs,
 				Cause: map[string]any{"status": string(c.Status), "reason": c.Reason},
 			})
+			out = append(out, domainincident.Signal{
+				Kind: domainincident.KindChainBroken, Failing: false,
+				CallID: &callID, Subject: subject, RunID: &runID, ObservedAt: obs,
+			})
 		case domainrun.CallSuccess:
 			out = append(out, domainincident.Signal{
 				Kind: domainincident.KindCallFailed, Failing: false,
+				CallID: &callID, Subject: subject, RunID: &runID, ObservedAt: obs,
+			})
+			out = append(out, domainincident.Signal{
+				Kind: domainincident.KindChainBroken, Failing: false,
 				CallID: &callID, Subject: subject, RunID: &runID, ObservedAt: obs,
 			})
 		}
@@ -236,6 +285,25 @@ func signalsFromRun(r *domainrun.Run, result contract.Result) []domainincident.S
 	}
 	_ = result
 	return out
+}
+
+func producerCallIDFromReason(reason string, callsByName map[string]uuid.UUID) *uuid.UUID {
+	const marker = `not extracted by "`
+	idx := strings.Index(reason, marker)
+	if idx < 0 {
+		return nil
+	}
+	rest := reason[idx+len(marker):]
+	end := strings.IndexByte(rest, '"')
+	if end <= 0 {
+		return nil
+	}
+	name := rest[:end]
+	id, ok := callsByName[name]
+	if !ok {
+		return nil
+	}
+	return &id
 }
 
 func (h *RecordResultHandler) publishExpiryNotes(ctx context.Context, notes []domainexpiry.NotificationRequest) {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go-api/cmd/worker-scheduler/di"
+	cmdincident "go-api/internal/application/command/incident"
 	"go-api/internal/contract"
 	"go-api/internal/infrastructure/config"
 	"go-api/internal/infrastructure/observability"
@@ -154,14 +155,75 @@ func (s *scheduler) tick(ctx context.Context, at time.Time) {
 			"timed_out", stats.TimedOut, "publish_failed", stats.PublishFailed, "prepare_failed", stats.PrepareFailed, "lag_ms", stats.Lag.Milliseconds())
 	}
 
+	s.scanIncidents(ctx, stats.Lag)
+
 	if at.Minute() == 7 {
 		s.purgeExpiredRuns(ctx)
 	}
 	// Daily expiry threshold scan at 08:00 UTC.
 	if at.Hour() == 8 && at.Minute() == 0 {
 		s.scanExpiry(ctx)
+		s.scanTLS(ctx)
 	}
 	s.heartbeat(ctx)
+}
+
+func (s *scheduler) scanIncidents(ctx context.Context, lag time.Duration) {
+	if s.container.ScanNoRun != nil {
+		res, err := s.container.ScanNoRun.Handle(ctx, lag)
+		if err != nil {
+			s.logger.Error("no_run scan failed", "error", err)
+		} else {
+			s.publishIncidentNotes(ctx, res.Notifications)
+		}
+	}
+	if atMinute := time.Now().UTC().Minute(); atMinute%5 == 0 {
+		if s.container.ScanAvailability != nil {
+			res, err := s.container.ScanAvailability.Handle(ctx)
+			if err != nil {
+				s.logger.Error("availability scan failed", "error", err)
+			} else {
+				s.publishIncidentNotes(ctx, res.Notifications)
+			}
+		}
+	}
+	if s.container.ScanReminders != nil {
+		res, err := s.container.ScanReminders.Handle(ctx)
+		if err != nil {
+			s.logger.Error("reminder scan failed", "error", err)
+		} else {
+			s.publishIncidentNotes(ctx, res.Notifications)
+		}
+	}
+}
+
+func (s *scheduler) scanTLS(ctx context.Context) {
+	if s.container.ScanTLS == nil {
+		return
+	}
+	res, err := s.container.ScanTLS.Handle(ctx)
+	if err != nil {
+		s.logger.Error("tls incident scan failed", "error", err)
+		return
+	}
+	s.publishIncidentNotes(ctx, res.Notifications)
+}
+
+func (s *scheduler) publishIncidentNotes(ctx context.Context, notes []cmdincident.NotifyIntent) {
+	if s.container.Notify == nil || len(notes) == 0 {
+		return
+	}
+	for _, n := range notes {
+		req := contract.NotificationRequest{
+			V: contract.NotificationRequestV1, Kind: n.Kind,
+			UserID: n.UserID.String(), WorkflowID: n.WorkflowID.String(),
+			ItemID: n.IncidentID.String(), IncidentID: n.IncidentID.String(),
+			Severity: string(n.Severity), Type: string(n.IncidentKind), Message: n.Message,
+		}
+		if err := s.container.Notify.PublishRequest(ctx, req); err != nil {
+			s.logger.Error("publish incident notification failed", "incident_id", n.IncidentID, "error", err)
+		}
+	}
 }
 
 func (s *scheduler) scanExpiry(ctx context.Context) {

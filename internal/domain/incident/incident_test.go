@@ -96,3 +96,46 @@ func TestValidatePolicyRecovery(t *testing.T) {
 		t.Fatal("recovery < threshold must fail")
 	}
 }
+
+func TestTLSSignal(t *testing.T) {
+	now := time.Now().UTC()
+	thresholds := []int{30, 14, 7}
+	if sig := TLSSignal("a.com:443", 40, thresholds, now); sig == nil || sig.Failing {
+		t.Fatalf("above all thresholds must be healthy: %+v", sig)
+	}
+	if sig := TLSSignal("a.com:443", 10, thresholds, now); sig != nil {
+		t.Fatalf("between last and higher must be nil: %+v", sig)
+	}
+	if sig := TLSSignal("a.com:443", 5, thresholds, now); sig == nil || !sig.Failing {
+		t.Fatalf("at/below last must fail: %+v", sig)
+	}
+	if sig := TLSSignal("a.com:443", -1, thresholds, now); sig == nil || !sig.Failing ||
+		sig.Severity == nil || *sig.Severity != SeverityCritical {
+		t.Fatalf("expired must be critical failing: %+v", sig)
+	}
+}
+
+func TestAvailabilitySignalHysteresis(t *testing.T) {
+	now := time.Now().UTC()
+	if sig := AvailabilitySignal(98.0, 99.0, 99.5, now); sig == nil || !sig.Failing {
+		t.Fatal("below threshold must fail")
+	}
+	if sig := AvailabilitySignal(99.2, 99.0, 99.5, now); sig != nil {
+		t.Fatal("between threshold and recovery must be nil")
+	}
+	if sig := AvailabilitySignal(99.6, 99.0, 99.5, now); sig == nil || sig.Failing {
+		t.Fatal("at recovery must be healthy")
+	}
+}
+
+func TestShouldSuppressNoRun(t *testing.T) {
+	if ShouldSuppressNoRun(4, 10, NoRunSuppressMinCount, NoRunSuppressMinRatio) {
+		t.Fatal("below min count must not suppress")
+	}
+	if !ShouldSuppressNoRun(5, 10, NoRunSuppressMinCount, NoRunSuppressMinRatio) {
+		t.Fatal("5 of 10 must suppress")
+	}
+	if ShouldSuppressNoRun(5, 20, NoRunSuppressMinCount, NoRunSuppressMinRatio) {
+		t.Fatal("5 of 20 is under 50%")
+	}
+}

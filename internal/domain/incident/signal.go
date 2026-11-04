@@ -8,13 +8,15 @@ import (
 
 // Signal is one failing or healthy observation for a fingerprint.
 type Signal struct {
-	Kind      Kind
-	Failing   bool
-	CallID    *uuid.UUID
-	Subject   string // call id string or tls host:port; used in fingerprint
-	Cause     map[string]any
-	RunID     *uuid.UUID
+	Kind       Kind
+	Failing    bool
+	CallID     *uuid.UUID
+	Subject    string // call id string or tls host:port; used in fingerprint
+	Cause      map[string]any
+	RunID      *uuid.UUID
 	ObservedAt time.Time // run started_at or observation time
+	// Severity overrides the policy severity when non-nil (e.g. tls expired → critical).
+	Severity *Severity
 }
 
 type SignalState struct {
