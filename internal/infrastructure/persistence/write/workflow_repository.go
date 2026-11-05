@@ -55,6 +55,7 @@ func (r *workflowWriteRepository) Update(ctx context.Context, w *domainworkflow.
 			"run_at":           model.RunAt,
 			"timeout_ms":       model.TimeoutMS,
 			"enabled":          model.Enabled,
+			"enabled_at":       model.EnabledAt,
 			"updated_at":       model.UpdatedAt,
 		}).Error
 		if err != nil {
@@ -291,6 +292,7 @@ func workflowDomainFromModel(m WorkflowModel, statics []domainworkflow.StaticVar
 		ScheduleType: domainworkflow.ScheduleType(m.ScheduleType),
 		Timeout:      time.Duration(m.TimeoutMS) * time.Millisecond,
 		Enabled:      m.Enabled,
+		EnabledAt:    m.EnabledAt,
 		Statics:      statics,
 		Calls:        calls,
 		CreatedAt:    m.CreatedAt,
@@ -317,8 +319,12 @@ func workflowModelFromDomain(w *domainworkflow.Workflow) *WorkflowModel {
 		ScheduleType: string(w.ScheduleType),
 		TimeoutMS:    int(w.Timeout / time.Millisecond),
 		Enabled:      w.Enabled,
+		EnabledAt:    w.EnabledAt,
 		CreatedAt:    w.CreatedAt,
 		UpdatedAt:    w.UpdatedAt,
+	}
+	if model.EnabledAt.IsZero() {
+		model.EnabledAt = w.CreatedAt
 	}
 	if model.ScheduleType == "" {
 		model.ScheduleType = string(domainworkflow.ScheduleInterval)

@@ -20,6 +20,7 @@ type WorkflowModel struct {
 	RunAt           *time.Time `gorm:"column:run_at"`
 	TimeoutMS       int        `gorm:"column:timeout_ms"`
 	Enabled         bool       `gorm:"column:enabled"`
+	EnabledAt       time.Time  `gorm:"column:enabled_at"`
 	CreatedAt       time.Time  `gorm:"column:created_at"`
 	UpdatedAt       time.Time  `gorm:"column:updated_at"`
 	DeletedAt       *time.Time `gorm:"column:deleted_at"`

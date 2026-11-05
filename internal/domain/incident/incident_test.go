@@ -140,3 +140,21 @@ func TestShouldSuppressNoRun(t *testing.T) {
 		t.Fatal("5 of 20 is under 50%")
 	}
 }
+
+func TestSilenceAnchorIgnoresDowntimeWhileDisabled(t *testing.T) {
+	created := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	oldRun := time.Date(2026, 11, 4, 21, 0, 0, 0, time.UTC)
+	enabledAt := time.Date(2026, 11, 5, 13, 0, 0, 0, time.UTC)
+	wf := EnabledWorkflow{
+		CreatedAt: created, EnabledAt: enabledAt, LastRunAt: &oldRun,
+	}
+	got := wf.SilenceAnchor()
+	if !got.Equal(enabledAt) {
+		t.Fatalf("anchor=%s want enabledAt=%s", got, enabledAt)
+	}
+	laterRun := enabledAt.Add(2 * time.Minute)
+	wf.LastRunAt = &laterRun
+	if got := wf.SilenceAnchor(); !got.Equal(laterRun) {
+		t.Fatalf("after a run, anchor=%s want lastRun=%s", got, laterRun)
+	}
+}

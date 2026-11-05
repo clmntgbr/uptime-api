@@ -354,3 +354,36 @@ func TestApply_PreservesExtractionIDsByCallName(t *testing.T) {
 		t.Fatalf("extraction id must be preserved across apply, got %+v", w.Calls[0].Extractions)
 	}
 }
+
+func TestUpdate_RearmsEnabledAtOnReenable(t *testing.T) {
+	w, err := New(uuid.New(), Definition{
+		Name: "wf", Interval: MinInterval, Enabled: false,
+		Calls: []domaincall.Definition{
+			{Name: "a", Method: "GET", URL: "https://example.com"},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := w.EnabledAt
+	time.Sleep(2 * time.Millisecond)
+	_, err = w.Update(Definition{
+		Name: "wf", Interval: MinInterval, Enabled: true,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !w.EnabledAt.After(before) {
+		t.Fatalf("re-enable must refresh enabledAt, before=%s after=%s", before, w.EnabledAt)
+	}
+	armed := w.EnabledAt
+	_, err = w.Update(Definition{
+		Name: "wf-renamed", Interval: MinInterval, Enabled: true,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !w.EnabledAt.Equal(armed) {
+		t.Fatalf("stay-enabled must keep enabledAt, got %s want %s", w.EnabledAt, armed)
+	}
+}

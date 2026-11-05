@@ -51,6 +51,9 @@ type Workflow struct {
 	RunAt        *time.Time
 	Timeout      time.Duration
 	Enabled      bool
+	// EnabledAt is when monitoring last armed (create-as-enabled or false→true).
+	// Used by no_run so downtime while disabled does not count as silence.
+	EnabledAt    time.Time
 	Statics      []StaticVariable
 	Calls        []domaincall.Call
 	CreatedAt    time.Time
@@ -68,6 +71,7 @@ func New(userID uuid.UUID, def Definition, globalNames []string) (*Workflow, err
 		Timeout:   WorkflowTimeout,
 		CreatedAt: now,
 		UpdatedAt: now,
+		EnabledAt: now,
 	}
 	if err := w.apply(def, globalNames); err != nil {
 		return nil, err
@@ -81,10 +85,14 @@ func New(userID uuid.UUID, def Definition, globalNames []string) (*Workflow, err
 // schedule changed (type, interval, runAt or enablement).
 func (w *Workflow) Update(def Definition, globalNames []string) (bool, error) {
 	previous := scheduleSnapshot(w)
+	wasEnabled := w.Enabled
 	if err := w.apply(def, globalNames); err != nil {
 		return false, err
 	}
 	w.UpdatedAt = time.Now().UTC()
+	if !wasEnabled && w.Enabled {
+		w.EnabledAt = w.UpdatedAt
+	}
 	w.recordEvent(w.newUpdatedOrCreatedEvent(false, w.UpdatedAt))
 	return previous != scheduleSnapshot(w), nil
 }

@@ -62,18 +62,14 @@ func (h *ScanNoRunHandler) Handle(ctx context.Context, schedulerLag time.Duratio
 			continue
 		}
 		deadline := time.Duration(policy.NoRunMultiplier()) * wf.Interval
-		last := wf.LastRunAt
-		if last == nil {
-			t := wf.CreatedAt
-			last = &t
-		}
-		isSilent := now.Sub(last.UTC()) > deadline
+		anchor := wf.SilenceAnchor()
+		isSilent := now.Sub(anchor) > deadline
 		sig := domainincident.Signal{
 			Kind: domainincident.KindNoRun, Failing: isSilent, ObservedAt: now,
 			Cause: map[string]any{
-				"lastRunAt":  last.UTC(),
-				"deadline":   deadline.String(),
-				"multiplier": policy.NoRunMultiplier(),
+				"silenceSince": anchor,
+				"deadline":     deadline.String(),
+				"multiplier":   policy.NoRunMultiplier(),
 			},
 		}
 		if isSilent {

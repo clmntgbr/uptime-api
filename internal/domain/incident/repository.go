@@ -47,7 +47,21 @@ type EnabledWorkflow struct {
 	WorkflowID   uuid.UUID
 	Interval     time.Duration
 	LastRunAt    *time.Time
+	EnabledAt    time.Time
 	CreatedAt    time.Time
+}
+
+// SilenceAnchor is the earliest instant from which no_run silence is measured.
+// Downtime while the workflow was disabled must not count (EnabledAt).
+func (wf EnabledWorkflow) SilenceAnchor() time.Time {
+	anchor := wf.CreatedAt.UTC()
+	if !wf.EnabledAt.IsZero() && wf.EnabledAt.UTC().After(anchor) {
+		anchor = wf.EnabledAt.UTC()
+	}
+	if wf.LastRunAt != nil && wf.LastRunAt.UTC().After(anchor) {
+		anchor = wf.LastRunAt.UTC()
+	}
+	return anchor
 }
 
 // ScanRepository provides read models for observation-kind scheduler passes.

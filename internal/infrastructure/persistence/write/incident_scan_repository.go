@@ -21,13 +21,14 @@ type enabledWorkflowRow struct {
 	WorkflowID      uuid.UUID  `gorm:"column:workflow_id"`
 	IntervalSeconds *int       `gorm:"column:interval_seconds"`
 	LastRunAt       *time.Time `gorm:"column:last_run_at"`
+	EnabledAt       time.Time  `gorm:"column:enabled_at"`
 	CreatedAt       time.Time  `gorm:"column:created_at"`
 }
 
 func (r *incidentScanRepository) ListEnabledIntervalWorkflows(ctx context.Context) ([]incident.EnabledWorkflow, error) {
 	var rows []enabledWorkflowRow
 	err := DBWithContext(ctx, r.db).Raw(`
-SELECT w.user_id, w.id AS workflow_id, w.interval_seconds, s.last_run_at, w.created_at
+SELECT w.user_id, w.id AS workflow_id, w.interval_seconds, s.last_run_at, w.enabled_at, w.created_at
 FROM workflows w
 JOIN workflow_state s ON s.workflow_id = w.id
 WHERE w.deleted_at IS NULL
@@ -43,7 +44,7 @@ WHERE w.deleted_at IS NULL
 	for _, row := range rows {
 		wf := incident.EnabledWorkflow{
 			UserID: row.UserID, WorkflowID: row.WorkflowID,
-			LastRunAt: row.LastRunAt, CreatedAt: row.CreatedAt,
+			LastRunAt: row.LastRunAt, EnabledAt: row.EnabledAt, CreatedAt: row.CreatedAt,
 		}
 		if row.IntervalSeconds != nil {
 			wf.Interval = time.Duration(*row.IntervalSeconds) * time.Second
