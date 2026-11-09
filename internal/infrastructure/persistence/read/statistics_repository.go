@@ -53,11 +53,9 @@ JOIN runs r ON r.id = cr.run_id
 WHERE r.user_id = @user_id AND r.started_at >= @since
   AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)`
 
-// latencyP95SQL is the p95 of per-call wall time (timings.total), not run duration.
-const latencyP95SQL = `
-SELECT percentile_cont(0.95) WITHIN GROUP (
-    ORDER BY (cr.timings->>'total')::double precision
-) AS latency_p95_ms
+// latencyAvgSQL is the mean per-call wall time (timings.total), not run duration.
+const latencyAvgSQL = `
+SELECT AVG((cr.timings->>'total')::double precision) AS latency_avg_ms
 FROM call_runs cr
 JOIN runs r ON r.id = cr.run_id
 WHERE r.user_id = @user_id AND r.started_at >= @since
@@ -130,9 +128,7 @@ counts AS (
 latency AS (
     SELECT
         (COALESCE(cr.started_at, r.started_at) AT TIME ZONE 'UTC')::date AS day,
-        percentile_cont(0.95) WITHIN GROUP (
-            ORDER BY (cr.timings->>'total')::double precision
-        ) AS latency_p95_ms
+        AVG((cr.timings->>'total')::double precision) AS latency_avg_ms
     FROM call_runs cr
     JOIN runs r ON r.id = cr.run_id
     WHERE r.user_id = @user_id
@@ -150,7 +146,7 @@ SELECT
     COALESCE(c.failed, 0)::bigint AS failed,
     COALESCE(c.error, 0)::bigint AS error,
     COALESCE(c.skipped, 0)::bigint AS skipped,
-    l.latency_p95_ms AS latency_p95_ms
+    l.latency_avg_ms AS latency_avg_ms
 FROM days d
 LEFT JOIN counts c ON c.day = d.day
 LEFT JOIN latency l ON l.day = d.day
@@ -211,11 +207,11 @@ type callDayRow struct {
 	Failed       int64
 	Error        int64
 	Skipped      int64
-	LatencyP95Ms *float64 `gorm:"column:latency_p95_ms"`
+	LatencyAvgMs *float64 `gorm:"column:latency_avg_ms"`
 }
 
 type latencyRow struct {
-	LatencyP95Ms *float64 `gorm:"column:latency_p95_ms"`
+	LatencyAvgMs *float64 `gorm:"column:latency_avg_ms"`
 }
 
 type callDurationRow struct {
@@ -272,7 +268,7 @@ func (r *statisticsRepository) Dashboard(
 	}
 
 	var latency latencyRow
-	if err := db.Raw(latencyP95SQL, params).Scan(&latency).Error; err != nil {
+	if err := db.Raw(latencyAvgSQL, params).Scan(&latency).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 
@@ -311,7 +307,7 @@ func (r *statisticsRepository) Dashboard(
 			Failed:       row.Failed,
 			Error:        row.Error,
 			Skipped:      row.Skipped,
-			LatencyP95Ms: ptrMs(row.LatencyP95Ms),
+			LatencyAvgMs: ptrMs(row.LatencyAvgMs),
 		})
 	}
 
@@ -322,7 +318,7 @@ func (r *statisticsRepository) Dashboard(
 
 	return domainstatistics.DashboardStatistics{
 		Workflows:    workflows,
-		LatencyP95Ms: ptrMs(latency.LatencyP95Ms),
+		LatencyAvgMs: ptrMs(latency.LatencyAvgMs),
 		Runs: domainstatistics.RunCounts{
 			Total: runTotals.Total, Success: runTotals.Success, Failed: runTotals.Failed,
 			Error: runTotals.Error, Skipped: runTotals.Skipped, Running: runTotals.Running,

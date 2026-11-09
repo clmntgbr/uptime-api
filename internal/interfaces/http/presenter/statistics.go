@@ -12,7 +12,7 @@ type DashboardStatisticsResponse struct {
 	Runs          RunCountsResponse            `json:"runs"`
 	Calls         CallCountsResponse           `json:"calls"`
 	SuccessRate   float64                      `json:"successRate"`
-	LatencyP95Ms  *int64                       `json:"latencyP95Ms"`
+	LatencyAvgMs  *int64                       `json:"latencyAvgMs"`
 	CallDurations []CallDurationSeriesResponse `json:"callDurations"`
 }
 
@@ -58,7 +58,7 @@ type CallDayCountsResponse struct {
 	Failed       int64  `json:"failed"`
 	Error        int64  `json:"error"`
 	Skipped      int64  `json:"skipped"`
-	LatencyP95Ms *int64 `json:"latencyP95Ms"`
+	LatencyAvgMs *int64 `json:"latencyAvgMs"`
 }
 
 type CallDurationPointResponse struct {
@@ -96,7 +96,7 @@ func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) Dash
 			Failed:       d.Failed,
 			Error:        d.Error,
 			Skipped:      d.Skipped,
-			LatencyP95Ms: d.LatencyP95Ms,
+			LatencyAvgMs: d.LatencyAvgMs,
 		})
 	}
 	callDurations := make([]CallDurationSeriesResponse, 0, len(s.CallDurations))
@@ -131,7 +131,7 @@ func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) Dash
 			Error: s.Calls.Error, Skipped: s.Calls.Skipped, Daily: callDaily,
 		},
 		SuccessRate:   s.SuccessRate,
-		LatencyP95Ms:  s.LatencyP95Ms,
+		LatencyAvgMs:  s.LatencyAvgMs,
 		CallDurations: callDurations,
 	}
 }

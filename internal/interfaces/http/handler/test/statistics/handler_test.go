@@ -76,11 +76,11 @@ func TestStatisticsHandler_GetDashboard_Success(t *testing.T) {
 			Total: 20, Success: 15, Failed: 3, Error: 1, Skipped: 1,
 			Daily: []domainstatistics.CallDayCounts{{
 				Date: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
-				Total: 5, Success: 4, Failed: 1, LatencyP95Ms: &dayLatency,
+				Total: 5, Success: 4, Failed: 1, LatencyAvgMs: &dayLatency,
 			}},
 		},
 		SuccessRate:  0.7,
-		LatencyP95Ms: &latency,
+		LatencyAvgMs: &latency,
 	}}
 	resp := doGet(t, mount(handler.NewStatisticsHandler(m), true), "")
 	if resp.StatusCode != http.StatusOK {
@@ -95,14 +95,14 @@ func TestStatisticsHandler_GetDashboard_Success(t *testing.T) {
 		out.Calls.Failed != 3 || out.SuccessRate != 0.7 {
 		t.Fatalf("unexpected body %+v", out)
 	}
-	if out.LatencyP95Ms == nil || *out.LatencyP95Ms != 420 {
-		t.Fatalf("unexpected latency %+v", out.LatencyP95Ms)
+	if out.LatencyAvgMs == nil || *out.LatencyAvgMs != 420 {
+		t.Fatalf("unexpected latency %+v", out.LatencyAvgMs)
 	}
 	if len(out.Runs.Daily) != 1 || out.Runs.Daily[0].Date != "2026-10-15" || out.Runs.Daily[0].Total != 3 {
 		t.Fatalf("unexpected runs daily %+v", out.Runs.Daily)
 	}
 	if len(out.Calls.Daily) != 1 || out.Calls.Daily[0].Date != "2026-10-15" || out.Calls.Daily[0].Total != 5 ||
-		out.Calls.Daily[0].LatencyP95Ms == nil || *out.Calls.Daily[0].LatencyP95Ms != 380 {
+		out.Calls.Daily[0].LatencyAvgMs == nil || *out.Calls.Daily[0].LatencyAvgMs != 380 {
 		t.Fatalf("unexpected calls daily %+v", out.Calls.Daily)
 	}
 }

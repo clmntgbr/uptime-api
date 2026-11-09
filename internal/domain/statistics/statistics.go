@@ -13,8 +13,8 @@ type DashboardStatistics struct {
 	Workflows    WorkflowCounts
 	Runs         RunCounts
 	Calls        CallCounts
-	SuccessRate  float64
-	LatencyP95Ms *int64
+	SuccessRate   float64
+	LatencyAvgMs  *int64
 	// CallDurations is the mean wall-clock duration of each call, per UTC day.
 	// Stacking a day rebuilds the average run.
 	CallDurations []CallDurationSeries
@@ -66,7 +66,7 @@ type CallDayCounts struct {
 	Failed       int64
 	Error        int64
 	Skipped      int64
-	LatencyP95Ms *int64
+	LatencyAvgMs *int64
 }
 
 // CallDurationSeries is one call's mean duration over the history window.
