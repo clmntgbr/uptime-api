@@ -51,3 +51,16 @@ func TestRender_HyphenatedName(t *testing.T) {
 		t.Fatalf("got %q missing %v", out, missing)
 	}
 }
+
+func TestAllReferencesAllowed(t *testing.T) {
+	allowed := map[string]struct{}{"token": {}, "timestamp": {}}
+	if !AllReferencesAllowed("Bearer literal", allowed) {
+		t.Fatal("literal must be allowed")
+	}
+	if !AllReferencesAllowed("Bearer {{token}} {{timestamp}}", allowed) {
+		t.Fatal("known refs must be allowed")
+	}
+	if AllReferencesAllowed("Bearer {{foreign}}", allowed) {
+		t.Fatal("unknown ref must be rejected")
+	}
+}

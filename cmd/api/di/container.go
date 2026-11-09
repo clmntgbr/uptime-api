@@ -56,6 +56,7 @@ type Container struct {
 	IncidentHandler        *httphandler.IncidentHandler
 	NotifySettingsHandler  *httphandler.NotifySettingsHandler
 	VariableHandler        *httphandler.VariableHandler
+	SuggestionHandler      *httphandler.SuggestionHandler
 	KafkaProducer          *kafka.Producer
 }
 
@@ -216,6 +217,13 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			queryvariable.NewGetCallVariableHandler(workflowWriteRepo),
 			queryvariable.NewListAvailableHandler(workflowWriteRepo, globalVariableRepo),
 			queryvariable.NewListResponseKeysHandler(workflowReadRepo, runReadRepo),
+		),
+		SuggestionHandler: httphandler.NewSuggestionHandler(
+			querycall.NewSuggestFieldsHandler(
+				workflowWriteRepo,
+				globalVariableRepo,
+				read.NewCallSuggestionsRepository(db),
+			),
 		),
 		KafkaProducer: producer,
 	}

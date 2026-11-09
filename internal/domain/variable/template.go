@@ -31,6 +31,17 @@ func HasReferences(s string) bool {
 	return placeholder.MatchString(s)
 }
 
+// AllReferencesAllowed reports whether every {{name}} in s is present in allowed.
+// Strings with no placeholders are always allowed.
+func AllReferencesAllowed(s string, allowed map[string]struct{}) bool {
+	for _, name := range References(s) {
+		if _, ok := allowed[name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // Render replaces every placeholder with lookup(name). Unknown names are left
 // untouched and returned in missing (deduplicated).
 func Render(s string, lookup func(name string) (string, bool)) (string, []string) {

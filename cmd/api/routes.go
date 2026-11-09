@@ -80,6 +80,11 @@ func setupWorkflowRoutes(api fiber.Router, container *di.Container) {
 	api.Put("/workflows/:id/variables/:name", container.VariableHandler.UpdateStatic)
 	api.Delete("/workflows/:id/variables/:name", container.VariableHandler.DeleteStatic)
 
+	api.Get("/workflows/:id/suggestions/header-keys", container.SuggestionHandler.HeaderKeys)
+	api.Get("/workflows/:id/suggestions/header-values", container.SuggestionHandler.HeaderValues)
+	api.Get("/workflows/:id/suggestions/query-keys", container.SuggestionHandler.QueryKeys)
+	api.Get("/workflows/:id/suggestions/query-values", container.SuggestionHandler.QueryValues)
+
 	api.Get("/workflows/:id/calls", container.CallHandler.List)
 	api.Post("/workflows/:id/calls", container.CallHandler.Create)
 	api.Put("/workflows/:id/calls/reorder", container.CallHandler.Reorder)
