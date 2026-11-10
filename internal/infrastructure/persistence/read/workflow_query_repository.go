@@ -219,6 +219,12 @@ func (r *workflowQueryRepository) ListCalls(ctx context.Context, userID, workflo
 	if err != nil {
 		return nil, err
 	}
+
+	activeRunID, err := r.activeLeaseRunID(ctx, workflowID)
+	if err != nil {
+		return nil, err
+	}
+
 	views := make([]domainworkflow.CallListView, 0, len(rows))
 	for _, row := range rows {
 		recent, err := decodeCallRecentRuns(row.RecentRuns)
@@ -234,16 +240,70 @@ func (r *workflowQueryRepository) ListCalls(ctx context.Context, userID, workflo
 			Position:    row.Position,
 			RecentRuns:  recent,
 		}
-		if n := len(recent); n > 0 {
-			last := recent[n-1]
-			v.LastStatus = last.Status
-			v.LastHTTPStatus = last.HTTPStatus
-			v.LastFinishedAt = last.FinishedAt
-			v.LastLatencyMs = last.LatencyMs
-		}
+		applyCallLastStatus(&v, recent, activeRunID)
 		views = append(views, v)
 	}
 	return views, nil
+}
+
+// activeLeaseRunID returns the current run id while the workflow holds a
+// running/cancelling lease; nil when idle.
+func (r *workflowQueryRepository) activeLeaseRunID(ctx context.Context, workflowID uuid.UUID) (*uuid.UUID, error) {
+	type leaseRow struct {
+		Status     string     `gorm:"column:status"`
+		LeaseRunID *uuid.UUID `gorm:"column:lease_run_id"`
+	}
+	var row leaseRow
+	err := r.db.WithContext(ctx).
+		Table("workflow_state").
+		Select("status, lease_run_id").
+		Where("workflow_id = ?", workflowID).
+		Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if row.LeaseRunID == nil {
+		return nil, nil
+	}
+	if row.Status != string(domainschedule.StatusRunning) &&
+		row.Status != string(domainschedule.StatusCancelling) {
+		return nil, nil
+	}
+	return row.LeaseRunID, nil
+}
+
+// applyCallLastStatus sets last* from the newest relevant call_run.
+// While a workflow run is in flight, only a call_run belonging to that run
+// counts — never the previous outcome of a call that has not started yet.
+func applyCallLastStatus(
+	v *domainworkflow.CallListView,
+	recent []domainworkflow.CallRecentRunView,
+	activeRunID *uuid.UUID,
+) {
+	if len(recent) == 0 {
+		return
+	}
+	if activeRunID != nil {
+		for i := len(recent) - 1; i >= 0; i-- {
+			if recent[i].RunID == *activeRunID {
+				last := recent[i]
+				v.LastStatus = last.Status
+				v.LastHTTPStatus = last.HTTPStatus
+				v.LastFinishedAt = last.FinishedAt
+				v.LastLatencyMs = last.LatencyMs
+				return
+			}
+		}
+		return
+	}
+	last := recent[len(recent)-1]
+	v.LastStatus = last.Status
+	v.LastHTTPStatus = last.HTTPStatus
+	v.LastFinishedAt = last.FinishedAt
+	v.LastLatencyMs = last.LatencyMs
 }
 
 func decodeCallRecentRuns(raw dbtype.JSONB) ([]domainworkflow.CallRecentRunView, error) {
