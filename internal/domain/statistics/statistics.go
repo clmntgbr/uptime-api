@@ -15,8 +15,8 @@ type DashboardStatistics struct {
 	Calls        CallCounts
 	SuccessRate   float64
 	LatencyAvgMs  *int64
-	// CallDurations is the mean wall-clock duration of each call, per UTC day.
-	// Stacking a day rebuilds the average run.
+	// CallDurations is the mean wall-clock duration of each call, per UTC day
+	// and per UTC hour (last 24h). Stacking a bucket rebuilds the average run.
 	CallDurations []CallDurationSeries
 }
 
@@ -88,11 +88,19 @@ type CallDurationSeries struct {
 	Name     string
 	Position int
 	Daily    []CallDurationPoint
+	Hourly   []CallDurationHourPoint
 }
 
 // CallDurationPoint is the mean timings.total for one call on one UTC day.
 type CallDurationPoint struct {
 	Date       time.Time
+	DurationMs int64
+	Samples    int64
+}
+
+// CallDurationHourPoint is the mean timings.total for one call in one UTC hour.
+type CallDurationHourPoint struct {
+	Hour       time.Time
 	DurationMs int64
 	Samples    int64
 }

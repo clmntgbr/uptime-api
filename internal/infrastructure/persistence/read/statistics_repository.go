@@ -211,6 +211,27 @@ WHERE r.user_id = @user_id
 GROUP BY 1, 4
 ORDER BY 1, 4`
 
+// callDurationHourlySQL is the mean timings.total of each call per UTC hour
+// over the last 24h window (hourly_since → until_hour inclusive).
+const callDurationHourlySQL = `
+SELECT
+    COALESCE(cr.call_id::text, cr.workflow_id::text || ':' || cr.position::text) AS id,
+    (ARRAY_AGG(cr.name ORDER BY COALESCE(cr.finished_at, cr.started_at, r.started_at) DESC))[1] AS name,
+    MIN(cr.position) AS position,
+    date_trunc('hour', COALESCE(cr.started_at, r.started_at) AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS hour,
+    AVG((cr.timings->>'total')::double precision) AS duration_ms,
+    COUNT(*)::bigint AS samples
+FROM call_runs cr
+JOIN runs r ON r.id = cr.run_id
+WHERE r.user_id = @user_id
+  AND COALESCE(cr.started_at, r.started_at) >= @hourly_since
+  AND COALESCE(cr.started_at, r.started_at) < (CAST(@until_hour AS timestamptz) + INTERVAL '1 hour')
+  AND cr.status IN ('success', 'failed', 'error')
+  AND COALESCE((cr.timings->>'total')::double precision, 0) > 0
+  AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)
+GROUP BY 1, 4
+ORDER BY 1, 4`
+
 type runCountsRow struct {
 	Total   int64
 	Success int64
@@ -267,6 +288,15 @@ type callDurationRow struct {
 	Name       string    `gorm:"column:name"`
 	Position   int       `gorm:"column:position"`
 	Date       time.Time `gorm:"column:date"`
+	DurationMs float64   `gorm:"column:duration_ms"`
+	Samples    int64     `gorm:"column:samples"`
+}
+
+type callDurationHourRow struct {
+	ID         string    `gorm:"column:id"`
+	Name       string    `gorm:"column:name"`
+	Position   int       `gorm:"column:position"`
+	Hour       time.Time `gorm:"column:hour"`
 	DurationMs float64   `gorm:"column:duration_ms"`
 	Samples    int64     `gorm:"column:samples"`
 }
@@ -383,6 +413,11 @@ func (r *statisticsRepository) Dashboard(
 		return domainstatistics.DashboardStatistics{}, err
 	}
 
+	var durationHourRows []callDurationHourRow
+	if err := db.Raw(callDurationHourlySQL, params).Scan(&durationHourRows).Error; err != nil {
+		return domainstatistics.DashboardStatistics{}, err
+	}
+
 	return domainstatistics.DashboardStatistics{
 		Workflows:    workflows,
 		LatencyAvgMs: ptrMs(latency.LatencyAvgMs),
@@ -396,30 +431,47 @@ func (r *statisticsRepository) Dashboard(
 			Total: callTotals.Total, Success: callTotals.Success, Failed: callTotals.Failed,
 			Error: callTotals.Error, Skipped: callTotals.Skipped, Daily: callDaily,
 		},
-		CallDurations: groupCallDurations(durationRows),
+		CallDurations: groupCallDurations(durationRows, durationHourRows),
 	}, nil
 }
 
-func groupCallDurations(rows []callDurationRow) []domainstatistics.CallDurationSeries {
+func groupCallDurations(
+	dailyRows []callDurationRow,
+	hourlyRows []callDurationHourRow,
+) []domainstatistics.CallDurationSeries {
 	order := make([]string, 0)
-	byID := make(map[string]*domainstatistics.CallDurationSeries, len(rows))
-	for _, row := range rows {
-		series, ok := byID[row.ID]
+	byID := make(map[string]*domainstatistics.CallDurationSeries, len(dailyRows)+len(hourlyRows))
+	ensure := func(id, name string, position int) *domainstatistics.CallDurationSeries {
+		series, ok := byID[id]
 		if !ok {
 			series = &domainstatistics.CallDurationSeries{
-				ID:       row.ID,
-				Name:     row.Name,
-				Position: row.Position,
+				ID:       id,
+				Name:     name,
+				Position: position,
+				Daily:    []domainstatistics.CallDurationPoint{},
+				Hourly:   []domainstatistics.CallDurationHourPoint{},
 			}
-			byID[row.ID] = series
-			order = append(order, row.ID)
+			byID[id] = series
+			order = append(order, id)
 		}
-		if row.Name != "" {
-			series.Name = row.Name
+		if name != "" {
+			series.Name = name
 		}
-		series.Position = row.Position
+		series.Position = position
+		return series
+	}
+	for _, row := range dailyRows {
+		series := ensure(row.ID, row.Name, row.Position)
 		series.Daily = append(series.Daily, domainstatistics.CallDurationPoint{
 			Date:       row.Date,
+			DurationMs: roundMs(row.DurationMs),
+			Samples:    row.Samples,
+		})
+	}
+	for _, row := range hourlyRows {
+		series := ensure(row.ID, row.Name, row.Position)
+		series.Hourly = append(series.Hourly, domainstatistics.CallDurationHourPoint{
+			Hour:       row.Hour,
 			DurationMs: roundMs(row.DurationMs),
 			Samples:    row.Samples,
 		})

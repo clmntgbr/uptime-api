@@ -58,6 +58,14 @@ func (h *GetDashboardHandler) Handle(ctx context.Context, q GetDashboardQuery) (
 	if result.CallDurations == nil {
 		result.CallDurations = []domainstatistics.CallDurationSeries{}
 	}
+	for i := range result.CallDurations {
+		if result.CallDurations[i].Daily == nil {
+			result.CallDurations[i].Daily = []domainstatistics.CallDurationPoint{}
+		}
+		if result.CallDurations[i].Hourly == nil {
+			result.CallDurations[i].Hourly = []domainstatistics.CallDurationHourPoint{}
+		}
+	}
 	if result.Runs.Total > 0 {
 		result.SuccessRate = float64(result.Runs.Success) / float64(result.Runs.Total)
 	}

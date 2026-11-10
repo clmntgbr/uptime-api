@@ -78,11 +78,18 @@ type CallDurationPointResponse struct {
 	Samples    int64  `json:"samples"`
 }
 
+type CallDurationHourPointResponse struct {
+	Hour       string `json:"hour"`
+	DurationMs int64  `json:"durationMs"`
+	Samples    int64  `json:"samples"`
+}
+
 type CallDurationSeriesResponse struct {
-	ID       string                      `json:"id"`
-	Name     string                      `json:"name"`
-	Position int                         `json:"position"`
-	Daily    []CallDurationPointResponse `json:"daily"`
+	ID       string                          `json:"id"`
+	Name     string                          `json:"name"`
+	Position int                             `json:"position"`
+	Daily    []CallDurationPointResponse     `json:"daily"`
+	Hourly   []CallDurationHourPointResponse `json:"hourly"`
 }
 
 func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) DashboardStatisticsResponse {
@@ -132,11 +139,20 @@ func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) Dash
 				Samples:    point.Samples,
 			})
 		}
+		hourly := make([]CallDurationHourPointResponse, 0, len(series.Hourly))
+		for _, point := range series.Hourly {
+			hourly = append(hourly, CallDurationHourPointResponse{
+				Hour:       point.Hour.UTC().Format(time.RFC3339),
+				DurationMs: point.DurationMs,
+				Samples:    point.Samples,
+			})
+		}
 		callDurations = append(callDurations, CallDurationSeriesResponse{
 			ID:       series.ID,
 			Name:     series.Name,
 			Position: series.Position,
 			Daily:    daily,
+			Hourly:   hourly,
 		})
 	}
 	return DashboardStatisticsResponse{
