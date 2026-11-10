@@ -131,12 +131,13 @@ func (r *workflowQueryRepository) FindByID(ctx context.Context, userID, id uuid.
 }
 
 type callListRow struct {
-	ID         uuid.UUID    `gorm:"column:id"`
-	Name       string       `gorm:"column:name"`
-	Method     string       `gorm:"column:method"`
-	URL        string       `gorm:"column:url"`
-	Position   int          `gorm:"column:position"`
-	RecentRuns dbtype.JSONB `gorm:"column:recent_runs"`
+	ID          uuid.UUID    `gorm:"column:id"`
+	Name        string       `gorm:"column:name"`
+	Description string       `gorm:"column:description"`
+	Method      string       `gorm:"column:method"`
+	URL         string       `gorm:"column:url"`
+	Position    int          `gorm:"column:position"`
+	RecentRuns  dbtype.JSONB `gorm:"column:recent_runs"`
 }
 
 type callRecentRunTimingsJSON struct {
@@ -162,6 +163,7 @@ const listCallsSQL = `
 SELECT
   c.id,
   c.name,
+  c.description,
   c.method,
   c.url,
   c.position,
@@ -224,12 +226,13 @@ func (r *workflowQueryRepository) ListCalls(ctx context.Context, userID, workflo
 			return nil, err
 		}
 		v := domainworkflow.CallListView{
-			ID:         row.ID,
-			Name:       row.Name,
-			Method:     row.Method,
-			URL:        row.URL,
-			Position:   row.Position,
-			RecentRuns: recent,
+			ID:          row.ID,
+			Name:        row.Name,
+			Description: row.Description,
+			Method:      row.Method,
+			URL:         row.URL,
+			Position:    row.Position,
+			RecentRuns:  recent,
 		}
 		if n := len(recent); n > 0 {
 			last := recent[n-1]
@@ -275,17 +278,18 @@ func decodeCallRecentRuns(raw dbtype.JSONB) ([]domainworkflow.CallRecentRunView,
 }
 
 type callDetailRow struct {
-	ID        uuid.UUID    `gorm:"column:id"`
-	Name      string       `gorm:"column:name"`
-	Method    string       `gorm:"column:method"`
-	URL       string       `gorm:"column:url"`
-	Headers   dbtype.JSONB `gorm:"column:headers"`
-	Query     dbtype.JSONB `gorm:"column:query"`
-	Body      *string      `gorm:"column:body"`
-	TimeoutMS int          `gorm:"column:timeout_ms"`
-	VerifyTLS bool         `gorm:"column:verify_tls"`
-	IPVersion string       `gorm:"column:ip_version"`
-	ProxyURL  *string      `gorm:"column:proxy_url"`
+	ID          uuid.UUID    `gorm:"column:id"`
+	Name        string       `gorm:"column:name"`
+	Description string       `gorm:"column:description"`
+	Method      string       `gorm:"column:method"`
+	URL         string       `gorm:"column:url"`
+	Headers     dbtype.JSONB `gorm:"column:headers"`
+	Query       dbtype.JSONB `gorm:"column:query"`
+	Body        *string      `gorm:"column:body"`
+	TimeoutMS   int          `gorm:"column:timeout_ms"`
+	VerifyTLS   bool         `gorm:"column:verify_tls"`
+	IPVersion   string       `gorm:"column:ip_version"`
+	ProxyURL    *string      `gorm:"column:proxy_url"`
 }
 
 func (r *workflowQueryRepository) ListContextStatics(ctx context.Context, userID, workflowID uuid.UUID) ([]domainworkflow.ContextStaticView, error) {
@@ -370,7 +374,7 @@ func (r *workflowQueryRepository) FindCall(ctx context.Context, userID, workflow
 	var row callDetailRow
 	err := r.db.WithContext(ctx).
 		Table("calls c").
-		Select("c.id, c.name, c.method, c.url, c.headers, c.query, c.body, c.timeout_ms, c.verify_tls, c.ip_version, c.proxy_url").
+		Select("c.id, c.name, c.description, c.method, c.url, c.headers, c.query, c.body, c.timeout_ms, c.verify_tls, c.ip_version, c.proxy_url").
 		Joins("JOIN workflows w ON w.id = c.workflow_id").
 		Where("c.id = ? AND c.workflow_id = ? AND w.user_id = ? AND w.deleted_at IS NULL", callID, workflowID, userID).
 		Take(&row).Error
@@ -395,15 +399,16 @@ func (r *workflowQueryRepository) FindCall(ctx context.Context, userID, workflow
 	}
 
 	view := &domainworkflow.CallView{
-		ID:        row.ID,
-		Name:      row.Name,
-		Method:    row.Method,
-		URL:       row.URL,
-		Headers:   headers,
-		Query:     query,
-		TimeoutMS: row.TimeoutMS,
-		VerifyTLS: row.VerifyTLS,
-		IPVersion: row.IPVersion,
+		ID:          row.ID,
+		Name:        row.Name,
+		Description: row.Description,
+		Method:      row.Method,
+		URL:         row.URL,
+		Headers:     headers,
+		Query:       query,
+		TimeoutMS:   row.TimeoutMS,
+		VerifyTLS:   row.VerifyTLS,
+		IPVersion:   row.IPVersion,
 	}
 	if row.Body != nil {
 		view.Body = *row.Body

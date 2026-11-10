@@ -65,17 +65,18 @@ func bindCallDefinition(c fiber.Ctx) (domaincall.Definition, error) {
 	}
 
 	def := domaincall.Definition{
-		Name:      body.Name,
-		Method:    body.Method,
-		URL:       body.URL,
-		Headers:   body.Headers,
-		Query:     body.Query,
-		Body:      body.Body,
-		Timeout:   time.Duration(body.TimeoutMS) * time.Millisecond,
-		VerifyTLS: body.VerifyTLS,
-		IPVersion: domaincall.IPVersion(body.IPVersion),
-		ProxyURL:  body.ProxyURL,
-		Rules:     make([]domainrule.Rule, 0, len(body.Rules)),
+		Name:        body.Name,
+		Description: body.Description,
+		Method:      body.Method,
+		URL:         body.URL,
+		Headers:     body.Headers,
+		Query:       body.Query,
+		Body:        body.Body,
+		Timeout:     time.Duration(body.TimeoutMS) * time.Millisecond,
+		VerifyTLS:   body.VerifyTLS,
+		IPVersion:   domaincall.IPVersion(body.IPVersion),
+		ProxyURL:    body.ProxyURL,
+		Rules:       make([]domainrule.Rule, 0, len(body.Rules)),
 	}
 
 	ruleErrors := map[string]string{}

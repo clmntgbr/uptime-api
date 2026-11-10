@@ -33,6 +33,7 @@ type CallModel struct {
 	WorkflowID  uuid.UUID    `gorm:"column:workflow_id"`
 	Position    int          `gorm:"column:position"`
 	Name        string       `gorm:"column:name"`
+	Description string       `gorm:"column:description"`
 	Method      string       `gorm:"column:method"`
 	URL         string       `gorm:"column:url"`
 	Headers     dbtype.JSONB `gorm:"column:headers"`

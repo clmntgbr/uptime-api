@@ -17,7 +17,8 @@ const (
 	DefaultTimeout = 30 * time.Second
 	MaxTimeout     = 60 * time.Second
 	MinTimeout     = 100 * time.Millisecond
-	MaxNameLength  = 100
+	MaxNameLength        = 100
+	MaxDescriptionLength = 500
 )
 
 type IPVersion string
@@ -37,6 +38,7 @@ type Call struct {
 	ID          uuid.UUID
 	Position    int
 	Name        string
+	Description string
 	Method      string
 	URL         string
 	Headers     map[string]string
@@ -53,6 +55,7 @@ type Call struct {
 // Definition is the user input for a call; IDs are assigned by the workflow.
 type Definition struct {
 	Name        string
+	Description string
 	Method      string
 	URL         string
 	Headers     map[string]string
@@ -74,6 +77,11 @@ func New(def Definition, position int, id uuid.UUID) (Call, error) {
 
 	if name == "" || len(name) > MaxNameLength {
 		return fail("call name is required (max %d characters)", MaxNameLength)
+	}
+
+	description := strings.TrimSpace(def.Description)
+	if len(description) > MaxDescriptionLength {
+		return fail("call description must be at most %d characters", MaxDescriptionLength)
 	}
 
 	method := strings.ToUpper(strings.TrimSpace(def.Method))
@@ -155,6 +163,7 @@ func New(def Definition, position int, id uuid.UUID) (Call, error) {
 		ID:          id,
 		Position:    position,
 		Name:        name,
+		Description: description,
 		Method:      method,
 		URL:         rawURL,
 		Headers:     copyMap(def.Headers),

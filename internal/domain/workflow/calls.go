@@ -86,17 +86,18 @@ func (w *Workflow) DuplicateCall(callID uuid.UUID, globalNames []string) (domain
 
 	verifyTLS := src.VerifyTLS
 	def := domaincall.Definition{
-		Name:      src.Name,
-		Method:    src.Method,
-		URL:       src.URL,
-		Headers:   copyStringMap(src.Headers),
-		Query:     copyStringMap(src.Query),
-		Body:      src.Body,
-		Timeout:   src.Timeout,
-		VerifyTLS: &verifyTLS,
-		IPVersion: src.IPVersion,
-		ProxyURL:  src.ProxyURL,
-		Rules:     rules,
+		Name:        src.Name,
+		Description: src.Description,
+		Method:      src.Method,
+		URL:         src.URL,
+		Headers:     copyStringMap(src.Headers),
+		Query:       copyStringMap(src.Query),
+		Body:        src.Body,
+		Timeout:     src.Timeout,
+		VerifyTLS:   &verifyTLS,
+		IPVersion:   src.IPVersion,
+		ProxyURL:    src.ProxyURL,
+		Rules:       rules,
 	}
 	return w.AddCall(def, globalNames)
 }

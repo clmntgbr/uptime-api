@@ -51,11 +51,29 @@ func TestCallHandler_Create_InvalidBody(t *testing.T) {
 	assertStatus(t, resp, http.StatusBadRequest)
 }
 
+func TestCallHandler_Create_WithDescription(t *testing.T) {
+	m := newMocks()
+	body := validCallBody()
+	body["description"] = "  Auth probe  "
+	resp := doJSON(t, m, true, http.MethodPost, callsPath(), body)
+	assertStatus(t, resp, http.StatusCreated)
+	if m.create.got.Definition.Description != "  Auth probe  " {
+		t.Fatalf("description not passed through: %+v", m.create.got.Definition)
+	}
+}
+
 func TestCallHandler_Create_ValidationFailed(t *testing.T) {
 	cases := map[string]func(map[string]any){
-		"missing name": func(b map[string]any) { b["name"] = "" },
-		"missing url":  func(b map[string]any) { delete(b, "url") },
-		"bad method":   func(b map[string]any) { b["method"] = "TRACE" },
+		"missing name":       func(b map[string]any) { b["name"] = "" },
+		"missing url":        func(b map[string]any) { delete(b, "url") },
+		"bad method":         func(b map[string]any) { b["method"] = "TRACE" },
+		"description too long": func(b map[string]any) {
+			long := make([]byte, 501)
+			for i := range long {
+				long[i] = 'x'
+			}
+			b["description"] = string(long)
+		},
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

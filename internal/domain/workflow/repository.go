@@ -118,6 +118,7 @@ type CallRecentRunView struct {
 type CallListView struct {
 	ID             uuid.UUID
 	Name           string
+	Description    string
 	Method         string
 	URL            string
 	Position       int
@@ -131,17 +132,18 @@ type CallListView struct {
 
 // CallView is the detail of one call (without extractions and rules for now).
 type CallView struct {
-	ID        uuid.UUID
-	Name      string
-	Method    string
-	URL       string
-	Headers   map[string]string
-	Query     map[string]string
-	Body      string
-	TimeoutMS int
-	VerifyTLS bool
-	IPVersion string
-	ProxyURL  string
+	ID          uuid.UUID
+	Name        string
+	Description string
+	Method      string
+	URL         string
+	Headers     map[string]string
+	Query       map[string]string
+	Body        string
+	TimeoutMS   int
+	VerifyTLS   bool
+	IPVersion   string
+	ProxyURL    string
 }
 
 // View is the read model of a workflow with its current scheduling state, without its calls.

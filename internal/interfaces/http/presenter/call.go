@@ -28,26 +28,28 @@ type CallRecentRunResponse struct {
 
 // CallResponse is the shape of create/update and list call rows.
 type CallResponse struct {
-	ID             string                   `json:"id"`
-	Name           string                   `json:"name"`
-	Method         string                   `json:"method"`
-	URL            string                   `json:"url"`
-	Position       int                      `json:"position"`
-	LastStatus     *string                  `json:"lastStatus,omitempty"`
-	LastHTTPStatus *int                     `json:"lastHttpStatus,omitempty"`
-	LastFinishedAt *string                  `json:"lastFinishedAt,omitempty"`
-	LastLatencyMs  *int64                   `json:"lastLatencyMs,omitempty"`
+	ID             string                  `json:"id"`
+	Name           string                  `json:"name"`
+	Description    string                  `json:"description"`
+	Method         string                  `json:"method"`
+	URL            string                  `json:"url"`
+	Position       int                     `json:"position"`
+	LastStatus     *string                 `json:"lastStatus,omitempty"`
+	LastHTTPStatus *int                    `json:"lastHttpStatus,omitempty"`
+	LastFinishedAt *string                 `json:"lastFinishedAt,omitempty"`
+	LastLatencyMs  *int64                  `json:"lastLatencyMs,omitempty"`
 	RecentRuns     []CallRecentRunResponse `json:"recentRuns"`
 }
 
 func NewCallResponseFromCall(c domaincall.Call) CallResponse {
 	return CallResponse{
-		ID:         c.ID.String(),
-		Name:       c.Name,
-		Method:     c.Method,
-		URL:        c.URL,
-		Position:   c.Position,
-		RecentRuns: []CallRecentRunResponse{},
+		ID:          c.ID.String(),
+		Name:        c.Name,
+		Description: c.Description,
+		Method:      c.Method,
+		URL:         c.URL,
+		Position:    c.Position,
+		RecentRuns:  []CallRecentRunResponse{},
 	}
 }
 
@@ -69,12 +71,13 @@ func NewCallListResponseFromViews(views []domainworkflow.CallListView) []CallRes
 
 func NewCallListResponseFromView(v domainworkflow.CallListView) CallResponse {
 	out := CallResponse{
-		ID:         v.ID.String(),
-		Name:       v.Name,
-		Method:     v.Method,
-		URL:        v.URL,
-		Position:   v.Position,
-		RecentRuns: make([]CallRecentRunResponse, 0, len(v.RecentRuns)),
+		ID:          v.ID.String(),
+		Name:        v.Name,
+		Description: v.Description,
+		Method:      v.Method,
+		URL:         v.URL,
+		Position:    v.Position,
+		RecentRuns:  make([]CallRecentRunResponse, 0, len(v.RecentRuns)),
 	}
 	if v.LastStatus != "" {
 		status := v.LastStatus
@@ -113,17 +116,18 @@ func NewCallListResponseFromView(v domainworkflow.CallListView) CallResponse {
 
 // CallDetailResponse is the shape of GET /workflows/:id/calls/:callId.
 type CallDetailResponse struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Method    string            `json:"method"`
-	URL       string            `json:"url"`
-	Headers   map[string]string `json:"headers"`
-	Query     map[string]string `json:"query"`
-	Body      string            `json:"body"`
-	TimeoutMS int               `json:"timeoutMs"`
-	VerifyTLS bool              `json:"verifyTls"`
-	IPVersion string            `json:"ipVersion"`
-	ProxyURL  string            `json:"proxyUrl"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Method      string            `json:"method"`
+	URL         string            `json:"url"`
+	Headers     map[string]string `json:"headers"`
+	Query       map[string]string `json:"query"`
+	Body        string            `json:"body"`
+	TimeoutMS   int               `json:"timeoutMs"`
+	VerifyTLS   bool              `json:"verifyTls"`
+	IPVersion   string            `json:"ipVersion"`
+	ProxyURL    string            `json:"proxyUrl"`
 }
 
 func NewCallDetailResponseFromView(v domainworkflow.CallView) CallDetailResponse {
@@ -136,16 +140,17 @@ func NewCallDetailResponseFromView(v domainworkflow.CallView) CallDetailResponse
 		query = map[string]string{}
 	}
 	return CallDetailResponse{
-		ID:        v.ID.String(),
-		Name:      v.Name,
-		Method:    v.Method,
-		URL:       v.URL,
-		Headers:   headers,
-		Query:     query,
-		Body:      v.Body,
-		TimeoutMS: v.TimeoutMS,
-		VerifyTLS: v.VerifyTLS,
-		IPVersion: v.IPVersion,
-		ProxyURL:  v.ProxyURL,
+		ID:          v.ID.String(),
+		Name:        v.Name,
+		Description: v.Description,
+		Method:      v.Method,
+		URL:         v.URL,
+		Headers:     headers,
+		Query:       query,
+		Body:        v.Body,
+		TimeoutMS:   v.TimeoutMS,
+		VerifyTLS:   v.VerifyTLS,
+		IPVersion:   v.IPVersion,
+		ProxyURL:    v.ProxyURL,
 	}
 }
