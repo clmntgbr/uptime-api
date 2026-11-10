@@ -35,11 +35,24 @@ type RunCounts struct {
 	Running int64
 	// Daily is day-by-day run volume over the history window (zero-filled).
 	Daily []RunDayCounts
+	// Hourly is hour-by-hour run volume over the last 24h (zero-filled, UTC).
+	Hourly []RunHourCounts
 }
 
 // RunDayCounts is one calendar day of run aggregates (UTC).
 type RunDayCounts struct {
 	Date    time.Time
+	Total   int64
+	Success int64
+	Failed  int64
+	Error   int64
+	Skipped int64
+	Running int64
+}
+
+// RunHourCounts is one UTC hour of run aggregates.
+type RunHourCounts struct {
+	Hour    time.Time
 	Total   int64
 	Success int64
 	Failed  int64
@@ -86,8 +99,14 @@ type CallDurationPoint struct {
 
 // ReadRepository loads aggregated dashboard counters for a user.
 type ReadRepository interface {
-	// Dashboard loads 24h counters (since) and runs/calls daily series
-	// from dailySince through untilDay (inclusive, UTC dates).
+	// Dashboard loads 24h counters (since), runs hourly from hourlySince through
+	// untilHour (inclusive, UTC hours), and runs/calls daily series from
+	// dailySince through untilDay (inclusive, UTC dates).
 	// When workflowID is set, all aggregates are scoped to that workflow.
-	Dashboard(ctx context.Context, userID uuid.UUID, workflowID *uuid.UUID, since, dailySince, untilDay time.Time) (DashboardStatistics, error)
+	Dashboard(
+		ctx context.Context,
+		userID uuid.UUID,
+		workflowID *uuid.UUID,
+		since, dailySince, untilDay, hourlySince, untilHour time.Time,
+	) (DashboardStatistics, error)
 }

@@ -11,26 +11,30 @@ import (
 )
 
 type stubRepo struct {
-	gotUser       uuid.UUID
-	gotWorkflow   *uuid.UUID
-	gotSince      time.Time
-	gotDailySince time.Time
-	gotUntilDay   time.Time
-	out           domainstatistics.DashboardStatistics
-	err           error
+	gotUser        uuid.UUID
+	gotWorkflow    *uuid.UUID
+	gotSince       time.Time
+	gotDailySince  time.Time
+	gotUntilDay    time.Time
+	gotHourlySince time.Time
+	gotUntilHour   time.Time
+	out            domainstatistics.DashboardStatistics
+	err            error
 }
 
 func (s *stubRepo) Dashboard(
 	_ context.Context,
 	userID uuid.UUID,
 	workflowID *uuid.UUID,
-	since, dailySince, untilDay time.Time,
+	since, dailySince, untilDay, hourlySince, untilHour time.Time,
 ) (domainstatistics.DashboardStatistics, error) {
 	s.gotUser = userID
 	s.gotWorkflow = workflowID
 	s.gotSince = since
 	s.gotDailySince = dailySince
 	s.gotUntilDay = untilDay
+	s.gotHourlySince = hourlySince
+	s.gotUntilHour = untilHour
 	return s.out, s.err
 }
 
@@ -46,6 +50,8 @@ func TestGetDashboardHandler_ComputesWindowAndSuccessRate(t *testing.T) {
 	}
 	wantUntil := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
 	wantDailySince := wantUntil.AddDate(0, -6, 0)
+	wantUntilHour := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	wantHourlySince := wantUntilHour.Add(-23 * time.Hour)
 	if repo.gotUser != userID || !repo.gotSince.Equal(now.Add(-24*time.Hour)) {
 		t.Fatalf("unexpected repo args user=%s since=%s", repo.gotUser, repo.gotSince)
 	}
@@ -55,11 +61,14 @@ func TestGetDashboardHandler_ComputesWindowAndSuccessRate(t *testing.T) {
 	if !repo.gotUntilDay.Equal(wantUntil) || !repo.gotDailySince.Equal(wantDailySince) {
 		t.Fatalf("unexpected daily window since=%s until=%s", repo.gotDailySince, repo.gotUntilDay)
 	}
+	if !repo.gotUntilHour.Equal(wantUntilHour) || !repo.gotHourlySince.Equal(wantHourlySince) {
+		t.Fatalf("unexpected hourly window since=%s until=%s", repo.gotHourlySince, repo.gotUntilHour)
+	}
 	if got.WindowHours != 24 || got.SuccessRate != 0.4 {
 		t.Fatalf("unexpected statistics %+v", got)
 	}
-	if got.Runs.Daily == nil || got.Calls.Daily == nil || got.CallDurations == nil {
-		t.Fatal("daily/durations must be non-nil empty slices")
+	if got.Runs.Daily == nil || got.Runs.Hourly == nil || got.Calls.Daily == nil || got.CallDurations == nil {
+		t.Fatal("daily/hourly/durations must be non-nil empty slices")
 	}
 }
 

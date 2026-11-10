@@ -72,6 +72,44 @@ WITH days AS (
     )::date AS day
 )`
 
+// runHourlySQL returns one row per UTC hour for the last 24h window ending at @until_hour
+// (exclusive end = until_hour+1h), zero-filled.
+const runHourlySQL = `
+WITH hours AS (
+    SELECT generate_series(
+        CAST(@hourly_since AS timestamptz),
+        CAST(@until_hour AS timestamptz),
+        INTERVAL '1 hour'
+    ) AS hour
+),
+agg AS (
+    SELECT
+        date_trunc('hour', started_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS hour,
+        COUNT(*)::bigint AS total,
+        COUNT(*) FILTER (WHERE status = 'success')::bigint AS success,
+        COUNT(*) FILTER (WHERE status = 'failed')::bigint AS failed,
+        COUNT(*) FILTER (WHERE status = 'error')::bigint AS error,
+        COUNT(*) FILTER (WHERE status = 'skipped')::bigint AS skipped,
+        COUNT(*) FILTER (WHERE status = 'running')::bigint AS running
+    FROM runs
+    WHERE user_id = @user_id
+      AND started_at >= @hourly_since
+      AND started_at < (CAST(@until_hour AS timestamptz) + INTERVAL '1 hour')
+      AND (NOT @filter_workflow OR workflow_id = @workflow_id)
+    GROUP BY 1
+)
+SELECT
+    h.hour AS hour,
+    COALESCE(a.total, 0)::bigint AS total,
+    COALESCE(a.success, 0)::bigint AS success,
+    COALESCE(a.failed, 0)::bigint AS failed,
+    COALESCE(a.error, 0)::bigint AS error,
+    COALESCE(a.skipped, 0)::bigint AS skipped,
+    COALESCE(a.running, 0)::bigint AS running
+FROM hours h
+LEFT JOIN agg a ON a.hour = h.hour
+ORDER BY h.hour`
+
 // runDailySQL returns one row per UTC calendar day from daily_since through
 // until_day (inclusive), left-joined onto run aggregates so missing days are zero.
 const runDailySQL = daysCTE + `
@@ -192,6 +230,16 @@ type runDayRow struct {
 	Running int64
 }
 
+type runHourRow struct {
+	Hour    time.Time `gorm:"column:hour"`
+	Total   int64
+	Success int64
+	Failed  int64
+	Error   int64
+	Skipped int64
+	Running int64
+}
+
 type callCountsRow struct {
 	Total   int64
 	Success int64
@@ -239,7 +287,7 @@ func (r *statisticsRepository) Dashboard(
 	ctx context.Context,
 	userID uuid.UUID,
 	workflowID *uuid.UUID,
-	since, dailySince, untilDay time.Time,
+	since, dailySince, untilDay, hourlySince, untilHour time.Time,
 ) (domainstatistics.DashboardStatistics, error) {
 	filterWorkflow := false
 	workflowParam := uuid.Nil
@@ -252,6 +300,8 @@ func (r *statisticsRepository) Dashboard(
 		"since":           since.UTC(),
 		"daily_since":     dailySince.UTC(),
 		"until_day":       untilDay.UTC(),
+		"hourly_since":    hourlySince.UTC(),
+		"until_hour":      untilHour.UTC(),
 		"filter_workflow": filterWorkflow,
 		"workflow_id":     workflowParam,
 	}
@@ -280,6 +330,23 @@ func (r *statisticsRepository) Dashboard(
 	for _, row := range runRows {
 		runDaily = append(runDaily, domainstatistics.RunDayCounts{
 			Date:    row.Date,
+			Total:   row.Total,
+			Success: row.Success,
+			Failed:  row.Failed,
+			Error:   row.Error,
+			Skipped: row.Skipped,
+			Running: row.Running,
+		})
+	}
+
+	var runHourRows []runHourRow
+	if err := db.Raw(runHourlySQL, params).Scan(&runHourRows).Error; err != nil {
+		return domainstatistics.DashboardStatistics{}, err
+	}
+	runHourly := make([]domainstatistics.RunHourCounts, 0, len(runHourRows))
+	for _, row := range runHourRows {
+		runHourly = append(runHourly, domainstatistics.RunHourCounts{
+			Hour:    row.Hour,
 			Total:   row.Total,
 			Success: row.Success,
 			Failed:  row.Failed,
@@ -322,7 +389,8 @@ func (r *statisticsRepository) Dashboard(
 		Runs: domainstatistics.RunCounts{
 			Total: runTotals.Total, Success: runTotals.Success, Failed: runTotals.Failed,
 			Error: runTotals.Error, Skipped: runTotals.Skipped, Running: runTotals.Running,
-			Daily: runDaily,
+			Daily:  runDaily,
+			Hourly: runHourly,
 		},
 		Calls: domainstatistics.CallCounts{
 			Total: callTotals.Total, Success: callTotals.Success, Failed: callTotals.Failed,

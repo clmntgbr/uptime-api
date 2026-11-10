@@ -38,14 +38,19 @@ func (h *GetDashboardHandler) Handle(ctx context.Context, q GetDashboardQuery) (
 	since := now.Add(-dashboardWindow)
 	untilDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	dailySince := untilDay.AddDate(0, -callsHistoryMonths, 0)
+	untilHour := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.UTC)
+	hourlySince := untilHour.Add(-23 * time.Hour)
 
-	result, err := h.repo.Dashboard(ctx, q.UserID, q.WorkflowID, since, dailySince, untilDay)
+	result, err := h.repo.Dashboard(ctx, q.UserID, q.WorkflowID, since, dailySince, untilDay, hourlySince, untilHour)
 	if err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 	result.WindowHours = int(dashboardWindow / time.Hour)
 	if result.Runs.Daily == nil {
 		result.Runs.Daily = []domainstatistics.RunDayCounts{}
+	}
+	if result.Runs.Hourly == nil {
+		result.Runs.Hourly = []domainstatistics.RunHourCounts{}
 	}
 	if result.Calls.Daily == nil {
 		result.Calls.Daily = []domainstatistics.CallDayCounts{}

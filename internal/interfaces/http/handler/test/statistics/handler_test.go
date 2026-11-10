@@ -71,6 +71,10 @@ func TestStatisticsHandler_GetDashboard_Success(t *testing.T) {
 				Date: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
 				Total: 3, Success: 2, Failed: 1,
 			}},
+			Hourly: []domainstatistics.RunHourCounts{{
+				Hour: time.Date(2026, 10, 15, 14, 0, 0, 0, time.UTC),
+				Total: 2, Success: 1, Failed: 1,
+			}},
 		},
 		Calls: domainstatistics.CallCounts{
 			Total: 20, Success: 15, Failed: 3, Error: 1, Skipped: 1,
@@ -100,6 +104,9 @@ func TestStatisticsHandler_GetDashboard_Success(t *testing.T) {
 	}
 	if len(out.Runs.Daily) != 1 || out.Runs.Daily[0].Date != "2026-10-15" || out.Runs.Daily[0].Total != 3 {
 		t.Fatalf("unexpected runs daily %+v", out.Runs.Daily)
+	}
+	if len(out.Runs.Hourly) != 1 || out.Runs.Hourly[0].Hour != "2026-10-15T14:00:00Z" || out.Runs.Hourly[0].Total != 2 {
+		t.Fatalf("unexpected runs hourly %+v", out.Runs.Hourly)
 	}
 	if len(out.Calls.Daily) != 1 || out.Calls.Daily[0].Date != "2026-10-15" || out.Calls.Daily[0].Total != 5 ||
 		out.Calls.Daily[0].LatencyAvgMs == nil || *out.Calls.Daily[0].LatencyAvgMs != 380 {

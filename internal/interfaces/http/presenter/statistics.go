@@ -23,17 +23,28 @@ type WorkflowCountsResponse struct {
 }
 
 type RunCountsResponse struct {
-	Total   int64                  `json:"total"`
-	Success int64                  `json:"success"`
-	Failed  int64                  `json:"failed"`
-	Error   int64                  `json:"error"`
-	Skipped int64                  `json:"skipped"`
-	Running int64                  `json:"running"`
-	Daily   []RunDayCountsResponse `json:"daily"`
+	Total   int64                   `json:"total"`
+	Success int64                   `json:"success"`
+	Failed  int64                   `json:"failed"`
+	Error   int64                   `json:"error"`
+	Skipped int64                   `json:"skipped"`
+	Running int64                   `json:"running"`
+	Daily   []RunDayCountsResponse  `json:"daily"`
+	Hourly  []RunHourCountsResponse `json:"hourly"`
 }
 
 type RunDayCountsResponse struct {
 	Date    string `json:"date"`
+	Total   int64  `json:"total"`
+	Success int64  `json:"success"`
+	Failed  int64  `json:"failed"`
+	Error   int64  `json:"error"`
+	Skipped int64  `json:"skipped"`
+	Running int64  `json:"running"`
+}
+
+type RunHourCountsResponse struct {
+	Hour    string `json:"hour"`
 	Total   int64  `json:"total"`
 	Success int64  `json:"success"`
 	Failed  int64  `json:"failed"`
@@ -87,6 +98,18 @@ func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) Dash
 			Running: d.Running,
 		})
 	}
+	runHourly := make([]RunHourCountsResponse, 0, len(s.Runs.Hourly))
+	for _, h := range s.Runs.Hourly {
+		runHourly = append(runHourly, RunHourCountsResponse{
+			Hour:    h.Hour.UTC().Format(time.RFC3339),
+			Total:   h.Total,
+			Success: h.Success,
+			Failed:  h.Failed,
+			Error:   h.Error,
+			Skipped: h.Skipped,
+			Running: h.Running,
+		})
+	}
 	callDaily := make([]CallDayCountsResponse, 0, len(s.Calls.Daily))
 	for _, d := range s.Calls.Daily {
 		callDaily = append(callDaily, CallDayCountsResponse{
@@ -124,7 +147,8 @@ func NewDashboardStatisticsResponse(s domainstatistics.DashboardStatistics) Dash
 		Runs: RunCountsResponse{
 			Total: s.Runs.Total, Success: s.Runs.Success, Failed: s.Runs.Failed,
 			Error: s.Runs.Error, Skipped: s.Runs.Skipped, Running: s.Runs.Running,
-			Daily: runDaily,
+			Daily:  runDaily,
+			Hourly: runHourly,
 		},
 		Calls: CallCountsResponse{
 			Total: s.Calls.Total, Success: s.Calls.Success, Failed: s.Calls.Failed,
