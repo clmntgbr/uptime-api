@@ -420,3 +420,21 @@ func derefString(s *string) string {
 	}
 	return *s
 }
+
+func (r *workflowWriteRepository) FindWorkflowIDByCall(ctx context.Context, userID, callID uuid.UUID) (uuid.UUID, error) {
+	var ids []uuid.UUID
+	err := DBWithContext(ctx, r.db).
+		Model(&CallModel{}).
+		Select("calls.workflow_id").
+		Joins("JOIN workflows ON workflows.id = calls.workflow_id").
+		Where("calls.id = ? AND workflows.user_id = ? AND workflows.deleted_at IS NULL", callID, userID).
+		Limit(1).
+		Pluck("calls.workflow_id", &ids).Error
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if len(ids) == 0 {
+		return uuid.Nil, domainworkflow.ErrCallNotFound
+	}
+	return ids[0], nil
+}

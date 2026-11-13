@@ -7,18 +7,20 @@ import (
 
 	authcmd "go-api/internal/application/command/auth"
 	callcmd "go-api/internal/application/command/call"
+	cmdexpiry "go-api/internal/application/command/expiry"
 	identitycmd "go-api/internal/application/command/identity"
+	cmdincident "go-api/internal/application/command/incident"
+	cmdlibrary "go-api/internal/application/command/library"
+	cmdnotify "go-api/internal/application/command/notifysettings"
 	schedulecmd "go-api/internal/application/command/schedule"
 	usercmd "go-api/internal/application/command/user"
 	variablecmd "go-api/internal/application/command/variable"
 	workflowcmd "go-api/internal/application/command/workflow"
-	cmdexpiry "go-api/internal/application/command/expiry"
-	cmdincident "go-api/internal/application/command/incident"
-	cmdnotify "go-api/internal/application/command/notifysettings"
 	querycall "go-api/internal/application/query/call"
 	querycontext "go-api/internal/application/query/contextpanel"
 	queryexpiry "go-api/internal/application/query/expiry"
 	queryincident "go-api/internal/application/query/incident"
+	querylibrary "go-api/internal/application/query/library"
 	querynotify "go-api/internal/application/query/notifysettings"
 	queryrun "go-api/internal/application/query/run"
 	querystatistics "go-api/internal/application/query/statistics"
@@ -30,6 +32,7 @@ import (
 	infraClerk "go-api/internal/infrastructure/clerk"
 	"go-api/internal/infrastructure/config"
 	"go-api/internal/infrastructure/crypto"
+	"go-api/internal/infrastructure/importer"
 	"go-api/internal/infrastructure/messaging/kafka"
 	"go-api/internal/infrastructure/persistence/outbox"
 	"go-api/internal/infrastructure/persistence/processed"
@@ -51,6 +54,7 @@ type Container struct {
 	WorkflowHandler        *httphandler.WorkflowHandler
 	RunHandler             *httphandler.RunHandler
 	CallHandler            *httphandler.CallHandler
+	LibraryHandler         *httphandler.LibraryHandler
 	ContextHandler         *httphandler.ContextHandler
 	ExpiryHandler          *httphandler.ExpiryHandler
 	IncidentHandler        *httphandler.IncidentHandler
@@ -92,6 +96,9 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	}
 
 	globalVariableRepo := write.NewGlobalVariableRepository(db, cipher)
+	libraryWriteRepo := write.NewLibraryWriteRepository(db)
+	libraryReadRepo := read.NewLibraryQueryRepository(db)
+	libraryImporter := importer.NewParser()
 	workflowWriteRepo := write.NewWorkflowWriteRepository(db, cipher)
 	workflowReadRepo := read.NewWorkflowQueryRepository(db)
 	runReadRepo := read.NewRunQueryRepository(db)
@@ -198,6 +205,17 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			callcmd.NewReorderCallsHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
 			querycall.NewListCallsHandler(workflowReadRepo),
 			querycall.NewGetCallHandler(workflowReadRepo),
+			callcmd.NewInsertFromLibraryHandler(workflowWriteRepo, libraryWriteRepo, globalVariableRepo, outboxRepo),
+		),
+		LibraryHandler: httphandler.NewLibraryHandler(
+			cmdlibrary.NewCreateItemHandler(libraryWriteRepo),
+			cmdlibrary.NewUpdateItemHandler(libraryWriteRepo),
+			cmdlibrary.NewDeleteItemHandler(libraryWriteRepo),
+			cmdlibrary.NewImportHandler(libraryWriteRepo),
+			querylibrary.NewListItemsHandler(libraryReadRepo),
+			querylibrary.NewGetItemHandler(libraryWriteRepo),
+			querylibrary.NewPreviewImportHandler(libraryImporter),
+			cmdlibrary.NewSaveFromCallHandler(workflowWriteRepo, libraryWriteRepo),
 		),
 		VariableHandler: httphandler.NewVariableHandler(
 			variablecmd.NewCreateGlobalHandler(globalVariableRepo, workflowWriteRepo),

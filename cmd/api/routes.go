@@ -33,6 +33,18 @@ func setupAPIRoutes(app *fiber.App, container *di.Container) {
 	setupStatisticsRoutes(protected, container)
 	setupVariableRoutes(protected, container)
 	setupWorkflowRoutes(protected, container)
+	setupLibraryRoutes(protected, container)
+}
+
+func setupLibraryRoutes(api fiber.Router, container *di.Container) {
+	api.Get("/library", container.LibraryHandler.List)
+	api.Post("/library", container.LibraryHandler.Create)
+	api.Post("/library/import/preview", container.LibraryHandler.PreviewImport)
+	api.Post("/library/import", container.LibraryHandler.Import)
+	api.Post("/library/from-call/:callId", container.LibraryHandler.SaveFromCall)
+	api.Get("/library/:id", container.LibraryHandler.GetByID)
+	api.Put("/library/:id", container.LibraryHandler.Update)
+	api.Delete("/library/:id", container.LibraryHandler.Delete)
 }
 
 func setupStatisticsRoutes(api fiber.Router, container *di.Container) {
@@ -92,6 +104,7 @@ func setupWorkflowRoutes(api fiber.Router, container *di.Container) {
 	api.Post("/workflows/:id/calls/:callId/copy", container.CallHandler.Copy)
 	api.Put("/workflows/:id/calls/:callId", container.CallHandler.Update)
 	api.Delete("/workflows/:id/calls/:callId", container.CallHandler.Delete)
+	api.Post("/workflows/:id/calls/from-library/:itemId", container.CallHandler.InsertFromLibrary)
 
 	api.Get("/workflows/:id/calls/:callId/available-variables", container.VariableHandler.ListAvailable)
 	api.Get("/workflows/:id/calls/:callId/response-keys", container.VariableHandler.ListResponseKeys)

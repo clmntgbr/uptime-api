@@ -21,6 +21,7 @@ import (
 var (
 	testWorkflowID = uuid.MustParse("01960000-0000-7000-8000-0000000000b1")
 	testCallID     = uuid.MustParse("01960000-0000-7000-8000-0000000000c1")
+	testItemID     = uuid.MustParse("01960000-0000-7000-8000-0000000000d1")
 	errDatabase    = errors.New("pq: connection refused")
 )
 
@@ -180,30 +181,53 @@ func sampleCallView() *domainworkflow.CallView {
 	}
 }
 
+type mockInsertFromLibraryHandler struct {
+	calls int
+	got   callcmd.InsertFromLibraryCommand
+	err   error
+}
+
+func (m *mockInsertFromLibraryHandler) Handle(_ context.Context, cmd callcmd.InsertFromLibraryCommand) (*domaincall.Call, error) {
+	m.calls++
+	m.got = cmd
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &domaincall.Call{
+		ID:       testCallID,
+		Name:     "Health",
+		Method:   "GET",
+		URL:      "https://api.example.com/health",
+		Position: cmd.Position,
+	}, nil
+}
+
 type mocks struct {
-	create  *mockCreateHandler
-	copy    *mockCopyHandler
-	update  *mockUpdateHandler
-	delete  *mockDeleteHandler
-	reorder *mockReorderHandler
-	list    *mockListHandler
-	get     *mockGetHandler
+	insertFromLibrary *mockInsertFromLibraryHandler
+	create            *mockCreateHandler
+	copy              *mockCopyHandler
+	update            *mockUpdateHandler
+	delete            *mockDeleteHandler
+	reorder           *mockReorderHandler
+	list              *mockListHandler
+	get               *mockGetHandler
 }
 
 func newMocks() mocks {
 	return mocks{
-		create:  &mockCreateHandler{},
-		copy:    &mockCopyHandler{},
-		update:  &mockUpdateHandler{},
-		delete:  &mockDeleteHandler{},
-		reorder: &mockReorderHandler{},
-		list:    &mockListHandler{},
-		get:     &mockGetHandler{},
+		insertFromLibrary: &mockInsertFromLibraryHandler{},
+		create:            &mockCreateHandler{},
+		copy:              &mockCopyHandler{},
+		update:            &mockUpdateHandler{},
+		delete:            &mockDeleteHandler{},
+		reorder:           &mockReorderHandler{},
+		list:              &mockListHandler{},
+		get:               &mockGetHandler{},
 	}
 }
 
 func mountRoutes(m mocks, authenticated bool) *fiber.App {
-	h := handler.NewCallHandler(m.create, m.copy, m.update, m.delete, m.reorder, m.list, m.get)
+	h := handler.NewCallHandler(m.create, m.copy, m.update, m.delete, m.reorder, m.list, m.get, m.insertFromLibrary)
 	app := testutil.NewTestApp()
 	if authenticated {
 		app.Use(testutil.WithUserWithoutProject(testutil.TestUserID))
@@ -215,6 +239,7 @@ func mountRoutes(m mocks, authenticated bool) *fiber.App {
 	app.Post("/workflows/:id/calls/:callId/copy", h.Copy)
 	app.Put("/workflows/:id/calls/:callId", h.Update)
 	app.Delete("/workflows/:id/calls/:callId", h.Delete)
+	app.Post("/workflows/:id/calls/from-library/:itemId", h.InsertFromLibrary)
 	return app
 }
 

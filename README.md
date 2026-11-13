@@ -1,17 +1,25 @@
-# Go API Template
+# Uptime API
 
-Go/Fiber API template with **Clean Architecture**, **CQRS**, **Outbox pattern**, **Kafka**, **Centrifugo**, **PostgreSQL**, and **Clerk** authentication.
+Go/Fiber API for **API workflow monitoring**: ordered HTTP calls, variables, rules, runs, incidents, certificate expiry, and email notifications.
+
+Built with **Clean Architecture**, **CQRS**, **Outbox**, **Kafka**, **Centrifugo**, **PostgreSQL**, and **Clerk** authentication.
+
+Product details (concepts, rules, alerts): [docs/main.md](docs/main.md). Security notes: [docs/security.md](docs/security.md).
 
 ## Features
 
-- CQRS: command / query / event handlers under `internal/application`
-- Domain events (`user.created.v1`) + transactional outbox
-- Kafka worker (outbox relay + consumer + handler registry) on the `events` topic
-- API workflow monitoring: `worker-scheduler` (leases + jobs on `workflow.jobs`), `worker-calls` (HTTP execution, no database access), `worker` (records results from `workflow.results`)
-- Centrifugo realtime (outbox → worker → publish to `users:{id}`)
-- Offset pagination + query validation helpers
-- Clerk JWT auth + webhook sync (Svix)
-- Docker Compose local stack (API, worker, worker-scheduler, worker-calls, Postgres, Kafka, Centrifugo, ngrok)
+- Workflows of ordered HTTP calls (variables `global` / `static` / call-extracted, readable alert rules, TLS certificate checks)
+- Progressive run recording: `call.started` / `call.finished` while a run is open, then `workflow.finished`
+- Dashboard statistics (24h counters, runs hourly + daily, call duration series)
+- Incidents + per-kind policies, acknowledgement, realtime updates
+- Certificate expiry policies and items
+- Per-workflow notification settings (email for incidents / TLS)
+- Header/query key & value suggestions across the user’s calls
+- CQRS + domain events + transactional outbox
+- Kafka workers: outbox relay, scheduler leases, call execution, result persistence
+- Centrifugo realtime on `users:{id}` (`workflow.*`, `call.*`, `incident.*`, …)
+- Clerk JWT auth + Svix webhook user sync
+- Docker Compose local stack
 
 ## Tech Stack
 
@@ -30,66 +38,74 @@ Go/Fiber API template with **Clean Architecture**, **CQRS**, **Outbox pattern**,
 
 ```
 cmd/
-  api/          HTTP server
-  worker/       Outbox relay + Kafka consumers (events, workflow results)
-  worker-scheduler/  Leases due workflows at hh:mm:00, publishes jobs, expires old runs
-  worker-calls/ Executes jobs (HTTP calls, rules), publishes results
-  cli/          Migrations, workflow:import, variable:set, keys:generate
+  api/               HTTP server
+  worker/            Outbox relay + Kafka consumers (events, workflow.results)
+  worker-scheduler/  Leases due workflows, publishes jobs, expires stale leases
+  worker-calls/      Executes jobs (HTTP + rules), publishes results / call progress
+  cli/               Migrations, workflow:import, variable:set, keys:generate
 internal/
-  contract/               Versioned Kafka messages (jobs, results)
-  engine/                  Workflow execution engine (variables, extraction, rules, masking)
-  domain/                 Aggregates, events, ports, paginate
+  contract/          Versioned Kafka messages (jobs, results, call progress)
+  engine/            Pure execution (variables, extraction, rules) via ports
+  domain/            Aggregates, events, ports, paginate
   application/
-    command/              Write-side handlers
-    query/                Read-side handlers
-    event/                Async event handlers (+ realtime publish)
-    realtime/             WS type helpers (entity.action)
-    registry/             Event handler registry
+    command/         Sync write use-cases
+    query/           Read models
+    event/           Async handlers (+ realtime publish)
+    realtime/        WS type helpers (entity.action)
+    registry/        Event handler registry
   infrastructure/
     persistence/write|read|outbox|processed
     messaging/kafka
-    httpclient    SSRF-safe HTTP executor
-    crypto        AES-GCM at rest, sealed job secrets
+    httpclient       SSRF-safe HTTP executor
+    crypto           AES-GCM at rest, sealed job secrets
     centrifugo
     clerk|config
-  interfaces/http/        Handlers, middleware, DTO, presenter, validation
+  interfaces/http/   Handlers, middleware, DTO, presenter, validation
+migrations/          Goose SQL (schema source of truth)
 ```
 
 ### Sync command + async event flow
 
 ```
 HTTP / webhook
-  → CreateUser command (same DB transaction)
-      → save User aggregate
+  → command handler (same DB transaction)
+      → save aggregate
       → StoreEvents(outbox)
-  → 201 response
+  → 2xx response
 
 worker (outbox relay)
   → poll unpublished outbox rows
-  → publish to the Kafka topic events (key = aggregate id)
+  → publish to Kafka topic `events` (key = aggregate id)
   → mark published_at
 
 worker (consumer)
   → HandlerRegistry.Dispatch(event type)
-  → log / notify handlers
-  → publish_user_*_realtime → Centrifugo users:{userId}
+  → side effects + publish_*_realtime → Centrifugo users:{userId}
 ```
 
-Supported domain events: `user.created.v1`, `user.updated.v1`, `user.deleted.v1` (all written to outbox on the matching command).
+### Workflow execution path
+
+```
+worker-scheduler  → Kafka workflow.jobs
+worker-calls      → HTTP calls, call progress + final result on workflow.results
+worker            → EnsureRunning / UpsertCallRun / finalize run
+                  → outbox: call.started|finished, workflow.started|finished
+                  → Centrifugo + optional notification requests
+```
 
 ### Idempotence + retry / DLQ
 
-- Each domain event has a stable `eventId` (set when recorded on the aggregate).
-- Handlers are wrapped with dedup on `(event_id, handler_name)` via `processed_events`.
-- Kafka topology per topic: `<topic>` → `<topic>.retry` (`not_before` header, separate consumer group) → `<topic>.dlq` after 5 attempts or on non-retryable errors.
-- Offsets are committed up to the oldest record still in flight, so parallel processing never loses a record.
+- Stable `eventId` on domain events (set when recorded on the aggregate).
+- Dedup on `(event_id, handler_name)` via `processed_events`.
+- Per topic: `<topic>` → `<topic>.retry` (`not_before`, separate group) → `<topic>.dlq`.
+- Offsets commit up to the oldest in-flight record.
 - Topics are created by `kc` (`deploy/kafka/topics.sh`); auto-creation is disabled.
 
 ## Getting Started
 
 ```bash
 cp .env.dist .env
-# fill Clerk keys
+# fill Clerk keys + crypto keys (make keys-generate)
 
 make dev
 make migrate
@@ -98,10 +114,10 @@ make migrate
 | Service | Host port | Notes |
 |---|---|---|
 | API | `4000` | Air hot reload |
-| Worker | — | relay + consumer |
-| Postgres | `9543` | |
+| Worker | — | outbox relay + consumers |
 | Scheduler | — | single active instance (advisory lock) |
 | Worker-calls | — | executes jobs, no database access |
+| Postgres | `9543` | |
 | Kafka | `9094` | external listener (`localhost:9094`) |
 | Centrifugo | `8000` | WS + HTTP API |
 | ngrok | `4040` | webhook tunnel |
@@ -131,7 +147,7 @@ make migrate
 
 ## Testing
 
-Handler HTTP tests live under `internal/interfaces/http/handler/test/`. See [docs/handler-tests.md](docs/handler-tests.md).
+Handler HTTP tests live under `internal/interfaces/http/handler/test/` (ports in `*_ports.go`, Fiber `app.Test` with mocks). Architecture conventions: [`.cursor/rules/architecture.mdc`](.cursor/rules/architecture.mdc).
 
 ```bash
 go test ./internal/interfaces/http/handler/test/... -race \
@@ -140,35 +156,37 @@ go test ./internal/interfaces/http/handler/test/... -race \
 
 CI enforces ≥95% handler statement coverage (Codecov flag `handler`, patch 100%).
 
-## API
+## API (overview)
 
 ### Health
 
 - `GET /livez`, `/readyz`, `/startupz`
 
-### Protected
+### Auth / realtime
 
-- `GET /api/users/me` — Bearer Clerk JWT (query side / read repository)
+- `GET /api/users/me` — Bearer Clerk JWT
 - `GET /api/realtime/connection` — Centrifugo JWT + channel + `wsUrl`
+- `POST /webhooks/clerk` — Svix-verified user sync
 
-### Webhooks
+### Core product (protected)
 
-- `POST /webhooks/clerk` — Svix-verified; `user.created` / `updated` / `deleted`
+- `GET /api/statistics` — dashboard counters + runs/calls series (hourly + daily)
+- Workflows CRUD, run/stop, context (latest run, variables)
+- Calls CRUD, reorder, copy; call variables & response keys
+- Suggestions: `…/suggestions/header-keys|header-values|query-keys|query-values`
+- Runs list/detail
+- Incidents + policies; notification settings
+- Expiry policies + items
+- Global / static variables
 
-## CQRS notes
-
-- Commands write through aggregates (`NewUser` records `UserCreated`) and persist events in `outbox_events` in the **same** GORM transaction.
-- Queries use `UserReadRepository` (SQL projection / `UserView`), not domain mutation.
-- Event types are versioned (`user.created.v1`).
-- One worker process runs outbox relay + consumer; scale the worker horizontally as needed.
-- Start with a single `events` topic; consumers dispatch by event type through the registry.
+JSON uses camelCase. Errors: `{ "message", "errors?", "code?" }`.
 
 ## Environment
 
-See `.env.dist`. Messaging / realtime:
+See `.env.dist`. Messaging / realtime / crypto:
 
 - `KAFKA_BROKERS`, `KAFKA_SASL_MECHANISM`, `KAFKA_USERNAME`, `KAFKA_PASSWORD`, `KAFKA_TLS`
-- `SECRETS_ENCRYPTION_KEY`, `JOB_SEAL_PUBLIC_KEY`, `JOB_SEAL_PRIVATE_KEY` (generate with `make keys-generate`)
+- `SECRETS_ENCRYPTION_KEY`, `JOB_SEAL_PUBLIC_KEY`, `JOB_SEAL_PRIVATE_KEY` (`make keys-generate`)
 - `SSRF_ALLOW_PRIVATE` (dev only), `HEARTBEAT_URL`, `RESULTS_RETENTION_DAYS`
 - `OUTBOX_POLL_INTERVAL` (default `2s`)
 - `WORKER_CONCURRENCY` (default `4`)
@@ -177,19 +195,10 @@ See `.env.dist`. Messaging / realtime:
 
 ## Extending
 
-1. Add aggregate under `internal/domain/<name>/` (`entity.go`, `events.go`, `repository.go`)
+1. Add aggregate under `internal/domain/<name>/`
 2. Add command/query handlers under `internal/application/...`
 3. Implement write/read repos under `internal/infrastructure/persistence/`
-4. Register event handlers in `cmd/worker/di` (including `publish_*_realtime` if needed)
-5. Wire HTTP in `cmd/api/di` + `routes.go`
-6. Add a SQL migration in `migrations/` and a persistence model under `internal/infrastructure/persistence/`
+4. Register event handlers in `cmd/worker/di` (including realtime publishers if needed)
+5. Wire HTTP in `cmd/api/di` + `routes.go` with `*_ports.go` + handler tests
+6. Add a SQL migration in `migrations/` and update persistence models
 7. Run `make migrate` (applies SQL + fails on model/DB drift)
-
-## Architecture rules
-
-Conventions live in [`.cursor/rules/architecture.mdc`](.cursor/rules/architecture.mdc).
-
-- User / auth: [docs/user.md](docs/user.md)
-- Webhooks: [docs/webhooks.md](docs/webhooks.md)
-- Realtime: [docs/realtime.md](docs/realtime.md)
-- Handler tests: [docs/handler-tests.md](docs/handler-tests.md)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	domaincall "go-api/internal/domain/call"
+	domainlibrary "go-api/internal/domain/library"
 	domainrule "go-api/internal/domain/rule"
 	domainworkflow "go-api/internal/domain/workflow"
 	"go-api/internal/interfaces/http/dto"
@@ -64,6 +65,20 @@ func bindCallDefinition(c fiber.Ctx) (domaincall.Definition, error) {
 		return domaincall.Definition{}, err
 	}
 
+	def, ruleErrors := callDefinitionFromRequest(body)
+	if len(ruleErrors) > 0 {
+		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Validation failed",
+			"errors":  ruleErrors,
+		})
+		return domaincall.Definition{}, validation.ErrValidationFailed
+	}
+	return def, nil
+}
+
+// callDefinitionFromRequest maps a validated CallRequest to a call definition.
+// It returns the rule errors keyed by rules[i] when a rule cannot be built.
+func callDefinitionFromRequest(body dto.CallRequest) (domaincall.Definition, map[string]string) {
 	def := domaincall.Definition{
 		Name:        body.Name,
 		Description: body.Description,
@@ -89,18 +104,54 @@ func bindCallDefinition(c fiber.Ctx) (domaincall.Definition, error) {
 		def.Rules = append(def.Rules, built)
 	}
 	if len(ruleErrors) > 0 {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "Validation failed",
-			"errors":  ruleErrors,
-		})
-		return domaincall.Definition{}, validation.ErrValidationFailed
+		return domaincall.Definition{}, ruleErrors
 	}
 	return def, nil
 }
 
+func parseWorkflowAndLibraryItemIDs(c fiber.Ctx) (workflowID, itemID uuid.UUID, err error) {
+	workflowID, err = uuid.Parse(c.Params("id"))
+	if err != nil {
+		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid workflow id"})
+		return uuid.Nil, uuid.Nil, validation.ErrValidationFailed
+	}
+	itemID, err = uuid.Parse(c.Params("itemId"))
+	if err != nil {
+		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid library item id"})
+		return uuid.Nil, uuid.Nil, validation.ErrValidationFailed
+	}
+	return workflowID, itemID, nil
+}
+
+// bindInsertPosition reads the optional body of the from-library insert.
+// An empty body means "append at the end" and returns 0.
+func bindInsertPosition(c fiber.Ctx) (int, error) {
+	if len(c.Body()) == 0 {
+		return 0, nil
+	}
+	var body dto.InsertFromLibraryRequest
+	if err := validation.BindBody(c, &body); err != nil {
+		return 0, err
+	}
+	if body.Position == nil {
+		return 0, nil
+	}
+	return *body.Position, nil
+}
+
 func writeCallError(c fiber.Ctx, err error, fallback string) error {
 	var verr *domainworkflow.ValidationError
+	var cverr *domaincall.ValidationError
 	switch {
+	case errors.Is(err, domainlibrary.ErrNotFound):
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"message": "Library item not found",
+		})
+	case errors.As(err, &cverr):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": cverr.Error(),
+			"code":    "INVALID_CALL",
+		})
 	case errors.Is(err, domainworkflow.ErrInvalidCallOrder):
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
 			"message": "callIds must list every call exactly once",

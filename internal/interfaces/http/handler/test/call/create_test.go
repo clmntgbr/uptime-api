@@ -64,9 +64,9 @@ func TestCallHandler_Create_WithDescription(t *testing.T) {
 
 func TestCallHandler_Create_ValidationFailed(t *testing.T) {
 	cases := map[string]func(map[string]any){
-		"missing name":       func(b map[string]any) { b["name"] = "" },
-		"missing url":        func(b map[string]any) { delete(b, "url") },
-		"bad method":         func(b map[string]any) { b["method"] = "TRACE" },
+		"missing name": func(b map[string]any) { b["name"] = "" },
+		"missing url":  func(b map[string]any) { delete(b, "url") },
+		"bad method":   func(b map[string]any) { b["method"] = "TRACE" },
 		"description too long": func(b map[string]any) {
 			long := make([]byte, 501)
 			for i := range long {

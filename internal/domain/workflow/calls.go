@@ -214,3 +214,43 @@ func withPreservedExtractionIDs(def domaincall.Definition, existing []domaincall
 	def.Extractions = out
 	return def
 }
+
+// InsertCall places a new call at position (1-based) and shifts the following
+// calls. position must be between 1 and len(calls)+1. Variables are re-validated
+// so a call inserted before its producer is rejected.
+func (w *Workflow) InsertCall(def domaincall.Definition, position int, globalNames []string) (domaincall.Call, error) {
+	if len(w.Calls) >= MaxCalls {
+		return domaincall.Call{}, &ValidationError{Message: fmt.Sprintf("a workflow has at most %d calls", MaxCalls)}
+	}
+	if position < 1 || position > len(w.Calls)+1 {
+		return domaincall.Call{}, &ValidationError{Message: fmt.Sprintf("position must be between 1 and %d", len(w.Calls)+1)}
+	}
+
+	call, err := domaincall.New(def, position, uuid.New())
+	if err != nil {
+		return domaincall.Call{}, mapCallError(err)
+	}
+
+	next := make([]domaincall.Call, 0, len(w.Calls)+1)
+	next = append(next, w.Calls[:position-1]...)
+	next = append(next, call)
+	next = append(next, w.Calls[position-1:]...)
+	for i := range next {
+		next[i].Position = i + 1
+	}
+	if err := validateVariables(w.Statics, next, globalNames); err != nil {
+		return domaincall.Call{}, err
+	}
+	w.Calls = next
+	w.recordCallMutation()
+	return next[position-1], nil
+}
+
+// CallDefinition returns the definition of an existing call, to copy it elsewhere.
+func (w *Workflow) CallDefinition(callID uuid.UUID) (domaincall.Definition, error) {
+	index, err := w.callIndex(callID)
+	if err != nil {
+		return domaincall.Definition{}, err
+	}
+	return w.Calls[index].Definition(), nil
+}

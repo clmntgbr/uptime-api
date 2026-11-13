@@ -23,6 +23,9 @@ func (s *stubWorkflows) Update(context.Context, *domainworkflow.Workflow) error 
 	return nil
 }
 func (s *stubWorkflows) Delete(context.Context, uuid.UUID) error { return nil }
+func (s *stubWorkflows) FindWorkflowIDByCall(context.Context, uuid.UUID, uuid.UUID) (uuid.UUID, error) {
+	return uuid.Nil, domainworkflow.ErrCallNotFound
+}
 func (s *stubWorkflows) GetByID(context.Context, uuid.UUID) (*domainworkflow.Workflow, error) {
 	return s.w, nil
 }

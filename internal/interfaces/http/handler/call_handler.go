@@ -17,6 +17,8 @@ type CallHandler struct {
 	reorderHandler callReorderHandler
 	listHandler    callListHandler
 	getHandler     callGetHandler
+
+	insertFromLibrary callInsertFromLibraryHandler
 }
 
 func NewCallHandler(
@@ -27,6 +29,7 @@ func NewCallHandler(
 	reorderHandler callReorderHandler,
 	listHandler callListHandler,
 	getHandler callGetHandler,
+	insertFromLibrary callInsertFromLibraryHandler,
 ) *CallHandler {
 	return &CallHandler{
 		createHandler:  createHandler,
@@ -36,6 +39,8 @@ func NewCallHandler(
 		reorderHandler: reorderHandler,
 		listHandler:    listHandler,
 		getHandler:     getHandler,
+
+		insertFromLibrary: insertFromLibrary,
 	}
 }
 
@@ -196,4 +201,30 @@ func (h *CallHandler) Reorder(c fiber.Ctx) error {
 		return writeCallError(c, err, "Failed to reorder calls")
 	}
 	return c.Status(fiber.StatusOK).JSON(presenter.NewCallListResponseFromCalls(calls))
+}
+
+func (h *CallHandler) InsertFromLibrary(c fiber.Ctx) error {
+	user, err := httpctx.GetUser(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "Unauthorized"})
+	}
+	workflowID, itemID, err := parseWorkflowAndLibraryItemIDs(c)
+	if err != nil {
+		return err
+	}
+	position, err := bindInsertPosition(c)
+	if err != nil {
+		return err
+	}
+
+	call, err := h.insertFromLibrary.Handle(c.Context(), callcmd.InsertFromLibraryCommand{
+		UserID:     user.ID,
+		WorkflowID: workflowID,
+		ItemID:     itemID,
+		Position:   position,
+	})
+	if err != nil {
+		return writeCallError(c, err, "Failed to insert library item")
+	}
+	return c.Status(fiber.StatusCreated).JSON(presenter.NewCallResponseFromCall(*call))
 }

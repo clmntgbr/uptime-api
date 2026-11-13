@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	DefaultTimeout = 30 * time.Second
-	MaxTimeout     = 60 * time.Second
-	MinTimeout     = 100 * time.Millisecond
+	DefaultTimeout       = 30 * time.Second
+	MaxTimeout           = 60 * time.Second
+	MinTimeout           = 100 * time.Millisecond
 	MaxNameLength        = 100
 	MaxDescriptionLength = 500
 )
@@ -251,4 +251,29 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// Definition returns the user input that rebuilds this call: same request
+// fields and rules, without IDs and without extractions. Used to copy a call
+// into a template or another workflow.
+func (c Call) Definition() Definition {
+	rules := make([]rule.Rule, 0, len(c.Rules))
+	for _, r := range c.Rules {
+		rules = append(rules, rule.Rule{Subject: r.Subject, Operator: r.Operator, Target: r.Target, Value: r.Value})
+	}
+	verifyTLS := c.VerifyTLS
+	return Definition{
+		Name:        c.Name,
+		Description: c.Description,
+		Method:      c.Method,
+		URL:         c.URL,
+		Headers:     copyMap(c.Headers),
+		Query:       copyMap(c.Query),
+		Body:        c.Body,
+		Timeout:     c.Timeout,
+		VerifyTLS:   &verifyTLS,
+		IPVersion:   c.IPVersion,
+		ProxyURL:    c.ProxyURL,
+		Rules:       rules,
+	}
 }

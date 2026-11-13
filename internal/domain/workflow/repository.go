@@ -20,6 +20,9 @@ type WriteRepository interface {
 	// GetByID returns nil, nil when the workflow does not exist.
 	GetByID(ctx context.Context, id uuid.UUID) (*Workflow, error)
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]*Workflow, error)
+	// FindWorkflowIDByCall returns the workflow owning callID, only when that
+	// workflow belongs to userID. Returns ErrCallNotFound otherwise.
+	FindWorkflowIDByCall(ctx context.Context, userID, callID uuid.UUID) (uuid.UUID, error)
 }
 
 type ReadRepository interface {

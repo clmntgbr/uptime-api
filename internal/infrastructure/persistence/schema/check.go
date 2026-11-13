@@ -25,6 +25,7 @@ func Models() []any {
 		&write.RunModel{},
 		&write.CallRunModel{},
 		&write.RuleRunModel{},
+		&write.LibraryItemModel{},
 	}
 }
 

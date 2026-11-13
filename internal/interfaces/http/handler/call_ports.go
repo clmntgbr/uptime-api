@@ -36,3 +36,7 @@ type callListHandler interface {
 type callGetHandler interface {
 	Handle(ctx context.Context, q querycall.GetCallQuery) (*domainworkflow.CallView, error)
 }
+
+type callInsertFromLibraryHandler interface {
+	Handle(ctx context.Context, cmd callcmd.InsertFromLibraryCommand) (*domaincall.Call, error)
+}
