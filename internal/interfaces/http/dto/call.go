@@ -13,9 +13,9 @@ type CallRequest struct {
 	Description string            `json:"description" validate:"omitempty,max=500"`
 	Method      string            `json:"method" validate:"omitempty,oneof=GET POST PUT PATCH DELETE HEAD OPTIONS"`
 	URL         string            `json:"url" validate:"required,max=2048"`
-	Headers     map[string]string `json:"headers" validate:"max=50"`
-	Query       map[string]string `json:"query" validate:"max=50"`
-	Body        string            `json:"body" validate:"max=65536"`
+	Headers     map[string]string `json:"headers" validate:"max=100"`
+	Query       map[string]string `json:"query" validate:"max=200"`
+	Body        string            `json:"body" validate:"max=524288"`
 	TimeoutMS   int               `json:"timeoutMs" validate:"omitempty,min=100,max=60000"`
 	VerifyTLS   *bool             `json:"verifyTls"`
 	IPVersion   string            `json:"ipVersion" validate:"omitempty,oneof=any ipv4 ipv6"`
