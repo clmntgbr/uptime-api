@@ -211,7 +211,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			cmdlibrary.NewCreateItemHandler(libraryWriteRepo),
 			cmdlibrary.NewUpdateItemHandler(libraryWriteRepo),
 			cmdlibrary.NewDeleteItemHandler(libraryWriteRepo),
-			cmdlibrary.NewImportHandler(libraryWriteRepo),
+			cmdlibrary.NewImportHandler(libraryWriteRepo, outboxRepo),
 			querylibrary.NewListItemsHandler(libraryReadRepo),
 			querylibrary.NewGetItemHandler(libraryWriteRepo),
 			querylibrary.NewPreviewImportHandler(libraryImporter, globalVariableRepo),

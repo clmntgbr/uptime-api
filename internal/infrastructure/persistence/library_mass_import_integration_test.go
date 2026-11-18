@@ -10,6 +10,7 @@ import (
 	cmdlibrary "go-api/internal/application/command/library"
 	domaincall "go-api/internal/domain/call"
 	domainlibrary "go-api/internal/domain/library"
+	"go-api/internal/infrastructure/persistence/outbox"
 	"go-api/internal/infrastructure/persistence/read"
 	"go-api/internal/infrastructure/persistence/write"
 )
@@ -32,7 +33,7 @@ func TestLibraryMassImport_OneTransaction(t *testing.T) {
 			},
 		})
 	}
-	created, err := cmdlibrary.NewImportHandler(repo).Handle(context.Background(), cmdlibrary.ImportCommand{
+	created, err := cmdlibrary.NewImportHandler(repo, outbox.NewRepository(db)).Handle(context.Background(), cmdlibrary.ImportCommand{
 		UserID: userID, Items: items,
 	})
 	if err != nil {

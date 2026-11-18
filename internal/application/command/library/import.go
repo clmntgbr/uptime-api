@@ -5,7 +5,9 @@ import (
 	"time"
 
 	domaincall "go-api/internal/domain/call"
+	"go-api/internal/domain/event"
 	domainlibrary "go-api/internal/domain/library"
+	"go-api/internal/domain/port"
 
 	"github.com/google/uuid"
 )
@@ -24,12 +26,13 @@ type ImportCommand struct {
 }
 
 type ImportHandler struct {
-	repo  domainlibrary.WriteRepository
-	clock clock
+	repo   domainlibrary.WriteRepository
+	outbox port.OutboxRepository
+	clock  clock
 }
 
-func NewImportHandler(repo domainlibrary.WriteRepository) *ImportHandler {
-	return &ImportHandler{repo: repo, clock: time.Now}
+func NewImportHandler(repo domainlibrary.WriteRepository, outbox port.OutboxRepository) *ImportHandler {
+	return &ImportHandler{repo: repo, outbox: outbox, clock: time.Now}
 }
 
 func (h *ImportHandler) Handle(ctx context.Context, cmd ImportCommand) ([]domainlibrary.Item, error) {
@@ -49,7 +52,9 @@ func (h *ImportHandler) Handle(ctx context.Context, cmd ImportCommand) ([]domain
 				return err
 			}
 		}
-		return nil
+		return h.outbox.StoreEvents(txCtx, []event.DomainEvent{
+			domainlibrary.NewImportedEvent(cmd.UserID, items, now),
+		})
 	})
 	if err != nil {
 		return nil, err

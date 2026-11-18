@@ -9,11 +9,13 @@ import (
 	commandrun "go-api/internal/application/command/run"
 	"go-api/internal/application/event/dedup"
 	eventincident "go-api/internal/application/event/incident"
+	eventlibrary "go-api/internal/application/event/library"
 	eventrun "go-api/internal/application/event/run"
 	eventuser "go-api/internal/application/event/user"
 	eventworkflow "go-api/internal/application/event/workflow"
 	"go-api/internal/application/registry"
 	domainincident "go-api/internal/domain/incident"
+	domainlibrary "go-api/internal/domain/library"
 	domainrun "go-api/internal/domain/run"
 	domainuser "go-api/internal/domain/user"
 	domainworkflow "go-api/internal/domain/workflow"
@@ -147,6 +149,11 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	))
 	reg.Register(domainincident.EventTypeReopened, dedup.With(
 		dedupRepo, "publish_incident_reopened_realtime", publishIncidentRealtime.OnReopened,
+	))
+
+	publishLibraryRealtime := eventlibrary.NewPublishRealtimeHandler(realtimePublisher)
+	reg.Register(domainlibrary.EventTypeImported, dedup.With(
+		dedupRepo, "publish_library_imported_realtime", publishLibraryRealtime.OnImported,
 	))
 
 	eventsConsumer := kafka.NewConsumer(
