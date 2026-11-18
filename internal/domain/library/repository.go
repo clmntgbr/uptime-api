@@ -3,8 +3,6 @@ package library
 import (
 	"context"
 
-	"go-api/internal/domain/paginate"
-
 	"github.com/google/uuid"
 )
 
@@ -20,5 +18,5 @@ type WriteRepository interface {
 
 type ReadRepository interface {
 	// List returns one page of the user's items and the total before pagination.
-	List(ctx context.Context, userID uuid.UUID, q paginate.PaginateQuery) ([]ListView, int64, error)
+	List(ctx context.Context, userID uuid.UUID, filter ListFilter) ([]ListView, int64, error)
 }

@@ -8,20 +8,68 @@ import (
 )
 
 func TestValidateBaseURL(t *testing.T) {
+	lookup := func(name string) (string, bool) {
+		switch name {
+		case "api_base":
+			return "https://api.example.com", true
+		case "host":
+			return "api.example.com", true
+		case "bad":
+			return "not-a-url", true
+		case "empty":
+			return "", true
+		default:
+			return "", false
+		}
+	}
+
 	ok := map[string]string{
 		"":                             "",
 		"  https://api.example.com/  ": "https://api.example.com",
 		"http://localhost:8080/v1":     "http://localhost:8080/v1",
+		"{{api_base}}":                 "{{api_base}}",
+		" {{api_base}}/ ":              "{{api_base}}",
+		"{{api_base}}/v1/":             "{{api_base}}/v1",
+		"https://{{host}}/api":         "https://{{host}}/api",
 	}
 	for in, want := range ok {
-		got, err := ValidateBaseURL(in)
+		got, err := ValidateBaseURL(in, lookup)
 		if err != nil || got != want {
 			t.Errorf("%q: got %q, %v; want %q", in, got, err, want)
 		}
 	}
-	for _, bad := range []string{"api.example.com", "ftp://x.com", "https://", "not a url"} {
-		if _, err := ValidateBaseURL(bad); !errors.Is(err, ErrInvalidBaseURL) {
+
+	for _, bad := range []string{"api.example.com", "ftp://x.com", "https://", "not a url", "prefix{{api_base}}"} {
+		if _, err := ValidateBaseURL(bad, lookup); !errors.Is(err, ErrInvalidBaseURL) {
 			t.Errorf("%q: expected ErrInvalidBaseURL, got %v", bad, err)
+		}
+	}
+
+	if _, err := ValidateBaseURL("{{missing}}", lookup); !errors.Is(err, ErrBaseURLUnknownVariable) {
+		t.Errorf("missing: expected ErrBaseURLUnknownVariable, got %v", err)
+	}
+	if _, err := ValidateBaseURL("{{api_base}}", nil); !errors.Is(err, ErrBaseURLUnknownVariable) {
+		t.Errorf("nil lookup: expected ErrBaseURLUnknownVariable, got %v", err)
+	}
+	if _, err := ValidateBaseURL("{{bad}}", lookup); !errors.Is(err, ErrBaseURLVariableNotURL) {
+		t.Errorf("bad value: expected ErrBaseURLVariableNotURL, got %v", err)
+	}
+	if _, err := ValidateBaseURL("{{empty}}", lookup); !errors.Is(err, ErrBaseURLVariableNotURL) {
+		t.Errorf("empty value: expected ErrBaseURLVariableNotURL, got %v", err)
+	}
+}
+
+func TestNeedsBaseURL(t *testing.T) {
+	need := []string{"/files", "{{base_url}}/files", "{{base_url}}/pets/{{petId}}"}
+	for _, in := range need {
+		if !NeedsBaseURL(in) {
+			t.Errorf("%q: want NeedsBaseURL true", in)
+		}
+	}
+	keep := []string{"https://api.example.com/x", "https://api.example.com/pets/{{petId}}", "{{tenant}}/x"}
+	for _, in := range keep {
+		if NeedsBaseURL(in) {
+			t.Errorf("%q: want NeedsBaseURL false", in)
 		}
 	}
 }
@@ -39,6 +87,21 @@ func TestApplyBaseURL(t *testing.T) {
 		if got.Definition.URL != want {
 			t.Errorf("%q: got %q want %q", in, got.Definition.URL, want)
 		}
+	}
+
+	got := ApplyBaseURL(
+		Candidate{Definition: domaincall.Definition{URL: "{{base_url}}/files"}},
+		"{{api_base}}",
+	)
+	if got.Definition.URL != "{{api_base}}/files" {
+		t.Errorf("variable base: got %q want {{api_base}}/files", got.Definition.URL)
+	}
+	got = ApplyBaseURL(
+		Candidate{Definition: domaincall.Definition{URL: "/files"}},
+		"{{api_base}}",
+	)
+	if got.Definition.URL != "{{api_base}}/files" {
+		t.Errorf("variable base on path: got %q want {{api_base}}/files", got.Definition.URL)
 	}
 }
 

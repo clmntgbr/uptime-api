@@ -12,6 +12,8 @@ import (
 type ListItemsQuery struct {
 	UserID uuid.UUID
 	Query  paginate.PaginateQuery
+	// Methods keeps only items whose method is in the list. Empty means all.
+	Methods []string
 }
 
 type ListItemsHandler struct {
@@ -23,7 +25,7 @@ func NewListItemsHandler(repo domainlibrary.ReadRepository) *ListItemsHandler {
 }
 
 func (h *ListItemsHandler) Handle(ctx context.Context, q ListItemsQuery) ([]domainlibrary.ListView, int64, error) {
-	return h.repo.List(ctx, q.UserID, q.Query)
+	return h.repo.List(ctx, q.UserID, domainlibrary.ListFilter{Query: q.Query, Methods: q.Methods})
 }
 
 type GetItemQuery struct {

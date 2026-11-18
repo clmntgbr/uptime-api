@@ -11,13 +11,14 @@ type InsertFromLibraryRequest struct {
 type LibraryImportPreviewRequest struct {
 	Format  string `json:"format" validate:"required,oneof=openapi curl postman"`
 	Content string `json:"content" validate:"required"`
-	// BaseURL is applied to candidates without their own host, e.g. https://api.example.com.
+	// BaseURL is applied to candidates without their own host.
+	// Absolute http(s) or a variable template (e.g. {{api_base}}).
 	BaseURL string `json:"baseUrl" validate:"omitempty,max=2048"`
 }
 
 // LibraryImportRequest is the body of POST /library/import: the reviewed candidates to store.
 type LibraryImportRequest struct {
-	Items []LibraryImportItemRequest `json:"items" validate:"required,min=1,max=50,dive"`
+	Items []LibraryImportItemRequest `json:"items" validate:"required,min=1,dive"`
 }
 
 // LibraryImportItemRequest is one confirmed candidate. Name, when set, overrides payload.name.

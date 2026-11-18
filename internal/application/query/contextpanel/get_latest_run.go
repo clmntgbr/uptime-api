@@ -26,7 +26,8 @@ func NewGetLatestRunHandler(
 	return &GetLatestRunHandler{workflows: workflows, runs: runs}
 }
 
-// Handle returns the latest terminal run, or nil when the workflow has none.
+// Handle returns the latest executed run (success|failed|error), never a
+// skipped/overlap pass. nil when the workflow has none.
 // ErrNotFound when the workflow is missing or unowned.
 func (h *GetLatestRunHandler) Handle(ctx context.Context, q GetLatestRunQuery) (*domainrun.LatestView, error) {
 	wf, err := h.workflows.FindByID(ctx, q.UserID, q.WorkflowID)

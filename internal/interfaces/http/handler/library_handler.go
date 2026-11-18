@@ -53,7 +53,11 @@ func (h *LibraryHandler) List(c fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "Unauthorized"})
 	}
 
-	var listQuery paginate.PaginateQuery
+	var listQuery struct {
+		paginate.PaginateQuery
+		// Repeat the parameter to combine methods: ?method=GET&method=POST.
+		Method []string `query:"method" validate:"omitempty,max=7,dive,oneof=GET POST PUT PATCH DELETE HEAD OPTIONS"`
+	}
 	if err := validation.BindAndValidateQuery(c, &listQuery); err != nil {
 		return err
 	}
@@ -67,8 +71,9 @@ func (h *LibraryHandler) List(c fiber.Ctx) error {
 	}
 
 	views, total, err := h.listHandler.Handle(c.Context(), querylibrary.ListItemsQuery{
-		UserID: user.ID,
-		Query:  listQuery,
+		UserID:  user.ID,
+		Query:   listQuery.PaginateQuery,
+		Methods: listQuery.Method,
 	})
 	if err != nil {
 		return writeLibraryError(c, err, "Failed to list library items")
@@ -76,7 +81,7 @@ func (h *LibraryHandler) List(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(paginate.NewPaginateResponse(
 		presenter.NewLibraryListItemResponses(views),
 		int(total),
-		listQuery,
+		listQuery.PaginateQuery,
 	))
 }
 
@@ -163,12 +168,17 @@ func (h *LibraryHandler) Delete(c fiber.Ctx) error {
 
 // PreviewImport parses the content and returns candidates. Nothing is stored.
 func (h *LibraryHandler) PreviewImport(c fiber.Ctx) error {
+	user, err := httpctx.GetUser(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "Unauthorized"})
+	}
 	var body dto.LibraryImportPreviewRequest
 	if err := validation.BindBody(c, &body); err != nil {
 		return err
 	}
 
 	result, err := h.previewImportHandler.Handle(c.Context(), querylibrary.PreviewImportQuery{
+		UserID:  user.ID,
 		Format:  domainlibrary.Format(body.Format),
 		Content: []byte(body.Content),
 		BaseURL: body.BaseURL,

@@ -1,6 +1,6 @@
 # Bibliothèque — documentation (brouillon)
 
-**Statut :** back implémenté (API, persistance, tests). Interface canvas à faire.
+**Statut :** back implémenté (API, persistance, tests). Front (`uptime-app`) : drawer Library depuis la sidebar, drag & drop vers le canvas (ajout en fin), bouton « ajouter au workflow courant » (visible seulement dans un workflow), création, édition et suppression. Variables : l'éditeur ne suggère que les variables globales ; les autres placeholders restent libres et sont résolus à l'ajout dans un workflow. Pas encore : UI d'import, bouton « enregistrer dans la bibliothèque » sur une carte du canvas, édition des règles d'alerte d'un modèle.
 **Périmètre :** API + interface (canvas). Pas de partage entre utilisateurs pour l'instant.
 
 ## Objectif
@@ -159,7 +159,7 @@ Réponse de prévisualisation (forme) :
 }
 ```
 
-Confirmation : `POST /library/import` avec `{ "items": [{ "key": "op-1", "name": "…", "payload": { … } }] }`. Le serveur revalide chaque `payload` comme un modèle (pas de confiance dans le client). Réponse `201` : les modèles créés. Les `warnings` (dont `sensitive_header`) sont informatifs et ne bloquent pas l'import. Au plus 50 items par confirmation. Import tout ou rien : une seule transaction, et tout est validé avant la première écriture.
+Confirmation : `POST /library/import` avec `{ "items": [{ "key": "op-1", "name": "…", "payload": { … } }] }`. Le serveur revalide chaque `payload` comme un modèle (pas de confiance dans le client). Réponse `201` : les modèles créés. Les `warnings` (dont `sensitive_header`) sont informatifs et ne bloquent pas l'import. Import tout ou rien : une seule transaction, et tout est validé avant la première écriture.
 
 ### Interface
 

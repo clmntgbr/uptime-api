@@ -122,7 +122,6 @@ func (r *runQueryRepository) FindLatestTerminalByWorkflow(ctx context.Context, u
 			string(domainrun.StatusSuccess),
 			string(domainrun.StatusFailed),
 			string(domainrun.StatusError),
-			string(domainrun.StatusSkipped),
 		}).
 		Order("started_at DESC").
 		Limit(1).
@@ -194,7 +193,6 @@ func (r *runQueryRepository) FindLatestExtractedByWorkflow(ctx context.Context, 
 			string(domainrun.StatusSuccess),
 			string(domainrun.StatusFailed),
 			string(domainrun.StatusError),
-			string(domainrun.StatusSkipped),
 		}).
 		Order("started_at DESC").
 		Limit(1).

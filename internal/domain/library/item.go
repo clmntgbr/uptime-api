@@ -4,6 +4,8 @@ import (
 	"errors"
 	"time"
 
+	"go-api/internal/domain/paginate"
+
 	domaincall "go-api/internal/domain/call"
 
 	"github.com/google/uuid"
@@ -19,9 +21,6 @@ var (
 
 // MaxImportBytes caps the raw content of one import request.
 const MaxImportBytes = 2 * 1024 * 1024
-
-// MaxImportItems caps how many candidates one confirmation can create.
-const MaxImportItems = 50
 
 // Item is a reusable call template owned by one user. Inserting an item copies
 // its definition into a workflow; later changes on either side are independent.
@@ -68,6 +67,12 @@ func (i *Item) Replace(def domaincall.Definition, now time.Time) error {
 	i.Definition = normalized
 	i.UpdatedAt = now
 	return nil
+}
+
+// ListFilter narrows the library list. Methods is empty for "all methods".
+type ListFilter struct {
+	Query   paginate.PaginateQuery
+	Methods []string
 }
 
 // ListView is one row of GET /library.

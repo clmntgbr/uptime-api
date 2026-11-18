@@ -33,11 +33,24 @@ type openAPIParser struct {
 	result library.ImportResult
 }
 
+// decodeOpenAPIDoc unmarshals JSON or YAML. JSON is tried first because many
+// exporters (PHP json_encode, API Platform, …) emit `\/` which YAML rejects.
+func decodeOpenAPIDoc(content []byte) (any, error) {
+	var doc any
+	if err := json.Unmarshal(content, &doc); err == nil {
+		return doc, nil
+	}
+	if err := yaml.Unmarshal(content, &doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
 // parseOpenAPI converts an OpenAPI 3 document, in JSON or YAML, into one
 // candidate per operation. Paths are visited in sorted order.
 func parseOpenAPI(content []byte) (library.ImportResult, error) {
-	var doc any
-	if err := yaml.Unmarshal(content, &doc); err != nil {
+	doc, err := decodeOpenAPIDoc(content)
+	if err != nil {
 		return library.ImportResult{}, importError("content is not a valid JSON or YAML document")
 	}
 	root, ok := asMap(doc)

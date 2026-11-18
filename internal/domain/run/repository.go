@@ -30,9 +30,9 @@ type ReadRepository interface {
 	ListByWorkflow(ctx context.Context, userID, workflowID uuid.UUID, q paginate.PaginateQuery) ([]View, int64, error)
 	// FindByID returns nil, nil when the run does not exist for that user.
 	FindByID(ctx context.Context, userID, runID uuid.UUID) (*DetailView, error)
-	// FindLatestTerminalByWorkflow returns the newest finished run
-	// (success|failed|error|skipped) with lean call rows for the context panel.
-	// nil, nil when the workflow has no terminal run (or is missing / not owned).
+	// FindLatestTerminalByWorkflow returns the newest executed run
+	// (success|failed|error — never skipped/overlap) with lean call rows for the
+	// context panel. nil, nil when the workflow has no such run.
 	FindLatestTerminalByWorkflow(ctx context.Context, userID, workflowID uuid.UUID) (*LatestView, error)
 	// FindLatestExtractedByWorkflow returns extracted variable values from the
 	// latest terminal run, keyed by call ID. Empty map when none.

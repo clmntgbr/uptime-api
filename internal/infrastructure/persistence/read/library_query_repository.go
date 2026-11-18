@@ -6,7 +6,6 @@ import (
 	"time"
 
 	domainlibrary "go-api/internal/domain/library"
-	"go-api/internal/domain/paginate"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -38,7 +37,8 @@ type libraryListRow struct {
 	UpdatedAt   time.Time `gorm:"column:updated_at"`
 }
 
-func (r *libraryQueryRepository) List(ctx context.Context, userID uuid.UUID, q paginate.PaginateQuery) ([]domainlibrary.ListView, int64, error) {
+func (r *libraryQueryRepository) List(ctx context.Context, userID uuid.UUID, filter domainlibrary.ListFilter) ([]domainlibrary.ListView, int64, error) {
+	q := filter.Query
 	column, ok := librarySortColumns[q.SortBy]
 	if !ok {
 		column = "created_at"
@@ -50,6 +50,10 @@ func (r *libraryQueryRepository) List(ctx context.Context, userID uuid.UUID, q p
 		Where("user_id = ?", userID)
 	if search := strings.TrimSpace(q.Search); search != "" {
 		base = base.Where("name ILIKE ?", "%"+escapeLike(search)+"%")
+	}
+	if len(filter.Methods) > 0 {
+		// Method lives in the JSON payload; values are validated upstream.
+		base = base.Where("UPPER(payload->>'method') IN ?", filter.Methods)
 	}
 
 	scoped, total, err := Paginate(base, q)

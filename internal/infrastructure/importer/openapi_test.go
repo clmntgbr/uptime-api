@@ -215,6 +215,21 @@ components:
 	}
 }
 
+func TestParseOpenAPIJSONWithEscapedSlashes(t *testing.T) {
+	// PHP / API Platform style: forward slashes escaped as \/
+	doc := `{"openapi":"3.1.0","info":{"title":"Bigdata","version":"V2.22.0"},"paths":{"\/address\/autocomplete":{"get":{"operationId":"getAddressAutocomplete","summary":"Get address suggestions","parameters":[{"name":"search","in":"query","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"ok"}}}},"\/address\/details":{"get":{"operationId":"getAddressDetails","$ref":"#\/components\/schemas\/Unused"}}}}`
+	res, err := NewParser().Parse(library.FormatOpenAPI, []byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Candidates) < 1 {
+		t.Fatalf("got %d candidates, want at least 1", len(res.Candidates))
+	}
+	if res.Candidates[0].Definition.URL != "/address/autocomplete" {
+		t.Errorf("url = %q, want /address/autocomplete", res.Candidates[0].Definition.URL)
+	}
+}
+
 func TestParseOpenAPIRejections(t *testing.T) {
 	tests := []struct {
 		name    string

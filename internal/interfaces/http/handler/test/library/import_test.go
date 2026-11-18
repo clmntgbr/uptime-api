@@ -1,7 +1,6 @@
 package librarytest
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -164,14 +163,7 @@ func TestLibraryHandler_Import_InvalidBody(t *testing.T) {
 
 func TestLibraryHandler_Import_ValidationFailed(t *testing.T) {
 	cases := map[string]map[string]any{
-		"no items": {"items": []map[string]any{}},
-		"too many items": {"items": func() []map[string]any {
-			items := make([]map[string]any, 0, 51)
-			for i := 0; i < 51; i++ {
-				items = append(items, confirmItem(fmt.Sprintf("op-%d", i), "", nil))
-			}
-			return items
-		}()},
+		"no items":      {"items": []map[string]any{}},
 		"name too long": {"items": []map[string]any{confirmItem("op-1", string(make([]byte, 101)), nil)}},
 	}
 	for name, body := range cases {
@@ -224,6 +216,15 @@ func TestLibraryHandler_Import_HandlerError(t *testing.T) {
 	}
 }
 
+func TestLibraryHandler_PreviewImport_Unauthorized(t *testing.T) {
+	m := newMocks()
+	resp := doJSON(t, m, false, http.MethodPost, previewPath, previewBody("openapi", "{}"))
+	assertStatus(t, resp, http.StatusUnauthorized)
+	if m.preview.calls != 0 {
+		t.Fatal("preview must not run when unauthorized")
+	}
+}
+
 func TestLibraryHandler_PreviewImport_PassesBaseURL(t *testing.T) {
 	m := newMocks()
 	body := previewBody("openapi", "{}")
@@ -232,6 +233,9 @@ func TestLibraryHandler_PreviewImport_PassesBaseURL(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	if m.preview.got.BaseURL != "https://api.example.com" {
 		t.Fatalf("base url not passed: %+v", m.preview.got)
+	}
+	if m.preview.got.UserID != testutil.TestUserID {
+		t.Fatalf("user id not passed: %+v", m.preview.got)
 	}
 }
 
@@ -249,5 +253,41 @@ func TestLibraryHandler_PreviewImport_InvalidBaseURL(t *testing.T) {
 	assertStatus(t, resp, http.StatusBadRequest)
 	if m.preview.calls != 0 {
 		t.Fatal("preview must not run with too long base url")
+	}
+}
+
+func TestLibraryHandler_PreviewImport_BaseURLRequired(t *testing.T) {
+	m := newMocks()
+	m.preview.err = domainlibrary.ErrBaseURLRequired
+	body := previewBody("openapi", "{}")
+	resp := doJSON(t, m, true, http.MethodPost, previewPath, body)
+	assertStatus(t, resp, http.StatusBadRequest)
+	out := testutil.DecodeJSONMap(t, resp)
+	if out["message"] != domainlibrary.ErrBaseURLRequired.Error() {
+		t.Fatalf("message = %v, want %q", out["message"], domainlibrary.ErrBaseURLRequired.Error())
+	}
+}
+
+func TestLibraryHandler_PreviewImport_BaseURLVariableErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"unknown variable", domainlibrary.ErrBaseURLUnknownVariable},
+		{"variable not url", domainlibrary.ErrBaseURLVariableNotURL},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newMocks()
+			m.preview.err = tc.err
+			body := previewBody("openapi", "{}")
+			body["baseUrl"] = "{{api_base}}"
+			resp := doJSON(t, m, true, http.MethodPost, previewPath, body)
+			assertStatus(t, resp, http.StatusBadRequest)
+			out := testutil.DecodeJSONMap(t, resp)
+			if out["message"] != tc.err.Error() {
+				t.Fatalf("message = %v, want %q", out["message"], tc.err.Error())
+			}
+		})
 	}
 }

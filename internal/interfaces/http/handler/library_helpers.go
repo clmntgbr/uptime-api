@@ -66,6 +66,12 @@ func writeLibraryError(c fiber.Ctx, err error, fallback string) error {
 		return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{"message": "Import content exceeds 2 MB"})
 	case errors.Is(err, domainlibrary.ErrInvalidBaseURL):
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": domainlibrary.ErrInvalidBaseURL.Error()})
+	case errors.Is(err, domainlibrary.ErrBaseURLRequired):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": domainlibrary.ErrBaseURLRequired.Error()})
+	case errors.Is(err, domainlibrary.ErrBaseURLUnknownVariable):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": domainlibrary.ErrBaseURLUnknownVariable.Error()})
+	case errors.Is(err, domainlibrary.ErrBaseURLVariableNotURL):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": domainlibrary.ErrBaseURLVariableNotURL.Error()})
 	case errors.Is(err, domainlibrary.ErrUnsupportedFormat):
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Unsupported import format"})
 	case errors.As(err, &importErr):

@@ -67,11 +67,25 @@ func Struct(c fiber.Ctx, dst any) error {
 }
 
 // FiberErrorHandler suppresses ErrValidationFailed because the response is already written.
+// Other errors use the standard envelope `{ message }` (never `{ success, data }`).
 func FiberErrorHandler(c fiber.Ctx, err error) error {
 	if errors.Is(err, ErrValidationFailed) {
 		return nil
 	}
-	return fiber.DefaultErrorHandler(c, err)
+
+	code := fiber.StatusInternalServerError
+	message := "Internal server error"
+	var e *fiber.Error
+	if errors.As(err, &e) {
+		code = e.Code
+		if code >= 400 && code < 500 && e.Message != "" {
+			message = e.Message
+		}
+	}
+
+	return c.Status(code).JSON(fiber.Map{
+		"message": message,
+	})
 }
 
 func formatErrors(err error) map[string]string {

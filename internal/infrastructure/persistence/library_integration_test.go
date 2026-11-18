@@ -138,7 +138,7 @@ func TestLibraryQueryRepository_ListSearchSortPaginate(t *testing.T) {
 		}
 	}
 
-	views, total, err := reads.List(ctx, userID, paginate.PaginateQuery{Page: 1, Limit: 10, SortBy: "name", OrderBy: "asc", Search: "health"})
+	views, total, err := reads.List(ctx, userID, domainlibrary.ListFilter{Query: paginate.PaginateQuery{Page: 1, Limit: 10, SortBy: "name", OrderBy: "asc", Search: "health"}})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestLibraryQueryRepository_ListSearchSortPaginate(t *testing.T) {
 		t.Fatalf("unexpected first row %+v", views[0])
 	}
 
-	page, total, err := reads.List(ctx, userID, paginate.PaginateQuery{Page: 2, Limit: 2, SortBy: "name", OrderBy: "asc"})
+	page, total, err := reads.List(ctx, userID, domainlibrary.ListFilter{Query: paginate.PaginateQuery{Page: 2, Limit: 2, SortBy: "name", OrderBy: "asc"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +157,46 @@ func TestLibraryQueryRepository_ListSearchSortPaginate(t *testing.T) {
 		t.Fatalf("page 2: total %d rows %+v", total, page)
 	}
 
-	none, total, err := reads.List(ctx, uuid.New(), paginate.PaginateQuery{Page: 1, Limit: 10})
+	none, total, err := reads.List(ctx, uuid.New(), domainlibrary.ListFilter{Query: paginate.PaginateQuery{Page: 1, Limit: 10}})
 	if err != nil || total != 0 || len(none) != 0 {
 		t.Fatalf("other user must see nothing: %d %d %v", total, len(none), err)
+	}
+}
+
+func TestLibraryQueryRepository_FilterByMethod(t *testing.T) {
+	db := openDB(t)
+	userID := createUser(t, db)
+	repo := write.NewLibraryWriteRepository(db)
+	reads := read.NewLibraryQueryRepository(db)
+	ctx := context.Background()
+
+	for method, name := range map[string]string{"GET": "get one", "POST": "post one", "DELETE": "delete one"} {
+		def := libraryDefinition(name)
+		def.Method = method
+		item, err := domainlibrary.New(userID, def, time.Now().UTC())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.Save(ctx, &item); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	views, total, err := reads.List(ctx, userID, domainlibrary.ListFilter{
+		Query:   paginate.PaginateQuery{Page: 1, Limit: 10, SortBy: "name", OrderBy: "asc"},
+		Methods: []string{"GET", "DELETE"},
+	})
+	if err != nil {
+		t.Fatalf("filtered list: %v", err)
+	}
+	if total != 2 || len(views) != 2 || views[0].Method != "DELETE" || views[1].Method != "GET" {
+		t.Fatalf("unexpected filtered rows: total %d %+v", total, views)
+	}
+
+	all, total, err := reads.List(ctx, userID, domainlibrary.ListFilter{
+		Query: paginate.PaginateQuery{Page: 1, Limit: 10, SortBy: "name", OrderBy: "asc"},
+	})
+	if err != nil || total != 3 || len(all) != 3 {
+		t.Fatalf("no filter must return all: %d %v", total, err)
 	}
 }

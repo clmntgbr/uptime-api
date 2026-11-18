@@ -287,3 +287,21 @@ func TestLibraryHandler_Delete_HandlerError_Internal(t *testing.T) {
 		t.Fatalf("unexpected body %v", out)
 	}
 }
+
+func TestLibraryHandler_List_FilterByMethod(t *testing.T) {
+	m := newMocks()
+	resp := doJSON(t, m, true, http.MethodGet, libraryPath+"?method=GET&method=POST", nil)
+	assertStatus(t, resp, http.StatusOK)
+	if got := m.list.got.Methods; len(got) != 2 || got[0] != "GET" || got[1] != "POST" {
+		t.Fatalf("methods not passed through: %v", got)
+	}
+}
+
+func TestLibraryHandler_List_InvalidMethodFilter(t *testing.T) {
+	m := newMocks()
+	resp := doJSON(t, m, true, http.MethodGet, libraryPath+"?method=TRACE", nil)
+	assertStatus(t, resp, http.StatusBadRequest)
+	if m.list.calls != 0 {
+		t.Fatal("list must not run with an unknown method")
+	}
+}

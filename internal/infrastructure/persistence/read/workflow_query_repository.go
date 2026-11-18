@@ -278,6 +278,8 @@ func (r *workflowQueryRepository) activeLeaseRunID(ctx context.Context, workflow
 // applyCallLastStatus sets last* from the newest relevant call_run.
 // While a workflow run is in flight, only a call_run belonging to that run
 // counts — never the previous outcome of a call that has not started yet.
+// Skipped outcomes are ignored (overlap / cascade); lastStatus is success,
+// failed, error, or running.
 func applyCallLastStatus(
 	v *domainworkflow.CallListView,
 	recent []domainworkflow.CallRecentRunView,
@@ -286,24 +288,24 @@ func applyCallLastStatus(
 	if len(recent) == 0 {
 		return
 	}
-	if activeRunID != nil {
-		for i := len(recent) - 1; i >= 0; i-- {
-			if recent[i].RunID == *activeRunID {
-				last := recent[i]
-				v.LastStatus = last.Status
-				v.LastHTTPStatus = last.HTTPStatus
-				v.LastFinishedAt = last.FinishedAt
-				v.LastLatencyMs = last.LatencyMs
+	for i := len(recent) - 1; i >= 0; i-- {
+		last := recent[i]
+		if activeRunID != nil && last.RunID != *activeRunID {
+			continue
+		}
+		if last.Status == "skipped" {
+			if activeRunID != nil {
+				// Skipped in the current run: no pastille from an older outcome.
 				return
 			}
+			continue
 		}
+		v.LastStatus = last.Status
+		v.LastHTTPStatus = last.HTTPStatus
+		v.LastFinishedAt = last.FinishedAt
+		v.LastLatencyMs = last.LatencyMs
 		return
 	}
-	last := recent[len(recent)-1]
-	v.LastStatus = last.Status
-	v.LastHTTPStatus = last.HTTPStatus
-	v.LastFinishedAt = last.FinishedAt
-	v.LastLatencyMs = last.LatencyMs
 }
 
 func decodeCallRecentRuns(raw dbtype.JSONB) ([]domainworkflow.CallRecentRunView, error) {
