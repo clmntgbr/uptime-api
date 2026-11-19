@@ -37,6 +37,16 @@ type DispatchStats struct {
 	PrepareFailed int
 	// Lag is how late the oldest due workflow was.
 	Lag time.Duration
+	// EmptyDisabled lists workflows switched off this pass because they had no
+	// calls. The caller notifies their owner.
+	EmptyDisabled []EmptyDisabledWorkflow
+}
+
+// EmptyDisabledWorkflow identifies a workflow disabled for having no calls.
+type EmptyDisabledWorkflow struct {
+	UserID     uuid.UUID
+	WorkflowID uuid.UUID
+	Name       string
 }
 
 type DispatchDueRunsHandler struct {
@@ -160,8 +170,14 @@ func (h *DispatchDueRunsHandler) Handle(ctx context.Context) (DispatchStats, err
 			// Empty workflow: do not lease, do not record a failed/timeout run —
 			// disable, park the schedule, and log for a future notification email.
 			if len(w.Calls) == 0 {
-				if err := h.disableEmptyWorkflow(txCtx, w); err != nil {
+				disabledNow, err := h.disableEmptyWorkflow(txCtx, w)
+				if err != nil {
 					return err
+				}
+				if disabledNow {
+					stats.EmptyDisabled = append(stats.EmptyDisabled, EmptyDisabledWorkflow{
+						UserID: w.UserID, WorkflowID: w.ID, Name: w.Name,
+					})
 				}
 				state.ClearSchedule()
 				if err := h.states.Save(txCtx, state); err != nil {
@@ -235,14 +251,14 @@ func (h *DispatchDueRunsHandler) disableOneShot(ctx context.Context, workflowID 
 
 // disableEmptyWorkflow turns off a workflow that has nothing to run and logs a
 // structured line so a notification email can be wired later.
-func (h *DispatchDueRunsHandler) disableEmptyWorkflow(ctx context.Context, w *domainworkflow.Workflow) error {
+func (h *DispatchDueRunsHandler) disableEmptyWorkflow(ctx context.Context, w *domainworkflow.Workflow) (bool, error) {
 	disabled := w.Disable()
 	if disabled {
 		if err := h.workflows.Update(ctx, w); err != nil {
-			return err
+			return false, err
 		}
 		if err := h.outbox.StoreEvents(ctx, w.PullEvents()); err != nil {
-			return err
+			return false, err
 		}
 	}
 	h.logger.Info(
@@ -250,10 +266,9 @@ func (h *DispatchDueRunsHandler) disableEmptyWorkflow(ctx context.Context, w *do
 		"workflow_id", w.ID,
 		"user_id", w.UserID,
 		"reason", "empty_calls",
-		"notify", "pending_email",
 		"disabled_now", disabled,
 	)
-	return nil
+	return disabled, nil
 }
 
 func (h *DispatchDueRunsHandler) prepare(

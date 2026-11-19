@@ -175,6 +175,9 @@ func TestDispatchDueRuns_EmptyCallsDisablesWithoutRun(t *testing.T) {
 	if len(outbox.events) == 0 {
 		t.Fatal("expected workflow.updated outbox event")
 	}
+	if len(stats.EmptyDisabled) != 1 || stats.EmptyDisabled[0].WorkflowID != w.ID || stats.EmptyDisabled[0].UserID != userID {
+		t.Fatalf("owner must be reported for notification: %+v", stats.EmptyDisabled)
+	}
 }
 
 // A disabled empty workflow that is not due must be left alone: no dispatch, no

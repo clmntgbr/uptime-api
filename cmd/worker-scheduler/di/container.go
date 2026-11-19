@@ -21,16 +21,16 @@ import (
 )
 
 type Container struct {
-	Dispatch          *schedule.DispatchDueRunsHandler
-	Maintain          *schedule.MaintainResultsHandler
-	ExpiryScan        *cmdexpiry.ScanHandler
-	ScanNoRun         *cmdincident.ScanNoRunHandler
-	ScanAvailability  *cmdincident.ScanAvailabilityHandler
-	ScanReminders     *cmdincident.ScanRemindersHandler
-	ScanTLS           *cmdincident.ScanTLSHandler
-	NotifySettings    domainnotify.Repository
-	Notify            *kafka.NotificationPublisher
-	Producer          *kafka.Producer
+	Dispatch         *schedule.DispatchDueRunsHandler
+	Maintain         *schedule.MaintainResultsHandler
+	ExpiryScan       *cmdexpiry.ScanHandler
+	ScanNoRun        *cmdincident.ScanNoRunHandler
+	ScanAvailability *cmdincident.ScanAvailabilityHandler
+	ScanReminders    *cmdincident.ScanRemindersHandler
+	ScanTLS          *cmdincident.ScanTLSHandler
+	NotifySettings   domainnotify.Repository
+	Notify           *kafka.NotificationPublisher
+	Producer         *kafka.Producer
 }
 
 func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger) (*Container, error) {
@@ -66,7 +66,7 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 		clock,
 		time.Duration(env.RetentionDays)*24*time.Hour,
 		logger,
-	)
+	).WithEventRetention(write.NewEventRetention(db))
 	expiryPolicyRepo := write.NewExpiryPolicyRepository(db)
 	expiryItemRepo := write.NewExpiryItemRepository(db)
 	expiryEvaluate := cmdexpiry.NewEvaluateHandler(
@@ -102,7 +102,7 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 	return &Container{
 		Dispatch: dispatch, Maintain: maintain,
 		ExpiryScan: expiryScan,
-		ScanNoRun: scanNoRun, ScanAvailability: scanAvailability,
+		ScanNoRun:  scanNoRun, ScanAvailability: scanAvailability,
 		ScanReminders: scanReminders, ScanTLS: scanTLS,
 		NotifySettings: write.NewNotifySettingsRepository(db),
 		Notify:         kafka.NewNotificationPublisher(producer),

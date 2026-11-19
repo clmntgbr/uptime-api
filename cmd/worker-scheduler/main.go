@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"go-api/cmd/worker-scheduler/di"
 	cmdincident "go-api/internal/application/command/incident"
+	"go-api/internal/application/command/schedule"
 	"go-api/internal/application/notifyresolve"
 	"go-api/internal/contract"
 	"go-api/internal/infrastructure/config"
@@ -146,6 +148,7 @@ func (s *scheduler) tick(ctx context.Context, at time.Time) {
 		return
 	}
 	lagSeconds.Set(stats.Lag.Seconds())
+	s.notifyEmptyDisabled(ctx, stats.EmptyDisabled)
 	runsTotal.WithLabelValues("dispatched").Add(float64(stats.Dispatched))
 	runsTotal.WithLabelValues("skipped").Add(float64(stats.Skipped))
 	runsTotal.WithLabelValues("timeout").Add(float64(stats.TimedOut))
@@ -298,5 +301,25 @@ func sleep(ctx context.Context, d time.Duration) bool {
 		return true
 	case <-ctx.Done():
 		return false
+	}
+}
+
+// notifyEmptyDisabled tells the owner that a workflow was switched off because
+// it has no calls. No preference gate: the user must learn their schedule stopped.
+// The recipient is resolved by worker-notify (creator email).
+func (s *scheduler) notifyEmptyDisabled(ctx context.Context, disabled []schedule.EmptyDisabledWorkflow) {
+	if s.container.Notify == nil {
+		return
+	}
+	for _, d := range disabled {
+		req := contract.NotificationRequest{
+			V: contract.NotificationRequestV1, Kind: "workflow.disabled",
+			UserID: d.UserID.String(), WorkflowID: d.WorkflowID.String(),
+			Severity: "warning",
+			Message:  fmt.Sprintf("Workflow %q was disabled because it has no calls.", d.Name),
+		}
+		if err := s.container.Notify.PublishRequest(ctx, req); err != nil {
+			s.logger.Error("publish empty workflow notification failed", "workflow_id", d.WorkflowID, "error", err)
+		}
 	}
 }

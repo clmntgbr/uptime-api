@@ -10,6 +10,8 @@ import (
 	"go-api/internal/application/messaging"
 	"go-api/internal/infrastructure/config"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 	"go.opentelemetry.io/otel"
@@ -343,13 +345,22 @@ func (c *Consumer) toDLQ(ctx context.Context, rec *kgo.Record, attempt int, reas
 }
 
 // forward publishes until it succeeds; the source offset is only committed afterwards.
+// forwardFailures counts produce attempts that failed while forwarding to a
+// retry or DLQ topic. Forwarding retries forever on purpose (it keeps the
+// partition ordered), so this counter is what makes a stuck lane visible.
+var forwardFailures = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "kafka_forward_failures_total",
+	Help: "Failed attempts to forward a record to a retry or DLQ topic.",
+}, []string{"topic"})
+
 func (c *Consumer) forward(ctx context.Context, rec *kgo.Record) bool {
 	for attempt := 0; ; attempt++ {
 		err := c.producer.produceRecord(ctx, rec)
 		if err == nil {
 			return true
 		}
-		c.logger.Error("failed to forward message", "target_topic", rec.Topic, "error", err)
+		forwardFailures.WithLabelValues(rec.Topic).Inc()
+		c.logger.Error("failed to forward message", "target_topic", rec.Topic, "attempt", attempt+1, "error", err)
 		if !sleep(ctx, time.Duration(min(attempt+1, 10))*time.Second) {
 			return false
 		}
