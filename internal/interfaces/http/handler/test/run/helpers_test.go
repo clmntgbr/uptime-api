@@ -98,7 +98,7 @@ func assertStatus(t *testing.T, resp *http.Response, want int) {
 func sampleListViews() []domainrun.View {
 	return []domainrun.View{{
 		ID: testRunID, WorkflowID: testWorkflowID, Trigger: "manual", Status: domainrun.StatusSuccess,
-		StartedAt: time.Date(2026, 10, 19, 10, 0, 0, 0, time.UTC),
+		StartedAt:  time.Date(2026, 10, 19, 10, 0, 0, 0, time.UTC),
 		FinishedAt: time.Date(2026, 10, 19, 10, 0, 1, 0, time.UTC),
 		DurationMS: 1000,
 		Counts:     domainrun.Counts{Success: 2},
@@ -117,7 +117,7 @@ func sampleDetail() *domainrun.DetailView {
 		},
 		Variables: map[string]string{"base_url": "https://example.com"},
 		Calls: []domainrun.CallRunView{{
-			ID: uuid.MustParse("01960000-0000-7000-8000-0000000000d4"),
+			ID:     uuid.MustParse("01960000-0000-7000-8000-0000000000d4"),
 			CallID: &callID, Name: "login", Position: 1, Status: domainrun.CallSuccess,
 			HTTPStatus: 200, StartedAt: &started, FinishedAt: &finished,
 			Rules: []domainrun.RuleRun{},

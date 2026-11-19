@@ -23,10 +23,10 @@ type ExpiryPolicyInput struct {
 }
 
 type CreateWorkflowCommand struct {
-	UserID             uuid.UUID
-	CreatorEmail       string
-	Definition         domainworkflow.Definition
-	ExpiryPolicies     []ExpiryPolicyInput
+	UserID         uuid.UUID
+	CreatorEmail   string
+	Definition     domainworkflow.Definition
+	ExpiryPolicies []ExpiryPolicyInput
 	// NotificationEmails when non-nil overrides the creator email default (empty = no recipients).
 	NotificationEmails *[]string
 }

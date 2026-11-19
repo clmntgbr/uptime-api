@@ -18,9 +18,9 @@ import (
 var testWorkflowID = uuid.MustParse("01960000-0000-7000-8000-0000000000d1")
 
 type mockSuggest struct {
-	got  querycall.SuggestFieldsQuery
-	out  []string
-	err  error
+	got   querycall.SuggestFieldsQuery
+	out   []string
+	err   error
 	calls int
 }
 

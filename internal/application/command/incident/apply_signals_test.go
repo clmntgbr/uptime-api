@@ -122,9 +122,9 @@ func (m *memOutbox) MarkPublished(context.Context, []uuid.UUID) error { return n
 func newApplyHandler() (*ApplySignalsHandler, *memStates, *memIncidents) {
 	states := &memStates{rows: map[string]domainincident.SignalState{}}
 	incs := &memIncidents{
-		active: map[string]*domainincident.Incident{},
+		active:   map[string]*domainincident.Incident{},
 		resolved: map[string]*domainincident.Incident{},
-		byID: map[uuid.UUID]*domainincident.Incident{},
+		byID:     map[uuid.UUID]*domainincident.Incident{},
 	}
 	h := NewApplySignalsHandler(&memPolicies{byKey: map[string]domainincident.Policy{}}, states, incs, &memEvents{}, &memOutbox{})
 	h.clock = func() time.Time { return time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC) }

@@ -53,11 +53,11 @@ type Workflow struct {
 	Enabled      bool
 	// EnabledAt is when monitoring last armed (create-as-enabled or false→true).
 	// Used by no_run so downtime while disabled does not count as silence.
-	EnabledAt    time.Time
-	Statics      []StaticVariable
-	Calls        []domaincall.Call
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	EnabledAt time.Time
+	Statics   []StaticVariable
+	Calls     []domaincall.Call
+	CreatedAt time.Time
+	UpdatedAt time.Time
 
 	events []event.DomainEvent
 }

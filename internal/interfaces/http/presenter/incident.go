@@ -68,7 +68,7 @@ func newIncidentListItem(inc domainincident.Incident) IncidentListItemResponse {
 	item := IncidentListItemResponse{
 		ID: inc.ID.String(), Kind: string(inc.Kind),
 		Severity: string(inc.Severity), State: string(inc.State),
-		OpenedAt: inc.OpenedAt.UTC().Format(time.RFC3339),
+		OpenedAt:    inc.OpenedAt.UTC().Format(time.RFC3339),
 		ReopenCount: inc.ReopenCount,
 	}
 	if inc.CallID != nil {

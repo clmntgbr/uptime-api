@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	queryincident "go-api/internal/application/query/incident"
 	domainincident "go-api/internal/domain/incident"
 	domainworkflow "go-api/internal/domain/workflow"
-	queryincident "go-api/internal/application/query/incident"
 	"go-api/internal/interfaces/http/presenter"
 	"go-api/internal/interfaces/http/testutil"
 

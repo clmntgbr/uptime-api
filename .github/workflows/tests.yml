@@ -114,10 +114,36 @@ jobs:
       - name: Run unit tests
         run: |
           go test ./internal/domain/... ./internal/engine/... ./internal/application/... \
-            ./internal/infrastructure/... ./cmd/... \
+            ./internal/infrastructure/... ./internal/interfaces/http/middleware/... ./cmd/... \
             -count=1 \
             -race \
             -timeout=5m
+
+  lint:
+    name: Format and vet
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check gofmt
+        run: |
+          unformatted=$(gofmt -l cmd internal)
+          if [ -n "$unformatted" ]; then
+            echo "::error::Unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
 
   integration-tests:
     name: Integration tests (Postgres)

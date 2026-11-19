@@ -165,6 +165,11 @@ func (h *DispatchDueRunsHandler) Handle(ctx context.Context) (DispatchStats, err
 				return fmt.Errorf("load workflow %s: %w", state.WorkflowID, err)
 			}
 			if w == nil {
+				// Orphan state (workflow row gone): park it so it stops filling the due batch.
+				state.ClearSchedule()
+				if err := h.states.Save(txCtx, state); err != nil {
+					return err
+				}
 				continue
 			}
 			// Empty workflow: do not lease, do not record a failed/timeout run —

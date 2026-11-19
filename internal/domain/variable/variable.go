@@ -15,7 +15,7 @@ type Type string
 const (
 	TypeGlobal Type = "global"
 	TypeStatic Type = "static"
-	TypeCall Type = "call"
+	TypeCall   Type = "call"
 )
 
 const (

@@ -35,10 +35,10 @@ type ExpiryItemModel struct {
 func (ExpiryItemModel) TableName() string { return "expiry_items" }
 
 type ExpiryAlertModel struct {
-	ItemID         uuid.UUID `gorm:"column:item_id;primaryKey"`
-	ThresholdDays  int       `gorm:"column:threshold_days;primaryKey"`
-	Fingerprint    string    `gorm:"column:fingerprint;primaryKey"`
-	SentAt         time.Time `gorm:"column:sent_at"`
+	ItemID        uuid.UUID `gorm:"column:item_id;primaryKey"`
+	ThresholdDays int       `gorm:"column:threshold_days;primaryKey"`
+	Fingerprint   string    `gorm:"column:fingerprint;primaryKey"`
+	SentAt        time.Time `gorm:"column:sent_at"`
 }
 
 func (ExpiryAlertModel) TableName() string { return "expiry_alerts" }

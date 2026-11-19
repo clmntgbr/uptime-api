@@ -41,7 +41,7 @@ func NewContainer() (*Container, error) {
 	outboxRepo := outbox.NewRepository(db)
 
 	return &Container{
-		users:             write.NewUserWriteRepository(db),
+		users: write.NewUserWriteRepository(db),
 		CreateWorkflow: appworkflow.NewCreateWorkflowHandler(
 			workflows, write.NewStateRepository(db), globals,
 			write.NewExpiryPolicyRepository(db),

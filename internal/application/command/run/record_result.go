@@ -128,7 +128,7 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 			if err := h.nestedTx.SavePoint(txCtx, sp); err != nil {
 				return fmt.Errorf("incident savepoint: %w", err)
 			}
-			sigs := signalsFromRun(r, result)
+			sigs := signalsFromRun(r)
 			sigs = append(sigs, h.tlsSignals(txCtx, r.UserID, r.WorkflowID, observationsFromResult(result))...)
 			applied, applyErr := h.incidents.Handle(txCtx, cmdincident.ApplySignalsCommand{
 				UserID: r.UserID, WorkflowID: r.WorkflowID, Signals: sigs,
@@ -217,7 +217,7 @@ func (h *RecordResultHandler) tlsSignals(
 }
 
 // signalsFromRun builds incident signals for run-based kinds.
-func signalsFromRun(r *domainrun.Run, result contract.Result) []domainincident.Signal {
+func signalsFromRun(r *domainrun.Run) []domainincident.Signal {
 	var out []domainincident.Signal
 	runID := r.ID
 	obs := r.StartedAt
@@ -306,7 +306,6 @@ func signalsFromRun(r *domainrun.Run, result contract.Result) []domainincident.S
 			Cause: map[string]any{"status": string(r.Status)},
 		})
 	}
-	_ = result
 	return out
 }
 

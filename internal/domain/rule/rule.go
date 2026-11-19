@@ -20,21 +20,21 @@ const (
 	SubjectBody         Subject = "body"
 	SubjectJSON         Subject = "json"
 	SubjectHeader       Subject = "header"
-	SubjectSize Subject = "size"
+	SubjectSize         Subject = "size"
 )
 
 type Operator string
 
 const (
-	OpIs            Operator = "is"
-	OpIsNot         Operator = "is_not"
-	OpIn            Operator = "in"
-	OpExceeds       Operator = "exceeds"
-	OpBelow         Operator = "below"
-	OpContains      Operator = "contains"
-	OpNotContains   Operator = "not_contains"
-	OpExists        Operator = "exists"
-	OpNotExists Operator = "not_exists"
+	OpIs          Operator = "is"
+	OpIsNot       Operator = "is_not"
+	OpIn          Operator = "in"
+	OpExceeds     Operator = "exceeds"
+	OpBelow       Operator = "below"
+	OpContains    Operator = "contains"
+	OpNotContains Operator = "not_contains"
+	OpExists      Operator = "exists"
+	OpNotExists   Operator = "not_exists"
 )
 
 var allowedOperators = map[Subject][]Operator{
@@ -43,7 +43,7 @@ var allowedOperators = map[Subject][]Operator{
 	SubjectBody:         {OpContains, OpNotContains},
 	SubjectJSON:         {OpIs, OpIsNot, OpExists, OpNotExists, OpExceeds, OpBelow},
 	SubjectHeader:       {OpIs, OpContains, OpExists},
-	SubjectSize: {OpExceeds},
+	SubjectSize:         {OpExceeds},
 }
 
 // IsAlertCondition tells how a rule reads. Threshold operators describe the bad

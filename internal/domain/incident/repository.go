@@ -43,12 +43,12 @@ type EventRepository interface {
 
 // EnabledWorkflow is a scheduler scan row for no_run evaluation.
 type EnabledWorkflow struct {
-	UserID       uuid.UUID
-	WorkflowID   uuid.UUID
-	Interval     time.Duration
-	LastRunAt    *time.Time
-	EnabledAt    time.Time
-	CreatedAt    time.Time
+	UserID     uuid.UUID
+	WorkflowID uuid.UUID
+	Interval   time.Duration
+	LastRunAt  *time.Time
+	EnabledAt  time.Time
+	CreatedAt  time.Time
 }
 
 // SilenceAnchor is the earliest instant from which no_run silence is measured.

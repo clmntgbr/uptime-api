@@ -13,11 +13,11 @@ type ContextLatestRunResponse struct {
 }
 
 type ContextRunResponse struct {
-	ID         string                 `json:"id"`
-	Status     string                 `json:"status"`
-	StartedAt  string                 `json:"startedAt"`
-	DurationMs int                    `json:"durationMs"`
-	Calls      []ContextCallResponse  `json:"calls"`
+	ID         string                `json:"id"`
+	Status     string                `json:"status"`
+	StartedAt  string                `json:"startedAt"`
+	DurationMs int                   `json:"durationMs"`
+	Calls      []ContextCallResponse `json:"calls"`
 }
 
 type ContextCallResponse struct {
@@ -67,13 +67,13 @@ type ContextVariablesResponse struct {
 }
 
 type ContextVariableResponse struct {
-	Scope      string                     `json:"scope"`
-	Name       string                     `json:"name"`
-	Value      *string                    `json:"value"`
-	Secret     bool                       `json:"secret"`
-	Truncated  bool                       `json:"truncated,omitempty"`
-	ProducedBy *ContextProducerResponse   `json:"producedBy,omitempty"`
-	Status     string                     `json:"status,omitempty"`
+	Scope      string                   `json:"scope"`
+	Name       string                   `json:"name"`
+	Value      *string                  `json:"value"`
+	Secret     bool                     `json:"secret"`
+	Truncated  bool                     `json:"truncated,omitempty"`
+	ProducedBy *ContextProducerResponse `json:"producedBy,omitempty"`
+	Status     string                   `json:"status,omitempty"`
 }
 
 type ContextProducerResponse struct {

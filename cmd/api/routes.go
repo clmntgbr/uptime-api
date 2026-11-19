@@ -99,6 +99,8 @@ func setupWorkflowRoutes(api fiber.Router, container *di.Container) {
 
 	api.Get("/workflows/:id/calls", container.CallHandler.List)
 	api.Post("/workflows/:id/calls", container.CallHandler.Create)
+	// Must stay declared before the /calls/:callId routes: Fiber matches in
+	// declaration order, so "reorder" would otherwise be read as a call id.
 	api.Put("/workflows/:id/calls/reorder", container.CallHandler.Reorder)
 	api.Get("/workflows/:id/calls/:callId", container.CallHandler.GetByID)
 	api.Post("/workflows/:id/calls/:callId/copy", container.CallHandler.Copy)

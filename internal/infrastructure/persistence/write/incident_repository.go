@@ -327,7 +327,7 @@ func incidentPolicyFromModel(m IncidentPolicyModel) (*incident.Policy, error) {
 	return &incident.Policy{
 		ID: m.ID, UserID: m.UserID, WorkflowID: m.WorkflowID,
 		Kind: incident.Kind(m.Kind), Enabled: m.Enabled,
-		Severity: incident.Severity(m.Severity),
+		Severity:  incident.Severity(m.Severity),
 		OpenAfter: m.OpenAfter, CloseAfter: m.CloseAfter,
 		Params: params, UpdatedAt: m.UpdatedAt,
 	}, nil

@@ -34,7 +34,7 @@ func (r *notifySettingsRepository) Get(ctx context.Context, workflowID uuid.UUID
 func (r *notifySettingsRepository) Upsert(ctx context.Context, s notifysettings.Settings) error {
 	m := WorkflowNotificationSettingsModel{
 		WorkflowID: s.WorkflowID, UserID: s.UserID,
-		Emails: pq.StringArray(s.Emails),
+		Emails:           pq.StringArray(s.Emails),
 		IncidentsEnabled: s.IncidentsEnabled, TLSEnabled: s.TLSEnabled,
 		UpdatedAt: s.UpdatedAt,
 	}

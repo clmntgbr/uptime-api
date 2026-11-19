@@ -11,9 +11,9 @@ func TestCallProgress_Validate(t *testing.T) {
 	id := uuid.NewString()
 	ok := CallProgress{
 		V: CallProgressVersion, ID: id, Type: CallProgressType,
-		Phase: CallProgressPhaseFinished,
+		Phase:  CallProgressPhaseFinished,
 		UserID: id, WorkflowID: id, RunID: id, Trigger: TriggerSchedule,
-		Call: CallRun{Name: "login", Order: 1, Status: CallStatusSuccess, CallID: id},
+		Call:      CallRun{Name: "login", Order: 1, Status: CallStatusSuccess, CallID: id},
 		EmittedAt: time.Now().UTC(),
 	}
 	if err := ok.Validate(); err != nil {
@@ -22,9 +22,9 @@ func TestCallProgress_Validate(t *testing.T) {
 
 	started := CallProgress{
 		V: CallProgressVersion, ID: id, Type: CallProgressType,
-		Phase: CallProgressPhaseStarted,
+		Phase:  CallProgressPhaseStarted,
 		UserID: id, WorkflowID: id, RunID: id, Trigger: TriggerSchedule,
-		Call: CallRun{Name: "login", Order: 1, CallID: id},
+		Call:      CallRun{Name: "login", Order: 1, CallID: id},
 		EmittedAt: time.Now().UTC(),
 	}
 	if err := started.Validate(); err != nil {

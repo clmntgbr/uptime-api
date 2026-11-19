@@ -13,9 +13,9 @@ type Type string
 const (
 	TypeTLSCertificate Type = "tls_certificate"
 
-	MaxThresholds     = 20
-	MinThresholdDays  = 1
-	MaxThresholdDays  = 365
+	MaxThresholds    = 20
+	MinThresholdDays = 1
+	MaxThresholdDays = 365
 	StaleAfter       = 7 * 24 * time.Hour
 	ExpiredAlertDays = 7
 )
@@ -91,18 +91,18 @@ type Observation struct {
 
 // NotificationRequest is published to notifications.requests after thresholds fire.
 type NotificationRequest struct {
-	Kind           string    `json:"kind"`
-	V              int       `json:"v"`
-	Type           Type      `json:"type"`
-	UserID         uuid.UUID `json:"user_id"`
-	WorkflowID     uuid.UUID `json:"workflow_id"`
-	ItemID         uuid.UUID `json:"item_id"`
-	Subject        string    `json:"subject"`
-	DaysLeft       int       `json:"days_left"`
-	ThresholdDays  int       `json:"threshold_days"`
-	ExpiresAt      time.Time `json:"expires_at"`
-	Severity       Severity  `json:"severity"`
-	Message        string    `json:"message"`
+	Kind          string    `json:"kind"`
+	V             int       `json:"v"`
+	Type          Type      `json:"type"`
+	UserID        uuid.UUID `json:"user_id"`
+	WorkflowID    uuid.UUID `json:"workflow_id"`
+	ItemID        uuid.UUID `json:"item_id"`
+	Subject       string    `json:"subject"`
+	DaysLeft      int       `json:"days_left"`
+	ThresholdDays int       `json:"threshold_days"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	Severity      Severity  `json:"severity"`
+	Message       string    `json:"message"`
 }
 
 type AlertClaim struct {

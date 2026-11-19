@@ -26,6 +26,11 @@ services:
   api:
     <<: *go-prod
     command: ["./api"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/livez"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
     environment:
       <<: *kafka-client-env
       GO_ENV: ${GO_ENV}

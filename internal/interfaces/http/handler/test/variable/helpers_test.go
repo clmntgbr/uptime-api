@@ -278,19 +278,19 @@ func (m *mockListResponseKeys) Handle(_ context.Context, q queryvariable.ListRes
 }
 
 type mocks struct {
-	createGlobal  *mockCreateGlobal
-	updateGlobal  *mockUpdateGlobal
-	deleteGlobal  *mockDeleteGlobal
-	listGlobals   *mockListGlobals
-	getGlobal     *mockGetGlobal
-	createStatic  *mockCreateStatic
-	updateStatic  *mockUpdateStatic
-	deleteStatic  *mockDeleteStatic
-	listStatics   *mockListStatics
-	getStatic     *mockGetStatic
-	createCall    *mockCreateCall
-	updateCall    *mockUpdateCall
-	deleteCall    *mockDeleteCall
+	createGlobal     *mockCreateGlobal
+	updateGlobal     *mockUpdateGlobal
+	deleteGlobal     *mockDeleteGlobal
+	listGlobals      *mockListGlobals
+	getGlobal        *mockGetGlobal
+	createStatic     *mockCreateStatic
+	updateStatic     *mockUpdateStatic
+	deleteStatic     *mockDeleteStatic
+	listStatics      *mockListStatics
+	getStatic        *mockGetStatic
+	createCall       *mockCreateCall
+	updateCall       *mockUpdateCall
+	deleteCall       *mockDeleteCall
 	listCall         *mockListCall
 	getCall          *mockGetCall
 	listAvailable    *mockListAvailable

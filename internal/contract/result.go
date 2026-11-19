@@ -190,20 +190,20 @@ type NetworkInfo struct {
 }
 
 type TLSInfo struct {
-	Host               string           `json:"host"`
-	Port               int              `json:"port"`
-	Version            string           `json:"version"`
-	CipherSuite        string           `json:"cipher_suite"`
-	Subject            string           `json:"subject"`
-	Issuer             string           `json:"issuer"`
-	SerialNumber       string           `json:"serial_number"`
-	ExpiresAt          time.Time        `json:"expires_at"`
-	ChainExpiresAt     time.Time        `json:"chain_expires_at"`
-	ChainValid         bool             `json:"chain_valid"`
-	NameMatch          bool             `json:"name_match"`
-	FingerprintSHA256  string           `json:"fingerprint_sha256,omitempty"`
-	VerifyError        string           `json:"verify_error,omitempty"`
-	Chain              []TLSCertificate `json:"chain,omitempty"`
+	Host              string           `json:"host"`
+	Port              int              `json:"port"`
+	Version           string           `json:"version"`
+	CipherSuite       string           `json:"cipher_suite"`
+	Subject           string           `json:"subject"`
+	Issuer            string           `json:"issuer"`
+	SerialNumber      string           `json:"serial_number"`
+	ExpiresAt         time.Time        `json:"expires_at"`
+	ChainExpiresAt    time.Time        `json:"chain_expires_at"`
+	ChainValid        bool             `json:"chain_valid"`
+	NameMatch         bool             `json:"name_match"`
+	FingerprintSHA256 string           `json:"fingerprint_sha256,omitempty"`
+	VerifyError       string           `json:"verify_error,omitempty"`
+	Chain             []TLSCertificate `json:"chain,omitempty"`
 }
 
 type TLSCertificate struct {
@@ -255,6 +255,12 @@ func (r Result) Validate() error {
 	}
 	if r.Status != RunStatusSuccess && r.Status != RunStatusFailed {
 		return fmt.Errorf("%w: unknown status %q", ErrInvalidResult, r.Status)
+	}
+	// An unknown trigger would never release its lease: reject it here.
+	switch r.Trigger {
+	case TriggerSchedule, TriggerManual, TriggerTest:
+	default:
+		return fmt.Errorf("%w: unknown trigger %q", ErrInvalidResult, r.Trigger)
 	}
 	if r.StartedAt.IsZero() || r.FinishedAt.IsZero() {
 		return fmt.Errorf("%w: started_at and finished_at are required", ErrInvalidResult)

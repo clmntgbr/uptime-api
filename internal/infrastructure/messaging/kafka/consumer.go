@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"go-api/internal/application/messaging"
 	"go-api/internal/infrastructure/config"
@@ -435,9 +436,14 @@ func sleep(ctx context.Context, d time.Duration) bool {
 	}
 }
 
+// truncate cuts s to at most n bytes without splitting a UTF-8 sequence.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n]
+	cut := n
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }

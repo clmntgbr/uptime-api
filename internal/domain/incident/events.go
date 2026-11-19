@@ -24,10 +24,10 @@ type Opened struct {
 	Timestamp  time.Time `json:"occurredAt"`
 }
 
-func (e Opened) EventID() string           { return e.ID }
-func (e Opened) EventType() string         { return EventTypeOpened }
-func (e Opened) AggregateID() string       { return e.IncidentID }
-func (e Opened) OccurredAt() time.Time     { return e.Timestamp }
+func (e Opened) EventID() string       { return e.ID }
+func (e Opened) EventType() string     { return EventTypeOpened }
+func (e Opened) AggregateID() string   { return e.IncidentID }
+func (e Opened) OccurredAt() time.Time { return e.Timestamp }
 
 type Acknowledged struct {
 	ID         string    `json:"eventId"`

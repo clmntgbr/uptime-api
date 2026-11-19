@@ -20,13 +20,13 @@ type Signal struct {
 }
 
 type SignalState struct {
-	WorkflowID            uuid.UUID
-	Fingerprint           string
-	ConsecutiveFailures   int
-	ConsecutiveSuccesses  int
-	LastRunID             *uuid.UUID
-	LastSignalAt          *time.Time
-	UpdatedAt             time.Time
+	WorkflowID           uuid.UUID
+	Fingerprint          string
+	ConsecutiveFailures  int
+	ConsecutiveSuccesses int
+	LastRunID            *uuid.UUID
+	LastSignalAt         *time.Time
+	UpdatedAt            time.Time
 }
 
 // NextCounters updates consecutive fail/success after one signal.

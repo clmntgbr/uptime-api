@@ -44,15 +44,15 @@ type ExpiryItemsResponse struct {
 }
 
 type ExpiryItemResponse struct {
-	ID                string  `json:"id"`
-	Type              string  `json:"type"`
-	Subject           string  `json:"subject"`
-	ExpiresAt         string  `json:"expiresAt"`
-	DaysLeft          int     `json:"daysLeft"`
-	State             string  `json:"state"`
-	NextThresholdDays *int    `json:"nextThresholdDays,omitempty"`
-	Issuer            string  `json:"issuer,omitempty"`
-	ObservedAt        string  `json:"observedAt"`
+	ID                string `json:"id"`
+	Type              string `json:"type"`
+	Subject           string `json:"subject"`
+	ExpiresAt         string `json:"expiresAt"`
+	DaysLeft          int    `json:"daysLeft"`
+	State             string `json:"state"`
+	NextThresholdDays *int   `json:"nextThresholdDays,omitempty"`
+	Issuer            string `json:"issuer,omitempty"`
+	ObservedAt        string `json:"observedAt"`
 }
 
 func NewExpiryItemsResponse(views []domainexpiry.ItemView) ExpiryItemsResponse {

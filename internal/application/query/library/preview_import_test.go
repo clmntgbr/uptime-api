@@ -44,7 +44,7 @@ func (f fakeGlobals) FindByName(context.Context, uuid.UUID, string) (*variable.G
 }
 func (f fakeGlobals) Names(context.Context, uuid.UUID) ([]string, error) { return nil, nil }
 func (f fakeGlobals) Save(context.Context, *variable.Global) error       { return nil }
-func (f fakeGlobals) Delete(context.Context, uuid.UUID, uuid.UUID) error  { return nil }
+func (f fakeGlobals) Delete(context.Context, uuid.UUID, uuid.UUID) error { return nil }
 
 func TestPreviewImport_AppliesBaseURLAndValidates(t *testing.T) {
 	imp := fakeImporter{result: domainlibrary.ImportResult{Candidates: []domainlibrary.Candidate{

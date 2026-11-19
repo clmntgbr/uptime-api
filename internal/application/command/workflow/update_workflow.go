@@ -39,13 +39,14 @@ func NewUpdateWorkflowHandler(
 // Handle replaces the definition. A run in progress keeps the definition it was
 // dispatched with; the new one applies from the next pass.
 func (h *UpdateWorkflowHandler) Handle(ctx context.Context, cmd UpdateWorkflowCommand) (*domainworkflow.Workflow, error) {
-	globals, err := h.variables.Names(ctx, cmd.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("load global variables: %w", err)
-	}
-
 	var updated *domainworkflow.Workflow
-	err = h.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+	err := h.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		// Read the global names inside the transaction: validation must see the
+		// same globals that the save commits against.
+		globals, err := h.variables.Names(txCtx, cmd.UserID)
+		if err != nil {
+			return fmt.Errorf("load global variables: %w", err)
+		}
 		w, err := h.repo.GetByID(txCtx, cmd.WorkflowID)
 		if err != nil {
 			return err

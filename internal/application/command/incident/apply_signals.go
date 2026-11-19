@@ -19,13 +19,13 @@ type ApplyResult struct {
 }
 
 type NotifyIntent struct {
-	Kind       string // incident.opened | incident.resolved | incident.reminder
-	IncidentID uuid.UUID
-	UserID     uuid.UUID
-	WorkflowID uuid.UUID
+	Kind         string // incident.opened | incident.resolved | incident.reminder
+	IncidentID   uuid.UUID
+	UserID       uuid.UUID
+	WorkflowID   uuid.UUID
 	IncidentKind domainincident.Kind
-	Severity   domainincident.Severity
-	Message    string
+	Severity     domainincident.Severity
+	Message      string
 }
 
 type ApplySignalsCommand struct {

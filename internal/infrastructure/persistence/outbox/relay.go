@@ -2,7 +2,7 @@ package outbox
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"go-api/internal/domain/port"
@@ -36,16 +36,16 @@ func (r *Relay) Start(ctx context.Context) {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
-	log.Printf("outbox relay started (interval=%s)", r.interval)
+	slog.Info("outbox relay started", "interval", r.interval.String())
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("outbox relay stopped")
+			slog.Info("outbox relay stopped")
 			return
 		case <-ticker.C:
 			if err := r.publishBatch(ctx); err != nil {
-				log.Printf("outbox relay error: %v", err)
+				slog.Error("outbox relay failed", "error", err)
 			}
 		}
 	}
@@ -70,7 +70,7 @@ func (r *Relay) publishBatch(ctx context.Context) error {
 			Payload:     msg.Payload,
 		}
 		if err := r.publisher.Publish(ctx, envelope); err != nil {
-			log.Printf("failed to publish outbox event %s: %v", msg.ID, err)
+			slog.Error("publish outbox event failed", "event_id", msg.ID, "error", err)
 			break
 		}
 		publishedIDs = append(publishedIDs, msg.ID)

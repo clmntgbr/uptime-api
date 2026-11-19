@@ -8,13 +8,13 @@ import (
 type Kind string
 
 const (
-	KindCallFailed       Kind = "call_failed"
-	KindWorkflowFailed   Kind = "workflow_failed"
-	KindCallSlow         Kind = "call_slow"
-	KindChainBroken      Kind = "chain_broken"
-	KindAvailabilityLow  Kind = "availability_low"
-	KindNoRun            Kind = "no_run"
-	KindTLSExpiry        Kind = "tls_expiry"
+	KindCallFailed      Kind = "call_failed"
+	KindWorkflowFailed  Kind = "workflow_failed"
+	KindCallSlow        Kind = "call_slow"
+	KindChainBroken     Kind = "chain_broken"
+	KindAvailabilityLow Kind = "availability_low"
+	KindNoRun           Kind = "no_run"
+	KindTLSExpiry       Kind = "tls_expiry"
 )
 
 type State string
@@ -45,20 +45,20 @@ const (
 )
 
 const (
-	ReopenWindow          = 30 * time.Minute
-	ReminderAfter         = 1 * time.Hour
-	ReminderSecondAfter   = 24 * time.Hour
-	MinOpenAfter          = 1
-	MaxOpenAfter          = 20
-	MinCloseAfter         = 1
-	MaxCloseAfter         = 20
-	DefaultOpenAfter      = 3
-	DefaultCloseAfter     = 2
-	DefaultAvailThreshold = 99.0
-	DefaultAvailRecovery  = 99.5
+	ReopenWindow           = 30 * time.Minute
+	ReminderAfter          = 1 * time.Hour
+	ReminderSecondAfter    = 24 * time.Hour
+	MinOpenAfter           = 1
+	MaxOpenAfter           = 20
+	MinCloseAfter          = 1
+	MaxCloseAfter          = 20
+	DefaultOpenAfter       = 3
+	DefaultCloseAfter      = 2
+	DefaultAvailThreshold  = 99.0
+	DefaultAvailRecovery   = 99.5
 	DefaultNoRunMultiplier = 3
-	NoRunSuppressMinCount = 5
-	NoRunSuppressMinRatio = 0.5
+	NoRunSuppressMinCount  = 5
+	NoRunSuppressMinRatio  = 0.5
 )
 
 // AllKinds is the stable order for list-policies responses.

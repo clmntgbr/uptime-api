@@ -17,12 +17,12 @@ type CallRecentRunTimingsResponse struct {
 
 // CallRecentRunResponse is one bar of the call list sparkline.
 type CallRecentRunResponse struct {
-	ID         string                         `json:"id"`
-	RunID      string                         `json:"runId"`
-	Status     string                         `json:"status"`
-	HTTPStatus *int                           `json:"httpStatus,omitempty"`
-	FinishedAt *string                        `json:"finishedAt,omitempty"`
-	LatencyMs  *int64                         `json:"latencyMs,omitempty"`
+	ID         string                        `json:"id"`
+	RunID      string                        `json:"runId"`
+	Status     string                        `json:"status"`
+	HTTPStatus *int                          `json:"httpStatus,omitempty"`
+	FinishedAt *string                       `json:"finishedAt,omitempty"`
+	LatencyMs  *int64                        `json:"latencyMs,omitempty"`
 	Timings    *CallRecentRunTimingsResponse `json:"timings,omitempty"`
 }
 

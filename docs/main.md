@@ -231,7 +231,7 @@ La phase 1 tient en 9 containers sur 4 réseaux Docker. Règle de base : les wor
 | `scheduler` | Go | Planifie les workflows (bail en base), relance les confirmations, purge et agrège | `backend`, `data` | Une instance active |
 | `worker` | Go | Worker principal événementiel : consomme les résultats des workers, les écrit en base, évalue les alertes, prévient Centrifugo, demande les notifications | `backend`, `data` | Oui |
 | `worker-calls` | Go | Exécute les workflows : requêtes HTTP, extraction des variables, évaluation des règles | `egress` | Oui |
-| `worker-notify` | Go | Envoie les notifications (e-mail, Slack, Teams, webhook sortant) | `egress` | Oui |
+| `worker-notify` | Go | Envoie les notifications (e-mail, Slack, Teams, webhook sortant) ; lit la base uniquement pour résoudre les destinataires | `backend`, `data`, `egress` | Oui |
 | `kafka` | Apache Kafka (KRaft) | Messaging interne | `backend`, `egress` | Non au départ (3 brokers en production) |
 | `centrifugo` | Centrifugo | Notifications temps réel vers le front | `edge`, `backend` | Non |
 | `postgres` | PostgreSQL | Source de vérité | `data` | Non |
@@ -242,7 +242,7 @@ Un stockage objet compatible S3 (MinIO en local) reçoit les corps zstd ; Postgr
 
 - `edge` : exposé à Internet, uniquement `caddy`, `api` et `centrifugo`. `api` y sort aussi vers Clerk pour récupérer les clés de validation des jetons.
 - `backend` : services internes et Kafka, sans sortie vers Internet.
-- `data` : `postgres` et les trois seuls services autorisés à lui parler (`api`, `scheduler`, `worker`), sans sortie vers Internet.
+- `data` : `postgres` et les services autorisés à lui parler (`api`, `scheduler`, `worker`, `worker-notify`), sans sortie vers Internet.
 - `egress` : `worker-calls` et `worker-notify`, qui contactent les URLs des clients et les services de notification, avec sortie Internet filtrée (plages privées bloquées) et accès uniquement à Kafka.
 
 **Extrait de `docker-compose.yml`**

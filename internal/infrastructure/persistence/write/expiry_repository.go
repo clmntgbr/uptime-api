@@ -100,11 +100,11 @@ func (r *expiryItemRepository) Upsert(ctx context.Context, item expiry.Item) (ex
 	err = DBWithContext(ctx, r.db).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "workflow_id"}, {Name: "type"}, {Name: "subject"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"expires_at":   m.ExpiresAt,
-			"fingerprint":  m.Fingerprint,
-			"meta":         m.Meta,
-			"observed_at":  m.ObservedAt,
-			"id":           gorm.Expr("expiry_items.id"),
+			"expires_at":  m.ExpiresAt,
+			"fingerprint": m.Fingerprint,
+			"meta":        m.Meta,
+			"observed_at": m.ObservedAt,
+			"id":          gorm.Expr("expiry_items.id"),
 		}),
 	}).Create(&m).Error
 	if err != nil {

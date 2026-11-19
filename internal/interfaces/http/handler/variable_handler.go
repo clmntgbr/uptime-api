@@ -12,23 +12,23 @@ import (
 )
 
 type VariableHandler struct {
-	createGlobal  variableCreateGlobalHandler
-	updateGlobal  variableUpdateGlobalHandler
-	deleteGlobal  variableDeleteGlobalHandler
-	listGlobals   variableListGlobalsHandler
-	getGlobal     variableGetGlobalHandler
-	createStatic  variableCreateStaticHandler
-	updateStatic  variableUpdateStaticHandler
-	deleteStatic  variableDeleteStaticHandler
-	listStatics   variableListStaticsHandler
-	getStatic     variableGetStaticHandler
-	createCall    variableCreateCallHandler
-	updateCall    variableUpdateCallHandler
-	deleteCall    variableDeleteCallHandler
-	listCall      variableListCallHandler
-	getCall       variableGetCallHandler
-	listAvailable     variableListAvailableHandler
-	listResponseKeys  variableListResponseKeysHandler
+	createGlobal     variableCreateGlobalHandler
+	updateGlobal     variableUpdateGlobalHandler
+	deleteGlobal     variableDeleteGlobalHandler
+	listGlobals      variableListGlobalsHandler
+	getGlobal        variableGetGlobalHandler
+	createStatic     variableCreateStaticHandler
+	updateStatic     variableUpdateStaticHandler
+	deleteStatic     variableDeleteStaticHandler
+	listStatics      variableListStaticsHandler
+	getStatic        variableGetStaticHandler
+	createCall       variableCreateCallHandler
+	updateCall       variableUpdateCallHandler
+	deleteCall       variableDeleteCallHandler
+	listCall         variableListCallHandler
+	getCall          variableGetCallHandler
+	listAvailable    variableListAvailableHandler
+	listResponseKeys variableListResponseKeysHandler
 }
 
 func NewVariableHandler(

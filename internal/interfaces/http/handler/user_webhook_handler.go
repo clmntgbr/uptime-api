@@ -2,7 +2,7 @@ package handler
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 
 	usercmd "go-api/internal/application/command/user"
 	"go-api/internal/interfaces/http/dto"
@@ -33,7 +33,11 @@ func NewUserWebhookHandler(
 }
 
 func (h *UserWebhookHandler) Execute(c fiber.Ctx) error {
-	clerkEvent := c.Locals("payload").(dto.ClerkEvent)
+	clerkEvent, ok := c.Locals("payload").(dto.ClerkEvent)
+	if !ok {
+		// The signature middleware always sets it: missing means a wiring bug.
+		return c.SendStatus(fiber.StatusInternalServerError)
+	}
 
 	switch clerkEvent.Type {
 	case "user.created":
@@ -95,7 +99,7 @@ func (h *UserWebhookHandler) Execute(c fiber.Ctx) error {
 func (h *UserWebhookHandler) createUser(c fiber.Ctx, data dto.ClerkUserCreated) error {
 	existing, err := h.getUserByExternalIDHandler.Handle(c.Context(), data.ID)
 	if err != nil {
-		log.Printf("Error finding user by Clerk ID %s: %v", data.ID, err)
+		slog.Error("find user failed", "clerk_id", data.ID, "error", err)
 		return err
 	}
 	if existing != nil {
@@ -110,7 +114,7 @@ func (h *UserWebhookHandler) createUser(c fiber.Ctx, data dto.ClerkUserCreated) 
 		Banned:    *data.Banned,
 	})
 	if err != nil {
-		log.Printf("Error creating user with Clerk ID %s: %v", data.ID, err)
+		slog.Error("create user failed", "clerk_id", data.ID, "error", err)
 		return err
 	}
 	return nil
@@ -119,7 +123,7 @@ func (h *UserWebhookHandler) createUser(c fiber.Ctx, data dto.ClerkUserCreated) 
 func (h *UserWebhookHandler) updateUser(c fiber.Ctx, data dto.ClerkUserUpdated) error {
 	user, err := h.getUserByExternalIDHandler.Handle(c.Context(), data.ID)
 	if err != nil {
-		log.Printf("Error finding user by Clerk ID %s: %v", data.ID, err)
+		slog.Error("find user failed", "clerk_id", data.ID, "error", err)
 		return err
 	}
 	if user == nil {
@@ -133,7 +137,7 @@ func (h *UserWebhookHandler) updateUser(c fiber.Ctx, data dto.ClerkUserUpdated) 
 			Banned:    *data.Banned,
 		})
 		if err != nil {
-			log.Printf("Error provisioning user with Clerk ID %s: %v", data.ID, err)
+			slog.Error("provision user failed", "clerk_id", data.ID, "error", err)
 		}
 		return err
 	}
@@ -145,7 +149,7 @@ func (h *UserWebhookHandler) updateUser(c fiber.Ctx, data dto.ClerkUserUpdated) 
 		Email:     data.Email,
 		Banned:    *data.Banned,
 	}); err != nil {
-		log.Printf("Error updating user with Clerk ID %s: %v", data.ID, err)
+		slog.Error("update user failed", "clerk_id", data.ID, "error", err)
 		return err
 	}
 	return nil
@@ -153,7 +157,7 @@ func (h *UserWebhookHandler) updateUser(c fiber.Ctx, data dto.ClerkUserUpdated) 
 
 func (h *UserWebhookHandler) deleteUser(c fiber.Ctx, data dto.ClerkUserDeleted) error {
 	if err := h.deleteUserByExternalIDHandler.Handle(c.Context(), data.ID); err != nil {
-		log.Printf("Error deleting user with Clerk ID %s: %v", data.ID, err)
+		slog.Error("delete user failed", "clerk_id", data.ID, "error", err)
 		return err
 	}
 	return nil
