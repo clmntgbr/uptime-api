@@ -25,19 +25,28 @@ func main() {
 		log.Fatalf("schema check failed: %v", err)
 	}
 
-	app := fiber.New(fiber.Config{
+	cfg := fiber.Config{
 		AppName:       "Go API",
 		ServerHeader:  "Go API",
 		CaseSensitive: true,
 		StrictRouting: true,
 		UnescapePath:  true,
 		// Must cover library import (domainlibrary.MaxImportBytes = 2 MiB) plus multipart overhead.
-		BodyLimit: 3 * 1024 * 1024,
-		ReadTimeout:   10 * time.Second,
-		WriteTimeout:  15 * time.Second,
-		IdleTimeout:   60 * time.Second,
-		ErrorHandler:  validation.FiberErrorHandler,
-	})
+		BodyLimit:    3 * 1024 * 1024,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+		ErrorHandler: validation.FiberErrorHandler,
+	}
+	if env.TrustProxy {
+		// Behind Caddy on the edge network, c.IP() must be the client IP from
+		// X-Forwarded-For, not the proxy container: otherwise the rate limiter
+		// shares one bucket across every user. Only private ranges are trusted.
+		cfg.TrustProxy = true
+		cfg.TrustProxyConfig = fiber.TrustProxyConfig{Private: true}
+		cfg.ProxyHeader = fiber.HeaderXForwardedFor
+	}
+	app := fiber.New(cfg)
 
 	app.Use(recover.New())
 	app.Use(helmet.New())

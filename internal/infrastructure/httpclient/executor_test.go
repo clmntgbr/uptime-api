@@ -53,6 +53,17 @@ func TestSession_BlocksPrivateDestinations(t *testing.T) {
 	}
 }
 
+func TestSession_ProxyRejectedUnlessAllowed(t *testing.T) {
+	req := request("http://1.1.1.1/")
+	req.ProxyURL = "http://203.0.113.10:8080"
+
+	_, err := NewExecutor(Config{}).NewSession().Do(context.Background(), req)
+	var execErr *engine.ExecError
+	if !errors.As(err, &execErr) || execErr.Type != contract.ErrorTypeInvalid {
+		t.Fatalf("proxy must be rejected by default, got %v", err)
+	}
+}
+
 func TestSession_TLSRedirectsCookiesAndTimings(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {

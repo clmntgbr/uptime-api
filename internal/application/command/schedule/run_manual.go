@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -181,8 +182,12 @@ func (h *RunManualHandler) recordSuperseded(ctx context.Context, lease domainsch
 }
 
 func (h *RunManualHandler) release(ctx context.Context, job contract.Job) {
-	workflowID, _ := uuid.Parse(job.WorkflowID)
-	runID, _ := uuid.Parse(job.RunID)
+	workflowID, errW := uuid.Parse(job.WorkflowID)
+	runID, errR := uuid.Parse(job.RunID)
+	if err := errors.Join(errW, errR); err != nil {
+		h.logger.Error("lease release skipped: invalid job ids", "workflow_id", job.WorkflowID, "run_id", job.RunID, "error", err)
+		return
+	}
 	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
 		state, err := h.states.GetForUpdate(txCtx, workflowID)
 		if err != nil || state == nil {

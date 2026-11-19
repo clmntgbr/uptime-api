@@ -29,6 +29,9 @@ import (
 type Config struct {
 	UserAgent    string
 	AllowPrivate bool
+	// AllowProxy lets jobs route through a user-supplied proxy_url. Off by default:
+	// the SSRF dialer only checks the proxy address, not the final destination.
+	AllowProxy bool
 	// MaxBodyBytes is the hard read limit (body_too_large). Defaults to engine.MaxBodyBytes (50 MiB).
 	MaxBodyBytes int64
 	MaxRedirects int
@@ -201,6 +204,9 @@ func (s *session) Do(ctx context.Context, req engine.Request) (*engine.Response,
 		},
 	}
 	if req.ProxyURL != "" {
+		if !s.cfg.AllowProxy {
+			return nil, &engine.ExecError{Type: contract.ErrorTypeInvalid, Message: "proxy not allowed on this worker"}
+		}
 		proxy, err := url.Parse(req.ProxyURL)
 		if err != nil {
 			return nil, &engine.ExecError{Type: contract.ErrorTypeInvalid, Message: "invalid proxy url"}

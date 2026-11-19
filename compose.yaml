@@ -26,9 +26,26 @@ services:
   api:
     <<: *go-prod
     command: ["./api"]
-    env_file: [.env]
     environment:
       <<: *kafka-client-env
+      GO_ENV: ${GO_ENV}
+      PORT: ${PORT}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS}
+      CORS_ALLOW_METHODS: ${CORS_ALLOW_METHODS}
+      CORS_ALLOW_HEADERS: ${CORS_ALLOW_HEADERS}
+      CORS_MAX_AGE: ${CORS_MAX_AGE}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX}
+      TRUST_PROXY: "true"
+      CLERK_WEBHOOK_SECRET: ${CLERK_WEBHOOK_SECRET}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_FRONTEND_API: ${CLERK_FRONTEND_API}
+      CENTRIFUGO_URL: ${CENTRIFUGO_URL}
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+      CENTRIFUGO_TOKEN_SECRET: ${CENTRIFUGO_TOKEN_SECRET}
+      CENTRIFUGO_PUBLIC_WS_URL: ${CENTRIFUGO_PUBLIC_WS_URL}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
+      JOB_SEAL_PUBLIC_KEY: ${JOB_SEAL_PUBLIC_KEY}
       DATABASE_URL: ${API_DATABASE_URL}
       KAFKA_CLIENT_ID: api
       KAFKA_USERNAME: api
@@ -42,9 +59,13 @@ services:
   worker-scheduler:
     <<: *go-prod
     command: ["./worker-scheduler"]
-    env_file: [.env]
     environment:
       <<: *kafka-client-env
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
+      JOB_SEAL_PUBLIC_KEY: ${JOB_SEAL_PUBLIC_KEY}
+      RESULTS_RETENTION_DAYS: ${RESULTS_RETENTION_DAYS}
+      SCHEDULER_MAX_JITTER: ${SCHEDULER_MAX_JITTER}
+      HEARTBEAT_URL: ${HEARTBEAT_URL}
       DATABASE_URL: ${SCHEDULER_DATABASE_URL}
       KAFKA_CLIENT_ID: worker-scheduler
       KAFKA_USERNAME: worker-scheduler
@@ -56,9 +77,17 @@ services:
   worker:
     <<: *go-prod
     command: ["./worker"]
-    env_file: [.env]
     environment:
       <<: *kafka-client-env
+      GO_ENV: ${GO_ENV}
+      OUTBOX_POLL_INTERVAL: ${OUTBOX_POLL_INTERVAL}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY}
+      CENTRIFUGO_URL: ${CENTRIFUGO_URL}
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+      CENTRIFUGO_TOKEN_SECRET: ${CENTRIFUGO_TOKEN_SECRET}
+      CENTRIFUGO_PUBLIC_WS_URL: ${CENTRIFUGO_PUBLIC_WS_URL}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
+      JOB_SEAL_PUBLIC_KEY: ${JOB_SEAL_PUBLIC_KEY}
       DATABASE_URL: ${WORKER_DATABASE_URL}
       KAFKA_CLIENT_ID: worker
       KAFKA_USERNAME: worker
@@ -68,6 +97,27 @@ services:
     networks: [backend, data]
     deploy:
       replicas: 2
+
+  worker-notify:
+    <<: *go-prod
+    command: ["./worker-notify"]
+    environment:
+      <<: *kafka-client-env
+      KAFKA_CLIENT_ID: worker-notify
+      KAFKA_USERNAME: worker-notify
+      KAFKA_PASSWORD: ${KAFKA_WORKER_NOTIFY_PASSWORD}
+      GO_ENV: ${GO_ENV}
+      METRICS_ADDR: ${METRICS_ADDR:-:9100}
+      WORKER_NOTIFY_CONCURRENCY: ${WORKER_NOTIFY_CONCURRENCY:-20}
+      DATABASE_URL: ${WORKER_DATABASE_URL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_FROM: ${SMTP_FROM}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+    networks: [backend, data, egress]
+    deploy:
+      replicas: 1
 
   worker-calls:
     <<: *go-prod
@@ -80,6 +130,7 @@ services:
       JOB_SEAL_PUBLIC_KEY: ${JOB_SEAL_PUBLIC_KEY}
       JOB_SEAL_PRIVATE_KEY: ${JOB_SEAL_PRIVATE_KEY}
       HTTP_USER_AGENT: ${HTTP_USER_AGENT}
+      HTTP_ALLOW_PROXY: ${HTTP_ALLOW_PROXY:-false}
       STORAGE_ENDPOINT: ${STORAGE_INTERNAL_ENDPOINT}
       STORAGE_REGION: ${STORAGE_REGION}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
@@ -120,6 +171,7 @@ services:
       KAFKA_SCHEDULER_PASSWORD: ${KAFKA_SCHEDULER_PASSWORD}
       KAFKA_WORKER_PASSWORD: ${KAFKA_WORKER_PASSWORD}
       KAFKA_WORKER_CALLS_PASSWORD: ${KAFKA_WORKER_CALLS_PASSWORD}
+      KAFKA_WORKER_NOTIFY_PASSWORD: ${KAFKA_WORKER_NOTIFY_PASSWORD}
       REPLICATION_FACTOR: ${KAFKA_REPLICATION_FACTOR:-1}
     volumes:
       - ./deploy/kafka:/scripts:ro

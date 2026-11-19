@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -332,8 +333,12 @@ func (h *DispatchDueRunsHandler) publish(ctx context.Context, pending []pendingJ
 // release frees the lease of a job that could not be published, so the
 // workflow runs again at its next pass instead of waiting for the lease to expire.
 func (h *DispatchDueRunsHandler) release(ctx context.Context, p pendingJob) {
-	workflowID, _ := uuid.Parse(p.job.WorkflowID)
-	runID, _ := uuid.Parse(p.job.RunID)
+	workflowID, errW := uuid.Parse(p.job.WorkflowID)
+	runID, errR := uuid.Parse(p.job.RunID)
+	if err := errors.Join(errW, errR); err != nil {
+		h.logger.Error("lease release skipped: invalid job ids", "workflow_id", p.job.WorkflowID, "run_id", p.job.RunID, "error", err)
+		return
+	}
 	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
 		state, err := h.states.GetForUpdate(txCtx, workflowID)
 		if err != nil || state == nil {

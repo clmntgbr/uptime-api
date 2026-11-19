@@ -23,6 +23,7 @@ type Config struct {
 	CORSAllowHeaders      []string
 	CORSMaxAge            int
 	RateLimitMax          int
+	TrustProxy            bool
 	OutboxPollInterval    time.Duration
 	WorkerConcurrency     int
 	WorkerResultsGroup    string
@@ -54,6 +55,7 @@ func Load() *Config {
 		CORSAllowHeaders:      strings.Split(getEnv("CORS_ALLOW_HEADERS"), ","),
 		CORSMaxAge:            getEnvInt("CORS_MAX_AGE"),
 		RateLimitMax:          getEnvInt("RATE_LIMIT_MAX"),
+		TrustProxy:            getEnvBool("TRUST_PROXY"),
 		OutboxPollInterval:    getEnvDuration("OUTBOX_POLL_INTERVAL", time.Second),
 		WorkerConcurrency:     getEnvIntOrDefault("WORKER_CONCURRENCY", 8),
 		WorkerResultsGroup:    getEnvOrDefault("WORKER_RESULTS_GROUP", "worker"),

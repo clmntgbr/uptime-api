@@ -51,6 +51,7 @@ func NewContainer(env *config.WorkerCallsConfig, logger *slog.Logger) (*Containe
 	executor := httpclient.NewExecutor(httpclient.Config{
 		UserAgent:     env.UserAgent,
 		AllowPrivate:  env.AllowPrivateIPs,
+		AllowProxy:    env.AllowProxy,
 		MinTLSVersion: minTLS,
 	})
 	clock := port.SystemClock{}
