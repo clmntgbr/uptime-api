@@ -156,9 +156,22 @@ func (h *DispatchDueRunsHandler) Handle(ctx context.Context) (DispatchStats, err
 			if w == nil {
 				continue
 			}
+			// Empty workflow: do not lease, do not record a failed/timeout run —
+			// disable, park the schedule, and log for a future notification email.
+			if len(w.Calls) == 0 {
+				if err := h.disableEmptyWorkflow(txCtx, w); err != nil {
+					return err
+				}
+				state.ClearSchedule()
+				if err := h.states.Save(txCtx, state); err != nil {
+					return err
+				}
+				continue
+			}
 			jitter := h.jitter()
 			runID := uuid.New()
-			job, err := h.prepare(txCtx, w, globalsByUser, runID, scheduledAt, now.Add(jitter+w.Timeout), now)
+			budget := domainworkflow.EstimateRunBudget(w.Calls)
+			job, err := h.prepare(txCtx, w, globalsByUser, runID, scheduledAt, now.Add(jitter+budget), now, budget)
 			if err != nil {
 				// One workflow that cannot be prepared (undecryptable secret)
 				// must not block the others: it waits for its next pass.
@@ -175,7 +188,7 @@ func (h *DispatchDueRunsHandler) Handle(ctx context.Context) (DispatchStats, err
 
 			oneShot := isOneShot(d.ScheduleType)
 			advanceSchedule(&state, d, now)
-			state.Lease(runID, now, jitter+w.Timeout+h.cfg.LeaseMargin)
+			state.Lease(runID, now, jitter+budget+h.cfg.LeaseMargin)
 			if err := h.states.Save(txCtx, state); err != nil {
 				return err
 			}
@@ -219,12 +232,36 @@ func (h *DispatchDueRunsHandler) disableOneShot(ctx context.Context, workflowID 
 	return h.outbox.StoreEvents(ctx, w.PullEvents())
 }
 
+// disableEmptyWorkflow turns off a workflow that has nothing to run and logs a
+// structured line so a notification email can be wired later.
+func (h *DispatchDueRunsHandler) disableEmptyWorkflow(ctx context.Context, w *domainworkflow.Workflow) error {
+	disabled := w.Disable()
+	if disabled {
+		if err := h.workflows.Update(ctx, w); err != nil {
+			return err
+		}
+		if err := h.outbox.StoreEvents(ctx, w.PullEvents()); err != nil {
+			return err
+		}
+	}
+	h.logger.Info(
+		"workflow disabled: no calls to run",
+		"workflow_id", w.ID,
+		"user_id", w.UserID,
+		"reason", "empty_calls",
+		"notify", "pending_email",
+		"disabled_now", disabled,
+	)
+	return nil
+}
+
 func (h *DispatchDueRunsHandler) prepare(
 	ctx context.Context,
 	w *domainworkflow.Workflow,
 	globalsByUser map[uuid.UUID][]variable.Global,
 	runID uuid.UUID,
 	scheduledAt, deadline, now time.Time,
+	budget time.Duration,
 ) (contract.Job, error) {
 	globals, ok := globalsByUser[w.UserID]
 	if !ok {
@@ -234,7 +271,7 @@ func (h *DispatchDueRunsHandler) prepare(
 		}
 		globalsByUser[w.UserID] = globals
 	}
-	return prepareJob(h.sealer, w, globals, runID, contract.TriggerSchedule, scheduledAt, deadline, now)
+	return prepareJob(h.sealer, w, globals, runID, contract.TriggerSchedule, scheduledAt, deadline, now, budget)
 }
 
 func (h *DispatchDueRunsHandler) record(ctx context.Context, r *domainrun.Run) error {

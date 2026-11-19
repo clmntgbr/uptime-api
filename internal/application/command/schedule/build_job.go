@@ -19,8 +19,9 @@ func prepareJob(
 	runID uuid.UUID,
 	trigger string,
 	scheduledAt, deadline, now time.Time,
+	budget time.Duration,
 ) (contract.Job, error) {
-	job, secrets := buildJob(w, globals, runID, trigger, scheduledAt, deadline, now)
+	job, secrets := buildJob(w, globals, runID, trigger, scheduledAt, deadline, now, budget)
 	sealed, err := sealer.Seal(secrets)
 	if err != nil {
 		return contract.Job{}, fmt.Errorf("seal secrets: %w", err)
@@ -31,7 +32,15 @@ func prepareJob(
 
 // buildJob turns a workflow into a self-contained job. Only the globals the
 // workflow references are included; secret ones are returned apart to be sealed.
-func buildJob(w *domainworkflow.Workflow, globals []variable.Global, runID uuid.UUID, trigger string, scheduledAt, deadline, now time.Time) (contract.Job, map[string]string) {
+// budget is the run-level timeout (EstimateRunBudget), not the legacy w.Timeout field.
+func buildJob(
+	w *domainworkflow.Workflow,
+	globals []variable.Global,
+	runID uuid.UUID,
+	trigger string,
+	scheduledAt, deadline, now time.Time,
+	budget time.Duration,
+) (contract.Job, map[string]string) {
 	referenced := map[string]struct{}{}
 	for _, c := range w.Calls {
 		for _, name := range c.References() {
@@ -50,7 +59,7 @@ func buildJob(w *domainworkflow.Workflow, globals []variable.Global, runID uuid.
 		Trigger:      trigger,
 		ScheduledAt:  scheduledAt,
 		Deadline:     deadline,
-		TimeoutMS:    int(w.Timeout / time.Millisecond),
+		TimeoutMS:    int(budget / time.Millisecond),
 		EmittedAt:    now,
 	}
 

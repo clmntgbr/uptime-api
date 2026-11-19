@@ -110,11 +110,12 @@ func (h *RunManualHandler) Handle(ctx context.Context, cmd RunManualCommand) (uu
 		}
 
 		runID = uuid.New()
-		job, err = h.prepare(txCtx, w, runID, now)
+		budget := domainworkflow.EstimateRunBudget(w.Calls)
+		job, err = h.prepare(txCtx, w, runID, now, budget)
 		if err != nil {
 			return err
 		}
-		state.Lease(runID, now, w.Timeout+h.leaseMargin)
+		state.Lease(runID, now, budget+h.leaseMargin)
 		return h.states.Save(txCtx, *state)
 	})
 	if err != nil {
@@ -129,12 +130,18 @@ func (h *RunManualHandler) Handle(ctx context.Context, cmd RunManualCommand) (uu
 	return runID, nil
 }
 
-func (h *RunManualHandler) prepare(ctx context.Context, w *domainworkflow.Workflow, runID uuid.UUID, now time.Time) (contract.Job, error) {
+func (h *RunManualHandler) prepare(
+	ctx context.Context,
+	w *domainworkflow.Workflow,
+	runID uuid.UUID,
+	now time.Time,
+	budget time.Duration,
+) (contract.Job, error) {
 	globals, err := h.globals.ListByUser(ctx, w.UserID)
 	if err != nil {
 		return contract.Job{}, fmt.Errorf("load globals: %w", err)
 	}
-	return prepareJob(h.sealer, w, globals, runID, contract.TriggerManual, now, now.Add(w.Timeout), now)
+	return prepareJob(h.sealer, w, globals, runID, contract.TriggerManual, now, now.Add(budget), now, budget)
 }
 
 func (h *RunManualHandler) recordTimeout(ctx context.Context, lease domainschedule.ExpiredLease, workflowID, userID uuid.UUID) error {
