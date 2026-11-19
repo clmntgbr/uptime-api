@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"log"
 
 	usercmd "go-api/internal/application/command/user"
@@ -11,8 +10,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 )
-
-var errUserNotFound = errors.New("user not found")
 
 type UserWebhookHandler struct {
 	getUserByExternalIDHandler    userWebhookGetByExternalIDHandler
@@ -67,11 +64,6 @@ func (h *UserWebhookHandler) Execute(c fiber.Ctx) error {
 			return err
 		}
 		if err := h.updateUser(c, data); err != nil {
-			if errors.Is(err, errUserNotFound) {
-				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-					"message": "User not found",
-				})
-			}
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"message": "Failed to update user",
 			})
@@ -131,7 +123,19 @@ func (h *UserWebhookHandler) updateUser(c fiber.Ctx, data dto.ClerkUserUpdated) 
 		return err
 	}
 	if user == nil {
-		return errUserNotFound
+		// user.created was missed or never processed. Provision the user from this
+		// payload and answer 2xx: a 404 would make Svix retry the same event forever.
+		_, err := h.createUserHandler.Handle(c.Context(), usercmd.CreateUserCommand{
+			ClerkID:   data.ID,
+			FirstName: data.FirstName,
+			LastName:  data.LastName,
+			Email:     data.Email,
+			Banned:    *data.Banned,
+		})
+		if err != nil {
+			log.Printf("Error provisioning user with Clerk ID %s: %v", data.ID, err)
+		}
+		return err
 	}
 
 	if err := h.updateUserHandler.Handle(c.Context(), usercmd.UpdateUserCommand{

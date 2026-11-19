@@ -17,9 +17,9 @@ import (
 )
 
 type mockGetUserByExternalIDHandler struct {
-	calls  int
-	users  []*domainuser.User
-	errs   []error
+	calls int
+	users []*domainuser.User
+	errs  []error
 }
 
 func (m *mockGetUserByExternalIDHandler) Handle(_ context.Context, externalID string) (*domainuser.User, error) {
@@ -248,21 +248,27 @@ func TestUserWebhookHandler_Execute_UserUpdated_Success(t *testing.T) {
 	}
 }
 
-func TestUserWebhookHandler_Execute_UserUpdated_UserNotFound(t *testing.T) {
+func TestUserWebhookHandler_Execute_UserUpdated_UserNotFound_Provisions(t *testing.T) {
 	getByExternalID := &mockGetUserByExternalIDHandler{
 		users: []*domainuser.User{nil},
 		errs:  []error{nil},
 	}
-	h := newUserWebhookHandler(userWebhookMocks{getByExternalID: getByExternalID})
+	createUser := &mockCreateUserHandler{user: sampleDomainUser()}
+	h := newUserWebhookHandler(userWebhookMocks{
+		getByExternalID: getByExternalID,
+		createUser:      createUser,
+	})
 
+	// A 404 here would make Svix retry the same event forever: provision and ack.
 	resp := executeWebhook(t, h, clerkEvent("user.updated", sampleUserUpdatedData()))
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("status: got %d want %d", resp.StatusCode, http.StatusNotFound)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status: got %d want %d", resp.StatusCode, http.StatusNoContent)
 	}
-
-	body := testutil.DecodeJSONMap(t, resp)
-	if body["message"] != "User not found" {
-		t.Fatalf("message: got %v", body["message"])
+	if !createUser.called {
+		t.Fatal("expected the missing user to be created")
+	}
+	if createUser.cmd.ClerkID != "clerk_123" {
+		t.Fatalf("clerk id: got %q", createUser.cmd.ClerkID)
 	}
 }
 

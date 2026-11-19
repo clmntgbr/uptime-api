@@ -22,8 +22,10 @@ func Paginate(db *gorm.DB, q paginate.PaginateQuery) (*gorm.DB, int64, error) {
 		orderBy = paginate.OrderByAsc
 	}
 
+	// id breaks ties so pages stay stable when the sort column is not unique.
 	return db.
 		Order(sortBy + " " + orderBy).
+		Order("id " + orderBy).
 		Limit(q.Limit).
 		Offset(q.Offset()), total, nil
 }

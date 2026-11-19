@@ -3,6 +3,7 @@ package outbox
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"time"
 
 	"go-api/internal/domain/event"
@@ -52,16 +53,34 @@ func (r *repository) StoreEvents(ctx context.Context, events []event.DomainEvent
 		Create(&rows).Error
 }
 
+// claimLease is how long a fetched batch stays reserved for one relay. If the
+// publisher crashes first, the rows become claimable again after this delay.
+const claimLease = 30 * time.Second
+
+// FetchUnpublished claims up to limit unpublished rows in one statement.
+// FOR UPDATE SKIP LOCKED makes concurrent relays skip rows another relay is
+// already claiming, so replicas do not publish the same event twice.
 func (r *repository) FetchUnpublished(ctx context.Context, limit int) ([]port.OutboxMessage, error) {
 	var rows []OutboxEvent
-	err := r.db.WithContext(ctx).
-		Where("published_at IS NULL").
-		Order("created_at ASC").
-		Limit(limit).
-		Find(&rows).Error
+	err := r.db.WithContext(ctx).Raw(`
+		UPDATE outbox_events
+		SET claimed_until = NOW() + make_interval(secs => ?)
+		WHERE id IN (
+			SELECT id FROM outbox_events
+			WHERE published_at IS NULL
+			  AND (claimed_until IS NULL OR claimed_until < NOW())
+			ORDER BY created_at ASC
+			LIMIT ?
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, aggregate_id, event_type, payload, created_at, published_at`,
+		claimLease.Seconds(), limit,
+	).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
+	// RETURNING does not guarantee order: publish oldest first.
+	sort.Slice(rows, func(i, j int) bool { return rows[i].CreatedAt.Before(rows[j].CreatedAt) })
 
 	messages := make([]port.OutboxMessage, 0, len(rows))
 	for _, row := range rows {

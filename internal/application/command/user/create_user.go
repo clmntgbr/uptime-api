@@ -2,7 +2,7 @@ package user
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	"go-api/internal/domain/port"
 	domainuser "go-api/internal/domain/user"
@@ -35,7 +35,13 @@ func (h *CreateUserHandler) Handle(ctx context.Context, cmd CreateUserCommand) (
 		return h.outbox.StoreEvents(txCtx, u.PullEvents())
 	})
 	if err != nil {
-		return nil, errors.New("failed to create user")
+		// Two concurrent first logins (or a webhook racing the middleware) both try
+		// to insert the same clerk_id. The loser gets a unique violation: return the
+		// row the winner created instead of failing the request.
+		if existing, lookupErr := h.repo.GetByClerkID(ctx, cmd.ClerkID); lookupErr == nil && existing != nil {
+			return existing, nil
+		}
+		return nil, fmt.Errorf("create user: %w", err)
 	}
 
 	return u, nil

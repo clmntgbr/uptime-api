@@ -80,8 +80,23 @@ func (r *runWriteRepository) EnsureRunning(ctx context.Context, run *domainrun.R
 	return res.RowsAffected == 1, nil
 }
 
+// UpsertCallRun refuses to touch a run that is no longer running. A late call
+// progress message must not rewrite the calls of a finished run. The parent row
+// is locked so a concurrent finalization waits for this write.
 func (r *runWriteRepository) UpsertCallRun(ctx context.Context, run *domainrun.Run, call domainrun.CallRun) error {
-	return r.upsertCallRun(DBWithContext(ctx, r.db), run, call)
+	db := DBWithContext(ctx, r.db)
+	var parent RunModel
+	err := db.Select("id", "status").
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ?", run.ID).
+		Take(&parent).Error
+	if err != nil {
+		return err
+	}
+	if parent.Status != string(domainrun.StatusRunning) {
+		return domainrun.ErrRunNotRunning
+	}
+	return r.upsertCallRun(db, run, call)
 }
 
 func (r *runWriteRepository) upsertCallRun(db *gorm.DB, run *domainrun.Run, call domainrun.CallRun) error {

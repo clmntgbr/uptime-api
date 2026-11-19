@@ -99,7 +99,7 @@ func (noopGlobals) FindByName(context.Context, uuid.UUID, string) (*variable.Glo
 }
 func (noopGlobals) Names(context.Context, uuid.UUID) ([]string, error) { return nil, nil }
 func (noopGlobals) Save(context.Context, *variable.Global) error       { return nil }
-func (noopGlobals) Delete(context.Context, uuid.UUID, uuid.UUID) error  { return nil }
+func (noopGlobals) Delete(context.Context, uuid.UUID, uuid.UUID) error { return nil }
 
 type noopRuns struct{}
 
@@ -174,5 +174,51 @@ func TestDispatchDueRuns_EmptyCallsDisablesWithoutRun(t *testing.T) {
 	}
 	if len(outbox.events) == 0 {
 		t.Fatal("expected workflow.updated outbox event")
+	}
+}
+
+// A disabled empty workflow that is not due must be left alone: no dispatch, no
+// second disable, no event. (LockDue only returns disabled rows with an expired lease.)
+func TestDispatchDueRuns_EmptyCallsAlreadyDisabled_NoSideEffects(t *testing.T) {
+	now := time.Date(2026, 11, 19, 16, 50, 0, 0, time.UTC)
+	userID := uuid.New()
+	w := &domainworkflow.Workflow{
+		ID:           uuid.New(),
+		UserID:       userID,
+		Name:         "empty-disabled",
+		Enabled:      false,
+		ScheduleType: domainworkflow.ScheduleInterval,
+		Interval:     time.Minute,
+		Calls:        nil,
+	}
+
+	state := domainschedule.New(w.ID, now.Add(-time.Minute))
+	states := &memStates{due: []domainschedule.Due{{
+		State: state, UserID: userID, Enabled: false,
+		ScheduleType: string(domainworkflow.ScheduleInterval), Interval: time.Minute,
+	}}}
+	workflows := &memWorkflows{byID: map[uuid.UUID]*domainworkflow.Workflow{w.ID: w}}
+	outbox := &memOutbox{}
+	publisher := &noopPublisher{}
+
+	h := NewDispatchDueRunsHandler(
+		states, workflows, noopGlobals{}, noopRuns{}, noopProcessed{},
+		outbox, noopSealer{}, publisher, fixedClock{t: now},
+		DispatchConfig{BatchSize: 10, LeaseMargin: time.Minute, MaxJitter: 0},
+		slog.Default(),
+	)
+
+	stats, err := h.Handle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Dispatched != 0 || publisher.jobs != 0 {
+		t.Fatalf("expected no dispatch, got dispatched=%d published=%d", stats.Dispatched, publisher.jobs)
+	}
+	if len(workflows.updated) != 0 {
+		t.Fatalf("already disabled workflow must not be updated again: %d updates", len(workflows.updated))
+	}
+	if len(outbox.events) != 0 {
+		t.Fatalf("no event expected for an already disabled workflow, got %d", len(outbox.events))
 	}
 }

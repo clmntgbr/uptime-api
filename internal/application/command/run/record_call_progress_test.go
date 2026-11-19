@@ -45,8 +45,12 @@ func (memStates) WithTransaction(_ context.Context, fn func(context.Context) err
 	return fn(context.Background())
 }
 func (memStates) Save(context.Context, domainschedule.State) error { return nil }
-func (memStates) GetForUpdate(context.Context, uuid.UUID) (*domainschedule.State, error) {
-	return nil, nil
+
+// GetForUpdate returns an existing state: the workflow is alive. A nil state
+// means the workflow was deleted, which the handler treats as a no-op.
+func (memStates) GetForUpdate(_ context.Context, workflowID uuid.UUID) (*domainschedule.State, error) {
+	s := domainschedule.New(workflowID, time.Time{})
+	return &s, nil
 }
 func (memStates) LockDue(context.Context, time.Time, int) ([]domainschedule.Due, error) {
 	return nil, nil
@@ -83,7 +87,7 @@ func TestRecordCallProgress_Finished_CreatesRunningRun(t *testing.T) {
 	callID := uuid.NewString()
 	progress := contract.CallProgress{
 		V: contract.CallProgressVersion, ID: uuid.NewString(), Type: contract.CallProgressType,
-		Phase: contract.CallProgressPhaseFinished,
+		Phase:  contract.CallProgressPhaseFinished,
 		UserID: id, WorkflowID: id, RunID: id, Trigger: contract.TriggerManual,
 		Call: contract.CallRun{
 			CallID: callID, Name: "login", Order: 1, Status: contract.CallStatusSuccess,
@@ -129,7 +133,7 @@ func TestRecordCallProgress_Finished_ExistingRun_NoSecondStarted(t *testing.T) {
 	outbox := &memOutbox{}
 	progress := contract.CallProgress{
 		V: contract.CallProgressVersion, ID: uuid.NewString(), Type: contract.CallProgressType,
-		Phase: contract.CallProgressPhaseFinished,
+		Phase:  contract.CallProgressPhaseFinished,
 		UserID: id, WorkflowID: id, RunID: id, Trigger: contract.TriggerManual,
 		Call: contract.CallRun{
 			CallID: callID, Name: "login", Order: 1, Status: contract.CallStatusSuccess,
@@ -156,7 +160,7 @@ func TestRecordCallProgress_Started_EmitsCallStartedWithoutUpsert(t *testing.T) 
 	callID := uuid.NewString()
 	progress := contract.CallProgress{
 		V: contract.CallProgressVersion, ID: uuid.NewString(), Type: contract.CallProgressType,
-		Phase: contract.CallProgressPhaseStarted,
+		Phase:  contract.CallProgressPhaseStarted,
 		UserID: id, WorkflowID: id, RunID: id, Trigger: contract.TriggerManual,
 		Call: contract.CallRun{
 			CallID: callID, Name: "login", Order: 1, StartedAt: time.Now().UTC(),
@@ -195,4 +199,38 @@ func contains(ss []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// finishedRuns simulates a run that already reached a terminal status: the
+// repository refuses to rewrite its call rows.
+type finishedRuns struct{ memRuns }
+
+func (f *finishedRuns) UpsertCallRun(context.Context, *domainrun.Run, domainrun.CallRun) error {
+	return domainrun.ErrRunNotRunning
+}
+
+func TestRecordCallProgress_LateFinishedOnTerminalRun_IsDropped(t *testing.T) {
+	id := uuid.NewString()
+	progress := contract.CallProgress{
+		V: contract.CallProgressVersion, ID: uuid.NewString(), Type: contract.CallProgressType,
+		Phase:  contract.CallProgressPhaseFinished,
+		UserID: id, WorkflowID: id, RunID: id, Trigger: contract.TriggerManual,
+		Call: contract.CallRun{
+			CallID: uuid.NewString(), Name: "late", Order: 3, Status: contract.CallStatusSuccess,
+			StartedAt: time.Now().UTC(), FinishedAt: time.Now().UTC(),
+		},
+		EmittedAt: time.Now().UTC(),
+	}
+	raw, _ := json.Marshal(progress)
+
+	outbox := &memOutbox{}
+	h := NewRecordCallProgressHandler(memStates{}, &finishedRuns{}, &memProcessed{}, outbox)
+	if err := h.Handle(context.Background(), raw); err != nil {
+		t.Fatalf("late progress must be a no-op, got %v", err)
+	}
+	for _, ev := range outbox.events {
+		if ev.EventType() == "call.finished" {
+			t.Fatal("call.finished must not be emitted for a terminal run")
+		}
+	}
 }

@@ -1,10 +1,12 @@
 package mail
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/smtp"
 	"strings"
+	"time"
 )
 
 type SMTPConfig struct {
@@ -34,7 +36,15 @@ func (s *Sender) Enabled() bool {
 	return s != nil && s.cfg.Host != ""
 }
 
-// Send delivers a plain multipart-ish HTML email via SMTP.
+const (
+	smtpDialTimeout = 10 * time.Second
+	// smtpSessionTimeout bounds the whole SMTP conversation. Without it, a silent
+	// server blocks the consumer and freezes its Kafka partition.
+	smtpSessionTimeout = 30 * time.Second
+)
+
+// Send delivers a plain HTML email via SMTP. Like smtp.SendMail it upgrades to
+// STARTTLS when the server offers it, and authenticates only when User is set.
 func (s *Sender) Send(to, subject, htmlBody string) error {
 	if !s.Enabled() {
 		return fmt.Errorf("smtp not configured")
@@ -46,15 +56,31 @@ func (s *Sender) Send(to, subject, htmlBody string) error {
 	addr := net.JoinHostPort(s.cfg.Host, fmt.Sprintf("%d", s.cfg.Port))
 	msg := buildMessage(s.cfg.From, to, subject, htmlBody)
 
-	if s.cfg.User != "" {
-		auth := smtp.PlainAuth("", s.cfg.User, s.cfg.Password, s.cfg.Host)
-		return smtp.SendMail(addr, auth, s.cfg.From, []string{to}, msg)
-	}
-	c, err := smtp.Dial(addr)
+	conn, err := (&net.Dialer{Timeout: smtpDialTimeout}).Dial("tcp", addr)
 	if err != nil {
 		return err
 	}
+	if err := conn.SetDeadline(time.Now().Add(smtpSessionTimeout)); err != nil {
+		_ = conn.Close()
+		return err
+	}
+	c, err := smtp.NewClient(conn, s.cfg.Host)
+	if err != nil {
+		_ = conn.Close()
+		return err
+	}
 	defer c.Close()
+
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		if err := c.StartTLS(&tls.Config{ServerName: s.cfg.Host, MinVersion: tls.VersionTLS12}); err != nil {
+			return err
+		}
+	}
+	if s.cfg.User != "" {
+		if err := c.Auth(smtp.PlainAuth("", s.cfg.User, s.cfg.Password, s.cfg.Host)); err != nil {
+			return err
+		}
+	}
 	if err := c.Mail(s.cfg.From); err != nil {
 		return err
 	}

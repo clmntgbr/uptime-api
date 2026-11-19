@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"errors"
+	"log/slog"
 	"strings"
 
 	authcmd "go-api/internal/application/command/auth"
@@ -62,9 +64,12 @@ func (m *AuthenticateMiddleware) Protected() fiber.Handler {
 			Token: tokenString,
 		})
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"message": "Invalid token",
-			})
+			if errors.Is(err, authcmd.ErrInvalidToken) {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+					"message": "Invalid token",
+				})
+			}
+			return unavailable(c, "validate token", err)
 		}
 
 		if output.User == nil {
@@ -75,9 +80,7 @@ func (m *AuthenticateMiddleware) Protected() fiber.Handler {
 
 			clerkUser, err := m.fetchUserHandler.Handle(c.Context(), clerkID)
 			if err != nil {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-					"message": "Failed to get user",
-				})
+				return unavailable(c, "fetch clerk user", err)
 			}
 
 			user, err := m.createUserHandler.Handle(c.Context(), usercmd.CreateUserCommand{
@@ -88,9 +91,7 @@ func (m *AuthenticateMiddleware) Protected() fiber.Handler {
 				Banned:    clerkUser.Banned,
 			})
 			if err != nil {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-					"message": "Failed to create user",
-				})
+				return unavailable(c, "create user", err)
 			}
 
 			output.User = user
@@ -106,4 +107,13 @@ func (m *AuthenticateMiddleware) Protected() fiber.Handler {
 
 		return c.Next()
 	}
+}
+
+// unavailable reports an upstream or database failure. It is a 503, not a 401:
+// a 401 would make the client drop its session on a transient outage.
+func unavailable(c fiber.Ctx, step string, err error) error {
+	slog.Error("authentication failed", "step", step, "error", err)
+	return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+		"message": "Authentication temporarily unavailable",
+	})
 }

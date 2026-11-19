@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -78,6 +79,14 @@ func (h *RecordCallProgressHandler) Handle(ctx context.Context, payload []byte) 
 		if !claimed {
 			return nil
 		}
+		// Workflow deleted while the run was in flight: the FK would fail forever.
+		state, err := h.states.GetForUpdate(txCtx, workflowID)
+		if err != nil {
+			return err
+		}
+		if state == nil {
+			return nil
+		}
 		created, err := h.runs.EnsureRunning(txCtx, r)
 		if err != nil {
 			return err
@@ -91,6 +100,11 @@ func (h *RecordCallProgressHandler) Handle(ctx context.Context, payload []byte) 
 		default:
 			r.CallFinished(call)
 			if err := h.runs.UpsertCallRun(txCtx, r, call); err != nil {
+				if errors.Is(err, domainrun.ErrRunNotRunning) {
+					// Late progress for a finished run: drop it, keep the final state.
+					r.PullEvents()
+					return nil
+				}
 				return err
 			}
 		}

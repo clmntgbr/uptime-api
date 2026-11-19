@@ -118,25 +118,28 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 			}
 		}
 
-		if h.incidents != nil && h.nestedTx != nil {
+		// Incident evaluation is all-or-nothing with the run. An evaluation error
+		// fails the whole message (retried) instead of silently dropping signals.
+		if h.incidents != nil {
+			if h.nestedTx == nil {
+				return fmt.Errorf("incident evaluation: nested transaction not wired")
+			}
 			const sp = "incident_eval"
 			if err := h.nestedTx.SavePoint(txCtx, sp); err != nil {
-				h.logger.Error("incident savepoint failed", "run_id", r.ID, "error", err)
-			} else {
-				sigs := signalsFromRun(r, result)
-				sigs = append(sigs, h.tlsSignals(txCtx, r.UserID, r.WorkflowID, observationsFromResult(result))...)
-				applied, applyErr := h.incidents.Handle(txCtx, cmdincident.ApplySignalsCommand{
-					UserID: r.UserID, WorkflowID: r.WorkflowID, Signals: sigs,
-				})
-				if applyErr != nil {
-					h.logger.Error("incident evaluation failed", "run_id", r.ID, "error", applyErr)
-					if rbErr := h.nestedTx.RollbackTo(txCtx, sp); rbErr != nil {
-						return fmt.Errorf("incident eval rollback: %w", rbErr)
-					}
-				} else {
-					incidentNotes = applied.Notifications
-				}
+				return fmt.Errorf("incident savepoint: %w", err)
 			}
+			sigs := signalsFromRun(r, result)
+			sigs = append(sigs, h.tlsSignals(txCtx, r.UserID, r.WorkflowID, observationsFromResult(result))...)
+			applied, applyErr := h.incidents.Handle(txCtx, cmdincident.ApplySignalsCommand{
+				UserID: r.UserID, WorkflowID: r.WorkflowID, Signals: sigs,
+			})
+			if applyErr != nil {
+				if rbErr := h.nestedTx.RollbackTo(txCtx, sp); rbErr != nil {
+					return fmt.Errorf("incident eval rollback: %w", rbErr)
+				}
+				return fmt.Errorf("incident evaluation: %w", applyErr)
+			}
+			incidentNotes = applied.Notifications
 		}
 
 		// Schedule and manual runs both hold a lease; release it on completion.

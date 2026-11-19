@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"go-api/cmd/api/di"
 	"go-api/internal/infrastructure/config"
 	"go-api/internal/infrastructure/persistence/schema"
 	"go-api/internal/interfaces/http/validation"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -79,6 +83,7 @@ func main() {
 			Expiration: time.Minute,
 			Next:       skipHealth,
 			LimitReached: func(c fiber.Ctx) error {
+				c.Set("Retry-After", "60")
 				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
 					"message": "Too many requests",
 				})
@@ -95,9 +100,24 @@ func main() {
 	})
 
 	container := di.NewContainer(db, env)
-	defer container.KafkaProducer.Close()
 	setupRoutes(app, container)
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := app.ShutdownWithContext(shutdownCtx); err != nil {
+			log.Printf("http shutdown: %v", err)
+		}
+	}()
+
 	log.Println("Server is running on port", env.Port)
-	log.Fatal(app.Listen(":" + env.Port))
+	err := app.Listen(":" + env.Port)
+	// log.Fatal would skip deferred cleanup: flush Kafka explicitly on every path.
+	container.KafkaProducer.Close()
+	if err != nil {
+		log.Fatalf("listen: %v", err)
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 
 	"go-api/internal/application/messaging"
 	"go-api/internal/application/registry"
@@ -43,7 +44,9 @@ func With(repo port.ProcessedEventRepository, handlerName string, next registry.
 			var retryable *messaging.RetryableError
 			if errors.As(err, &retryable) {
 				if releaser, ok := repo.(processedEventReleaser); ok {
-					_ = releaser.UnmarkProcessed(ctx, meta.EventID, handlerName)
+					if unmarkErr := releaser.UnmarkProcessed(ctx, meta.EventID, handlerName); unmarkErr != nil {
+						slog.Error("unmark processed event failed", "event_id", meta.EventID, "handler", handlerName, "error", unmarkErr)
+					}
 				}
 			}
 			return err
