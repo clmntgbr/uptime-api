@@ -5,6 +5,7 @@ package config
 type CLIConfig struct {
 	DatabaseURL          string
 	SecretsEncryptionKey string
+	Environment          string
 }
 
 func LoadCLI() *CLIConfig {
@@ -12,5 +13,6 @@ func LoadCLI() *CLIConfig {
 	return &CLIConfig{
 		DatabaseURL:          getEnv("DATABASE_URL"),
 		SecretsEncryptionKey: getEnvOrDefault("SECRETS_ENCRYPTION_KEY", ""),
+		Environment:          getEnvOrDefault("GO_ENV", "development"),
 	}
 }

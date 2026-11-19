@@ -64,6 +64,8 @@ JOIN workflow_state s ON s.workflow_id = w.id
 WHERE p.kind = 'availability_low'
   AND p.enabled = TRUE
   AND w.deleted_at IS NULL
+  -- A disabled workflow never runs: its last_run_at ages and would raise false alerts.
+  AND w.enabled = TRUE
 `).Scan(&rows).Error
 	if err != nil {
 		return nil, err

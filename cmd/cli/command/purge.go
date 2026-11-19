@@ -19,7 +19,12 @@ func NewPurgeCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			db := config.ConnectDatabaseURL(config.LoadCLI().DatabaseURL)
+			env := config.LoadCLI()
+			// TRUNCATE on a production database is never a routine command.
+			if config.IsProduction(env.Environment) {
+				return errors.New("purge is refused when GO_ENV is production")
+			}
+			db := config.ConnectDatabaseURL(env.DatabaseURL)
 			if !force {
 				tables, err := purge.Tables(db)
 				if err != nil {

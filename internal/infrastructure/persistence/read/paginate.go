@@ -1,10 +1,15 @@
 package read
 
 import (
+	"fmt"
+	"regexp"
+
 	"go-api/internal/domain/paginate"
 
 	"gorm.io/gorm"
 )
+
+var sortColumnPattern = regexp.MustCompile(`^[a-z_]+$`)
 
 func Paginate(db *gorm.DB, q paginate.PaginateQuery) (*gorm.DB, int64, error) {
 	var total int64
@@ -15,6 +20,10 @@ func Paginate(db *gorm.DB, q paginate.PaginateQuery) (*gorm.DB, int64, error) {
 	sortBy := "created_at"
 	if q.SortBy != "" {
 		sortBy = q.SortBy
+	}
+	// sortBy is concatenated into ORDER BY: accept plain column names only.
+	if !sortColumnPattern.MatchString(sortBy) {
+		return nil, 0, fmt.Errorf("invalid sort column %q", sortBy)
 	}
 
 	orderBy := paginate.OrderByDesc

@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	domainstatistics "go-api/internal/domain/statistics"
@@ -27,7 +28,7 @@ SELECT
     COUNT(*) FILTER (WHERE NOT enabled)::bigint AS disabled
 FROM workflows
 WHERE user_id = @user_id AND deleted_at IS NULL
-  AND (NOT @filter_workflow OR id = @workflow_id)`
+  {{WORKFLOW_FILTER_ID}}`
 
 const runCountsSQL = `
 SELECT
@@ -39,7 +40,7 @@ SELECT
     COUNT(*) FILTER (WHERE status = 'running')::bigint AS running
 FROM runs
 WHERE user_id = @user_id AND started_at >= @since
-  AND (NOT @filter_workflow OR workflow_id = @workflow_id)`
+  {{WORKFLOW_FILTER_COL}}`
 
 const callCountsSQL = `
 SELECT
@@ -51,7 +52,7 @@ SELECT
 FROM call_runs cr
 JOIN runs r ON r.id = cr.run_id
 WHERE r.user_id = @user_id AND r.started_at >= @since
-  AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)`
+  {{WORKFLOW_FILTER}}`
 
 // latencyAvgSQL is the mean per-call wall time (timings.total), not run duration.
 const latencyAvgSQL = `
@@ -61,7 +62,7 @@ JOIN runs r ON r.id = cr.run_id
 WHERE r.user_id = @user_id AND r.started_at >= @since
   AND cr.status IN ('success', 'failed', 'error')
   AND COALESCE((cr.timings->>'total')::double precision, 0) > 0
-  AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)`
+  {{WORKFLOW_FILTER}}`
 
 const daysCTE = `
 WITH days AS (
@@ -95,7 +96,7 @@ agg AS (
     WHERE user_id = @user_id
       AND started_at >= @hourly_since
       AND started_at < (CAST(@until_hour AS timestamptz) + INTERVAL '1 hour')
-      AND (NOT @filter_workflow OR workflow_id = @workflow_id)
+      {{WORKFLOW_FILTER_COL}}
     GROUP BY 1
 )
 SELECT
@@ -127,7 +128,7 @@ agg AS (
     WHERE user_id = @user_id
       AND started_at >= @daily_since
       AND started_at < (CAST(@until_day AS date) + INTERVAL '1 day')
-      AND (NOT @filter_workflow OR workflow_id = @workflow_id)
+      {{WORKFLOW_FILTER_COL}}
     GROUP BY 1
 )
 SELECT
@@ -147,6 +148,7 @@ ORDER BY d.day`
 // are zero. Prefer call_runs.started_at; fall back to the parent run start.
 const callDailySQL = daysCTE + `
 ,
+-- Single pass over the call rows: counts and latency come from the same scan.
 counts AS (
     SELECT
         (COALESCE(cr.started_at, r.started_at) AT TIME ZONE 'UTC')::date AS day,
@@ -154,27 +156,18 @@ counts AS (
         COUNT(*) FILTER (WHERE cr.status = 'success')::bigint AS success,
         COUNT(*) FILTER (WHERE cr.status = 'failed')::bigint AS failed,
         COUNT(*) FILTER (WHERE cr.status = 'error')::bigint AS error,
-        COUNT(*) FILTER (WHERE cr.status = 'skipped')::bigint AS skipped
+        COUNT(*) FILTER (WHERE cr.status = 'skipped')::bigint AS skipped,
+        AVG(CASE
+            WHEN cr.status IN ('success', 'failed', 'error')
+             AND COALESCE((cr.timings->>'total')::double precision, 0) > 0
+            THEN (cr.timings->>'total')::double precision
+        END) AS latency_avg_ms
     FROM call_runs cr
     JOIN runs r ON r.id = cr.run_id
     WHERE r.user_id = @user_id
       AND COALESCE(cr.started_at, r.started_at) >= @daily_since
       AND COALESCE(cr.started_at, r.started_at) < (CAST(@until_day AS date) + INTERVAL '1 day')
-      AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)
-    GROUP BY 1
-),
-latency AS (
-    SELECT
-        (COALESCE(cr.started_at, r.started_at) AT TIME ZONE 'UTC')::date AS day,
-        AVG((cr.timings->>'total')::double precision) AS latency_avg_ms
-    FROM call_runs cr
-    JOIN runs r ON r.id = cr.run_id
-    WHERE r.user_id = @user_id
-      AND COALESCE(cr.started_at, r.started_at) >= @daily_since
-      AND COALESCE(cr.started_at, r.started_at) < (CAST(@until_day AS date) + INTERVAL '1 day')
-      AND cr.status IN ('success', 'failed', 'error')
-      AND COALESCE((cr.timings->>'total')::double precision, 0) > 0
-      AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)
+      {{WORKFLOW_FILTER}}
     GROUP BY 1
 )
 SELECT
@@ -184,10 +177,9 @@ SELECT
     COALESCE(c.failed, 0)::bigint AS failed,
     COALESCE(c.error, 0)::bigint AS error,
     COALESCE(c.skipped, 0)::bigint AS skipped,
-    l.latency_avg_ms AS latency_avg_ms
+    c.latency_avg_ms AS latency_avg_ms
 FROM days d
 LEFT JOIN counts c ON c.day = d.day
-LEFT JOIN latency l ON l.day = d.day
 ORDER BY d.day`
 
 // callDurationSQL is the mean timings.total of each call per UTC day.
@@ -207,7 +199,7 @@ WHERE r.user_id = @user_id
   AND COALESCE(cr.started_at, r.started_at) < (CAST(@until_day AS date) + INTERVAL '1 day')
   AND cr.status IN ('success', 'failed', 'error')
   AND COALESCE((cr.timings->>'total')::double precision, 0) > 0
-  AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)
+  {{WORKFLOW_FILTER}}
 GROUP BY 1, 4
 ORDER BY 1, 4`
 
@@ -228,7 +220,7 @@ WHERE r.user_id = @user_id
   AND COALESCE(cr.started_at, r.started_at) < (CAST(@until_hour AS timestamptz) + INTERVAL '1 hour')
   AND cr.status IN ('success', 'failed', 'error')
   AND COALESCE((cr.timings->>'total')::double precision, 0) > 0
-  AND (NOT @filter_workflow OR r.workflow_id = @workflow_id)
+  {{WORKFLOW_FILTER}}
 GROUP BY 1, 4
 ORDER BY 1, 4`
 
@@ -336,24 +328,23 @@ func (r *statisticsRepository) Dashboard(
 		"workflow_id":     workflowParam,
 	}
 	db := r.db.WithContext(ctx)
-
 	var workflows domainstatistics.WorkflowCounts
-	if err := db.Raw(workflowCountsSQL, params).Scan(&workflows).Error; err != nil {
+	if err := db.Raw(renderWorkflowFilter(workflowCountsSQL, filterWorkflow), params).Scan(&workflows).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 
 	var runTotals runCountsRow
-	if err := db.Raw(runCountsSQL, params).Scan(&runTotals).Error; err != nil {
+	if err := db.Raw(renderWorkflowFilter(runCountsSQL, filterWorkflow), params).Scan(&runTotals).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 
 	var latency latencyRow
-	if err := db.Raw(latencyAvgSQL, params).Scan(&latency).Error; err != nil {
+	if err := db.Raw(renderWorkflowFilter(latencyAvgSQL, filterWorkflow), params).Scan(&latency).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 
 	var runRows []runDayRow
-	if err := db.Raw(runDailySQL, params).Scan(&runRows).Error; err != nil {
+	if err := db.Raw(renderWorkflowFilter(runDailySQL, filterWorkflow), params).Scan(&runRows).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 	runDaily := make([]domainstatistics.RunDayCounts, 0, len(runRows))
@@ -370,7 +361,7 @@ func (r *statisticsRepository) Dashboard(
 	}
 
 	var runHourRows []runHourRow
-	if err := db.Raw(runHourlySQL, params).Scan(&runHourRows).Error; err != nil {
+	if err := db.Raw(renderWorkflowFilter(runHourlySQL, filterWorkflow), params).Scan(&runHourRows).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 	runHourly := make([]domainstatistics.RunHourCounts, 0, len(runHourRows))
@@ -387,12 +378,12 @@ func (r *statisticsRepository) Dashboard(
 	}
 
 	var callTotals callCountsRow
-	if err := db.Raw(callCountsSQL, params).Scan(&callTotals).Error; err != nil {
+	if err := db.Raw(renderWorkflowFilter(callCountsSQL, filterWorkflow), params).Scan(&callTotals).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 
 	var callRows []callDayRow
-	if err := db.Raw(callDailySQL, params).Scan(&callRows).Error; err != nil {
+	if err := db.Raw(renderWorkflowFilter(callDailySQL, filterWorkflow), params).Scan(&callRows).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 	callDaily := make([]domainstatistics.CallDayCounts, 0, len(callRows))
@@ -409,12 +400,12 @@ func (r *statisticsRepository) Dashboard(
 	}
 
 	var durationRows []callDurationRow
-	if err := db.Raw(callDurationSQL, params).Scan(&durationRows).Error; err != nil {
+	if err := db.Raw(renderWorkflowFilter(callDurationSQL, filterWorkflow), params).Scan(&durationRows).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 
 	var durationHourRows []callDurationHourRow
-	if err := db.Raw(callDurationHourlySQL, params).Scan(&durationHourRows).Error; err != nil {
+	if err := db.Raw(renderWorkflowFilter(callDurationHourlySQL, filterWorkflow), params).Scan(&durationHourRows).Error; err != nil {
 		return domainstatistics.DashboardStatistics{}, err
 	}
 
@@ -487,4 +478,19 @@ func groupCallDurations(
 		return out[i].Name < out[j].Name
 	})
 	return out
+}
+
+// renderWorkflowFilter injects the workflow predicate as SQL. Without a filter the
+// predicate is omitted entirely, so the planner can use the user/workflow indexes
+// instead of a generic "NOT $1 OR workflow_id = $2" test on every row.
+func renderWorkflowFilter(query string, filterWorkflow bool) string {
+	withID, withCol, withRun := "", "", ""
+	if filterWorkflow {
+		withID = "AND id = @workflow_id"
+		withCol = "AND workflow_id = @workflow_id"
+		withRun = "AND r.workflow_id = @workflow_id"
+	}
+	query = strings.ReplaceAll(query, "{{WORKFLOW_FILTER_ID}}", withID)
+	query = strings.ReplaceAll(query, "{{WORKFLOW_FILTER_COL}}", withCol)
+	return strings.ReplaceAll(query, "{{WORKFLOW_FILTER}}", withRun)
 }

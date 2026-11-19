@@ -49,8 +49,9 @@ func (r *runQueryRepository) ListByWorkflow(ctx context.Context, userID, workflo
 	if err != nil {
 		return nil, 0, err
 	}
+	// The list view never reads variables: skip that JSONB column on every row.
 	var models []write.RunModel
-	if err := scoped.Find(&models).Error; err != nil {
+	if err := scoped.Omit("variables").Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
 	views := make([]domainrun.View, 0, len(models))
@@ -240,7 +241,8 @@ func (r *runQueryRepository) LatestResponseKeysForCall(ctx context.Context, user
 		Select("call_runs.response_keys").
 		Joins("JOIN runs ON runs.id = call_runs.run_id").
 		Where("runs.user_id = ? AND call_runs.workflow_id = ? AND call_runs.call_id = ?", userID, workflowID, callID).
-		Where("jsonb_array_length(call_runs.response_keys) > 0").
+		// CASE, not AND: PostgreSQL does not guarantee short-circuit evaluation.
+		Where("CASE WHEN jsonb_typeof(call_runs.response_keys) = 'array' THEN jsonb_array_length(call_runs.response_keys) ELSE 0 END > 0").
 		Order("call_runs.finished_at DESC NULLS LAST").
 		Limit(1).
 		Take(&model).Error
