@@ -56,6 +56,7 @@ func BindAndValidateQuery(c fiber.Ctx, dst any) error {
 }
 
 func Struct(c fiber.Ctx, dst any) error {
+	trimRequiredStrings(dst)
 	if err := validate.Struct(dst); err != nil {
 		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "Validation failed",
@@ -132,5 +133,28 @@ func messageFor(fieldErr validator.FieldError) string {
 		return "contains invalid items"
 	default:
 		return fmt.Sprintf("failed on '%s' validation", fieldErr.Tag())
+	}
+}
+
+// trimRequiredStrings trims top-level string fields tagged `required`, so a name
+// of only spaces fails `required` and stored values carry no stray whitespace.
+func trimRequiredStrings(dst any) {
+	v := reflect.ValueOf(dst)
+	if v.Kind() != reflect.Pointer || v.IsNil() {
+		return
+	}
+	v = v.Elem()
+	if v.Kind() != reflect.Struct {
+		return
+	}
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.Type.Kind() != reflect.String || !strings.Contains(field.Tag.Get("validate"), "required") {
+			continue
+		}
+		if fv := v.Field(i); fv.CanSet() {
+			fv.SetString(strings.TrimSpace(fv.String()))
+		}
 	}
 }

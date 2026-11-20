@@ -48,7 +48,8 @@ func (r *workflowWriteRepository) Update(ctx context.Context, w *domainworkflow.
 	return r.WithTransaction(ctx, func(ctx context.Context) error {
 		db := DBWithContext(ctx, r.db)
 		model := workflowModelFromDomain(w)
-		err := db.Model(&WorkflowModel{}).Where("id = ?", w.ID).Updates(map[string]any{
+		// A soft-deleted workflow must not be resurrected by a stale update.
+		res := db.Model(&WorkflowModel{}).Where("id = ? AND deleted_at IS NULL", w.ID).Updates(map[string]any{
 			"name":             model.Name,
 			"schedule_type":    model.ScheduleType,
 			"interval_seconds": model.IntervalSeconds,
@@ -57,9 +58,12 @@ func (r *workflowWriteRepository) Update(ctx context.Context, w *domainworkflow.
 			"enabled":          model.Enabled,
 			"enabled_at":       model.EnabledAt,
 			"updated_at":       model.UpdatedAt,
-		}).Error
-		if err != nil {
-			return err
+		})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return domainworkflow.ErrNotFound
 		}
 		if err := db.Where("workflow_id = ?", w.ID).Delete(&CallModel{}).Error; err != nil {
 			return err

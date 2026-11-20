@@ -225,3 +225,54 @@ func TestDispatchDueRuns_EmptyCallsAlreadyDisabled_NoSideEffects(t *testing.T) {
 		t.Fatalf("no event expected for an already disabled workflow, got %d", len(outbox.events))
 	}
 }
+
+// An empty workflow whose previous lease expired (its run never reported back)
+// must record that timeout once, then be disabled, with no new run dispatched.
+func TestDispatchDueRuns_EmptyCallsWithExpiredLease_TimesOutThenDisables(t *testing.T) {
+	now := time.Date(2026, 11, 19, 16, 50, 0, 0, time.UTC)
+	userID := uuid.New()
+	w := &domainworkflow.Workflow{
+		ID:           uuid.New(),
+		UserID:       userID,
+		Name:         "empty-expired",
+		Enabled:      true,
+		ScheduleType: domainworkflow.ScheduleInterval,
+		Interval:     time.Minute,
+		Calls:        nil,
+	}
+
+	state := domainschedule.New(w.ID, now.Add(-time.Minute))
+	leaseRun := uuid.New()
+	state.Lease(leaseRun, now.Add(-10*time.Minute), time.Minute)
+	states := &memStates{due: []domainschedule.Due{{
+		State: state, UserID: userID, Enabled: true,
+		ScheduleType: string(domainworkflow.ScheduleInterval), Interval: time.Minute,
+	}}}
+	workflows := &memWorkflows{byID: map[uuid.UUID]*domainworkflow.Workflow{w.ID: w}}
+	outbox := &memOutbox{}
+	publisher := &noopPublisher{}
+
+	h := NewDispatchDueRunsHandler(
+		states, workflows, noopGlobals{}, noopRuns{}, noopProcessed{},
+		outbox, noopSealer{}, publisher, fixedClock{t: now},
+		DispatchConfig{BatchSize: 10, LeaseMargin: time.Minute, MaxJitter: 0},
+		slog.Default(),
+	)
+
+	stats, err := h.Handle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.TimedOut != 1 {
+		t.Fatalf("expired lease must be recorded as timeout once, got %d", stats.TimedOut)
+	}
+	if publisher.jobs != 0 || stats.Dispatched != 0 {
+		t.Fatalf("no job may be dispatched for an empty workflow, got %d", publisher.jobs)
+	}
+	if len(workflows.updated) != 1 || workflows.updated[0].Enabled {
+		t.Fatalf("workflow must be disabled: %+v", workflows.updated)
+	}
+	if len(states.saved) == 0 || states.saved[len(states.saved)-1].Running() {
+		t.Fatalf("lease must be released, last state: %+v", states.saved)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"go-api/internal/domain/expiry"
@@ -163,17 +164,25 @@ func (r *expiryAlertRepository) Claim(ctx context.Context, itemID uuid.UUID, fin
 		return nil, nil
 	}
 	now := time.Now().UTC()
-	claimed := make([]int, 0, len(thresholds))
+	// One statement for the whole batch: RETURNING lists only the rows actually
+	// inserted, i.e. the thresholds this call claimed. Thresholds are capped at 20.
+	values := make([]string, 0, len(thresholds))
+	args := make([]any, 0, len(thresholds)*4)
 	for _, t := range thresholds {
-		res := DBWithContext(ctx, r.db).Clauses(clause.OnConflict{DoNothing: true}).Create(&ExpiryAlertModel{
-			ItemID: itemID, ThresholdDays: t, Fingerprint: fingerprint, SentAt: now,
-		})
-		if res.Error != nil {
-			return nil, res.Error
-		}
-		if res.RowsAffected == 1 {
-			claimed = append(claimed, t)
-		}
+		values = append(values, "(?, ?, ?, ?)")
+		args = append(args, itemID, t, fingerprint, now)
+	}
+	query := `INSERT INTO expiry_alerts (item_id, threshold_days, fingerprint, sent_at) VALUES ` +
+		strings.Join(values, ", ") + ` ON CONFLICT DO NOTHING RETURNING threshold_days`
+	var rows []struct {
+		ThresholdDays int `gorm:"column:threshold_days"`
+	}
+	if err := DBWithContext(ctx, r.db).Raw(query, args...).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	claimed := make([]int, 0, len(rows))
+	for _, row := range rows {
+		claimed = append(claimed, row.ThresholdDays)
 	}
 	return claimed, nil
 }

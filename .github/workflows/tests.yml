@@ -114,7 +114,8 @@ jobs:
       - name: Run unit tests
         run: |
           go test ./internal/domain/... ./internal/engine/... ./internal/application/... \
-            ./internal/infrastructure/... ./internal/interfaces/http/middleware/... ./cmd/... \
+            ./internal/infrastructure/... ./internal/interfaces/http/middleware/... ./internal/interfaces/http/presenter/... \
+            ./internal/interfaces/http/validation/... ./internal/interfaces/http/context/... ./cmd/... \
             -count=1 \
             -race \
             -timeout=5m
