@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go-api/internal/domain/port"
 
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
@@ -21,10 +22,11 @@ type DeleteGlobalVariableCommand struct {
 type DeleteGlobalVariableHandler struct {
 	repo      variable.GlobalRepository
 	workflows domainworkflow.WriteRepository
+	clock     port.Clock
 }
 
-func NewDeleteGlobalVariableHandler(repo variable.GlobalRepository, workflows domainworkflow.WriteRepository) *DeleteGlobalVariableHandler {
-	return &DeleteGlobalVariableHandler{repo: repo, workflows: workflows}
+func NewDeleteGlobalVariableHandler(repo variable.GlobalRepository, workflows domainworkflow.WriteRepository, clock port.Clock) *DeleteGlobalVariableHandler {
+	return &DeleteGlobalVariableHandler{repo: repo, workflows: workflows, clock: clock}
 }
 
 // Handle refuses to delete a global still referenced: the workflows using it

@@ -17,7 +17,7 @@ import (
 func TestExpiryHandler_ListPolicies_Success(t *testing.T) {
 	m := newMocks()
 	m.listPolicies.out = []domainexpiry.Policy{
-		domainexpiry.DefaultPolicy(testutil.TestUserID, testWorkflowID, domainexpiry.TypeTLSCertificate),
+		domainexpiry.DefaultPolicy(testutil.TestUserID, testWorkflowID, domainexpiry.TypeTLSCertificate, testNow),
 	}
 	resp := doJSON(t, m, true, http.MethodGet, "/workflows/"+testWorkflowID.String()+"/expiry-policies", nil)
 	assertStatus(t, resp, http.StatusOK)

@@ -15,8 +15,7 @@ import (
 func parseVariableID(c fiber.Ctx) (uuid.UUID, error) {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid variable id"})
-		return uuid.Nil, validation.ErrValidationFailed
+		return uuid.Nil, validation.Reject(fiber.StatusBadRequest, fiber.Map{"message": "Invalid variable id"})
 	}
 	return id, nil
 }
@@ -24,8 +23,7 @@ func parseVariableID(c fiber.Ctx) (uuid.UUID, error) {
 func parseVariableName(c fiber.Ctx) (string, error) {
 	name := c.Params("name")
 	if err := variable.ValidateName(name); err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": err.Error()})
-		return "", validation.ErrValidationFailed
+		return "", validation.Reject(fiber.StatusBadRequest, fiber.Map{"message": err.Error()})
 	}
 	return name, nil
 }

@@ -245,7 +245,7 @@ func (h *DispatchDueRunsHandler) disableOneShot(ctx context.Context, workflowID 
 	if err != nil {
 		return err
 	}
-	if w == nil || !w.ScheduleType.IsOneShot() || !w.Disable() {
+	if w == nil || !w.ScheduleType.IsOneShot() || !w.Disable(h.clock.Now()) {
 		return nil
 	}
 	if err := h.workflows.Update(ctx, w); err != nil {
@@ -257,7 +257,7 @@ func (h *DispatchDueRunsHandler) disableOneShot(ctx context.Context, workflowID 
 // disableEmptyWorkflow turns off a workflow that has nothing to run and logs a
 // structured line so a notification email can be wired later.
 func (h *DispatchDueRunsHandler) disableEmptyWorkflow(ctx context.Context, w *domainworkflow.Workflow) (bool, error) {
-	disabled := w.Disable()
+	disabled := w.Disable(h.clock.Now())
 	if disabled {
 		if err := h.workflows.Update(ctx, w); err != nil {
 			return false, err
@@ -303,14 +303,7 @@ func (h *DispatchDueRunsHandler) record(ctx context.Context, r *domainrun.Run) e
 }
 
 func (h *DispatchDueRunsHandler) recordTimeout(ctx context.Context, lease domainschedule.ExpiredLease, workflowID, userID uuid.UUID) error {
-	claimed, err := h.processed.MarkProcessed(ctx, lease.RunID.String(), RecordRunHandlerName)
-	if err != nil {
-		return err
-	}
-	if !claimed {
-		return nil
-	}
-	return h.record(ctx, domainrun.NewTimedOut(lease.RunID, workflowID, userID, lease.StartedAt, lease.Until))
+	return recordTimedOutRun(ctx, h.processed, h.runs, h.outbox, lease, workflowID, userID)
 }
 
 func (h *DispatchDueRunsHandler) jitter() time.Duration {
@@ -359,20 +352,11 @@ func (h *DispatchDueRunsHandler) release(ctx context.Context, p pendingJob) {
 		h.logger.Error("lease release skipped: invalid job ids", "workflow_id", p.job.WorkflowID, "run_id", p.job.RunID, "error", err)
 		return
 	}
-	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
-		state, err := h.states.GetForUpdate(txCtx, workflowID)
-		if err != nil || state == nil {
-			return err
-		}
-		if !state.ReleaseLease(runID) {
-			return nil
-		}
-		if p.oneShot {
-			state.NextRunAt = p.scheduledAt
-		}
-		return h.states.Save(txCtx, *state)
-	})
-	if err != nil {
+	var adjust func(*domainschedule.State)
+	if p.oneShot {
+		adjust = func(st *domainschedule.State) { st.NextRunAt = p.scheduledAt }
+	}
+	if err := releaseLease(ctx, h.states, workflowID, runID, adjust); err != nil {
 		h.logger.Error("lease release failed", "workflow_id", p.job.WorkflowID, "run_id", p.job.RunID, "error", err)
 	}
 }

@@ -23,14 +23,16 @@ type UpdateCallHandler struct {
 	repo      domainworkflow.WriteRepository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
+	clock     port.Clock
 }
 
 func NewUpdateCallHandler(
 	repo domainworkflow.WriteRepository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
+	clock port.Clock,
 ) *UpdateCallHandler {
-	return &UpdateCallHandler{repo: repo, variables: variables, outbox: outbox}
+	return &UpdateCallHandler{repo: repo, variables: variables, outbox: outbox, clock: clock}
 }
 
 func (h *UpdateCallHandler) Handle(ctx context.Context, cmd UpdateCallCommand) (*domaincall.Call, error) {
@@ -45,7 +47,7 @@ func (h *UpdateCallHandler) Handle(ctx context.Context, cmd UpdateCallCommand) (
 		if err != nil {
 			return err
 		}
-		call, err := w.ReplaceCall(cmd.CallID, cmd.Definition, globals)
+		call, err := w.ReplaceCall(cmd.CallID, cmd.Definition, globals, h.clock.Now())
 		if err != nil {
 			return err
 		}

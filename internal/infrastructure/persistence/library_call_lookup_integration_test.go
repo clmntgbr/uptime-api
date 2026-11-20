@@ -36,7 +36,7 @@ func TestLibrarySaveFromCall_AcrossWorkflows(t *testing.T) {
 	w, err := domainworkflow.New(owner, domainworkflow.Definition{
 		Name: "Checkout", Interval: 5 * time.Minute, Enabled: true,
 		Calls: []domaincall.Definition{{Name: "login", Method: "POST", URL: "https://api.example.com/login"}},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}

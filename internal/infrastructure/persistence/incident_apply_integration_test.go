@@ -37,7 +37,7 @@ func TestApplySignals_PostgresIdempotenceAndReopen(t *testing.T) {
 			{Name: "a", Method: "GET", URL: "https://example.com"},
 		},
 	}
-	w, err := domainworkflow.New(userID, def, nil)
+	w, err := domainworkflow.New(userID, def, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}

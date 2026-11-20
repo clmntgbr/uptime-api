@@ -24,14 +24,16 @@ type CopyCallHandler struct {
 	repo      domainworkflow.WriteRepository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
+	clock     port.Clock
 }
 
 func NewCopyCallHandler(
 	repo domainworkflow.WriteRepository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
+	clock port.Clock,
 ) *CopyCallHandler {
-	return &CopyCallHandler{repo: repo, variables: variables, outbox: outbox}
+	return &CopyCallHandler{repo: repo, variables: variables, outbox: outbox, clock: clock}
 }
 
 func (h *CopyCallHandler) Handle(ctx context.Context, cmd CopyCallCommand) (*domaincall.Call, error) {
@@ -46,7 +48,7 @@ func (h *CopyCallHandler) Handle(ctx context.Context, cmd CopyCallCommand) (*dom
 		if err != nil {
 			return err
 		}
-		call, err := w.DuplicateCall(cmd.CallID, globals)
+		call, err := w.DuplicateCall(cmd.CallID, globals, h.clock.Now())
 		if err != nil {
 			return err
 		}

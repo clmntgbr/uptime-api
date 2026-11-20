@@ -19,14 +19,15 @@ type CreateUserCommand struct {
 type CreateUserHandler struct {
 	repo   domainuser.UserWriteRepository
 	outbox port.OutboxRepository
+	clock  port.Clock
 }
 
-func NewCreateUserHandler(repo domainuser.UserWriteRepository, outbox port.OutboxRepository) *CreateUserHandler {
-	return &CreateUserHandler{repo: repo, outbox: outbox}
+func NewCreateUserHandler(repo domainuser.UserWriteRepository, outbox port.OutboxRepository, clock port.Clock) *CreateUserHandler {
+	return &CreateUserHandler{repo: repo, outbox: outbox, clock: clock}
 }
 
 func (h *CreateUserHandler) Handle(ctx context.Context, cmd CreateUserCommand) (*domainuser.User, error) {
-	u := domainuser.NewUser(cmd.ClerkID, cmd.FirstName, cmd.LastName, cmd.Email, cmd.Banned)
+	u := domainuser.NewUser(cmd.ClerkID, cmd.FirstName, cmd.LastName, cmd.Email, cmd.Banned, h.clock.Now())
 
 	err := h.repo.WithTransaction(ctx, func(txCtx context.Context) error {
 		if err := h.repo.Save(txCtx, u); err != nil {

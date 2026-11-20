@@ -191,7 +191,7 @@ func (h *ApplySignalsHandler) resolvePolicy(ctx context.Context, userID, workflo
 		return domainincident.Policy{}, err
 	}
 	if p == nil {
-		return domainincident.DefaultPolicy(userID, workflowID, kind), nil
+		return domainincident.DefaultPolicy(userID, workflowID, kind, h.clock().UTC()), nil
 	}
 	return *p, nil
 }

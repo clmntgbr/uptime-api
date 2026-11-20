@@ -48,7 +48,7 @@ func NewContainer() (*Container, error) {
 			write.NewNotifySettingsRepository(db),
 			outboxRepo, port.SystemClock{},
 		),
-		SetGlobalVariable: appvariable.NewSetGlobalVariableHandler(globals, workflows),
+		SetGlobalVariable: appvariable.NewSetGlobalVariableHandler(globals, workflows, port.SystemClock{}),
 	}, nil
 }
 

@@ -15,7 +15,7 @@ func newLibraryTestWorkflow(t *testing.T, names ...string) *Workflow {
 	for _, name := range names {
 		calls = append(calls, domaincall.Definition{Name: name, Method: "GET", URL: "https://example.com/" + name})
 	}
-	w, err := New(uuid.New(), Definition{Name: "wf", Interval: MinInterval, Enabled: true, Calls: calls}, nil)
+	w, err := New(uuid.New(), Definition{Name: "wf", Interval: MinInterval, Enabled: true, Calls: calls}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func callNames(w *Workflow) []string {
 
 func TestInsertCall_InsertsAtPositionAndRenumbers(t *testing.T) {
 	w := newLibraryTestWorkflow(t, "a", "b")
-	created, err := w.InsertCall(domaincall.Definition{Name: "x", Method: "GET", URL: "https://example.com/x"}, 2, nil)
+	created, err := w.InsertCall(domaincall.Definition{Name: "x", Method: "GET", URL: "https://example.com/x"}, 2, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,10 +54,10 @@ func TestInsertCall_InsertsAtPositionAndRenumbers(t *testing.T) {
 
 func TestInsertCall_AppendsAtEndAndAtStart(t *testing.T) {
 	w := newLibraryTestWorkflow(t, "a")
-	if _, err := w.InsertCall(domaincall.Definition{Name: "end", Method: "GET", URL: "https://example.com"}, 2, nil); err != nil {
+	if _, err := w.InsertCall(domaincall.Definition{Name: "end", Method: "GET", URL: "https://example.com"}, 2, nil, testNow); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.InsertCall(domaincall.Definition{Name: "start", Method: "GET", URL: "https://example.com"}, 1, nil); err != nil {
+	if _, err := w.InsertCall(domaincall.Definition{Name: "start", Method: "GET", URL: "https://example.com"}, 1, nil, testNow); err != nil {
 		t.Fatal(err)
 	}
 	if got := callNames(w); got[0] != "start" || got[1] != "a" || got[2] != "end" {
@@ -68,7 +68,7 @@ func TestInsertCall_AppendsAtEndAndAtStart(t *testing.T) {
 func TestInsertCall_RejectsPositionOutOfRange(t *testing.T) {
 	for _, pos := range []int{0, -1, 4} {
 		w := newLibraryTestWorkflow(t, "a", "b")
-		_, err := w.InsertCall(domaincall.Definition{Name: "x", Method: "GET", URL: "https://example.com"}, pos, nil)
+		_, err := w.InsertCall(domaincall.Definition{Name: "x", Method: "GET", URL: "https://example.com"}, pos, nil, testNow)
 		var verr *ValidationError
 		if !errors.As(err, &verr) {
 			t.Fatalf("position %d: expected ValidationError, got %v", pos, err)
@@ -85,7 +85,7 @@ func TestInsertCall_RejectsWhenWorkflowFull(t *testing.T) {
 		names[i] = "c"
 	}
 	w := newLibraryTestWorkflow(t, names...)
-	_, err := w.InsertCall(domaincall.Definition{Name: "x", Method: "GET", URL: "https://example.com"}, 1, nil)
+	_, err := w.InsertCall(domaincall.Definition{Name: "x", Method: "GET", URL: "https://example.com"}, 1, nil, testNow)
 	if !errors.Is(err, ErrInvalid) {
 		t.Fatalf("expected invalid workflow error, got %v", err)
 	}
@@ -93,7 +93,7 @@ func TestInsertCall_RejectsWhenWorkflowFull(t *testing.T) {
 
 func TestInsertCall_RejectsInvalidDefinition(t *testing.T) {
 	w := newLibraryTestWorkflow(t, "a")
-	_, err := w.InsertCall(domaincall.Definition{Name: "", Method: "GET", URL: "https://example.com"}, 1, nil)
+	_, err := w.InsertCall(domaincall.Definition{Name: "", Method: "GET", URL: "https://example.com"}, 1, nil, testNow)
 	if err == nil {
 		t.Fatal("expected validation error on empty name")
 	}
@@ -105,7 +105,7 @@ func TestInsertCall_RejectsInvalidDefinition(t *testing.T) {
 func TestInsertCall_RejectsVariableProducedLater(t *testing.T) {
 	w := newLibraryTestWorkflow(t, "a")
 	// The inserted call consumes {{token}}, which no call produces.
-	_, err := w.InsertCall(domaincall.Definition{Name: "x", Method: "GET", URL: "https://example.com/{{token}}"}, 1, nil)
+	_, err := w.InsertCall(domaincall.Definition{Name: "x", Method: "GET", URL: "https://example.com/{{token}}"}, 1, nil, testNow)
 	if err == nil {
 		t.Fatal("expected unknown variable error")
 	}

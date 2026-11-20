@@ -44,7 +44,7 @@ func (h *ScanTLSHandler) Handle(ctx context.Context) (ApplyResult, error) {
 		return result, err
 	}
 	for _, item := range items {
-		policy, err := cmdexpiry.ResolvePolicy(ctx, h.expiryPolicies, item.UserID, item.WorkflowID, item.Type)
+		policy, err := cmdexpiry.ResolvePolicy(ctx, h.expiryPolicies, item.UserID, item.WorkflowID, item.Type, now)
 		if err != nil {
 			h.logger.Error("tls scan policy resolve failed", "item_id", item.ID, "error", err)
 			continue

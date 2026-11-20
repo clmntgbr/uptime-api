@@ -69,22 +69,20 @@ func mapExpiryPolicies(c fiber.Ctx, in []dto.WorkflowExpiryPolicyInput) ([]workf
 		// Type already constrained by DTO oneof=tls_certificate.
 		t := domainexpiry.Type(p.Type)
 		if _, ok := seen[t]; ok {
-			_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			return nil, validation.Reject(fiber.StatusBadRequest, fiber.Map{
 				"message": "Validation failed",
 				"errors":  map[string]string{"expiryPolicies": "duplicate type"},
 			})
-			return nil, validation.ErrValidationFailed
 		}
 		seen[t] = struct{}{}
 		if p.Enabled && len(p.ThresholdsDays) == 0 {
-			_ = c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
+			return nil, validation.Reject(fiber.StatusUnprocessableEntity, fiber.Map{
 				"message": "thresholdsDays is required when enabled",
 				"code":    "INVALID_THRESHOLDS",
 				"errors": map[string]string{
 					"expiryPolicies." + strconv.Itoa(i) + ".thresholdsDays": "required when enabled",
 				},
 			})
-			return nil, validation.ErrValidationFailed
 		}
 		out = append(out, workflowcmd.ExpiryPolicyInput{
 			Type: t, Enabled: p.Enabled, ThresholdsDays: p.ThresholdsDays,
@@ -121,11 +119,10 @@ func validateScheduleFields(c fiber.Ctx, scheduleType domainworkflow.ScheduleTyp
 	if len(errorsMap) == 0 {
 		return nil
 	}
-	_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+	return validation.Reject(fiber.StatusBadRequest, fiber.Map{
 		"message": "Validation failed",
 		"errors":  errorsMap,
 	})
-	return validation.ErrValidationFailed
 }
 
 // validationErrorBody maps a domain ValidationError to the HTTP envelope.

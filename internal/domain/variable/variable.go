@@ -90,7 +90,7 @@ type Global struct {
 	UpdatedAt time.Time
 }
 
-func NewGlobal(userID uuid.UUID, name, value string, secret bool) (*Global, error) {
+func NewGlobal(userID uuid.UUID, name, value string, secret bool, now time.Time) (*Global, error) {
 	name = strings.TrimSpace(name)
 	if err := ValidateName(name); err != nil {
 		return nil, err
@@ -98,7 +98,6 @@ func NewGlobal(userID uuid.UUID, name, value string, secret bool) (*Global, erro
 	if err := ValidateValue(name, value); err != nil {
 		return nil, err
 	}
-	now := time.Now().UTC()
 	return &Global{
 		ID:        uuid.New(),
 		UserID:    userID,
@@ -110,12 +109,12 @@ func NewGlobal(userID uuid.UUID, name, value string, secret bool) (*Global, erro
 	}, nil
 }
 
-func (g *Global) Change(value string, secret bool) error {
+func (g *Global) Change(value string, secret bool, now time.Time) error {
 	if err := ValidateValue(g.Name, value); err != nil {
 		return err
 	}
 	g.Value = value
 	g.Secret = secret
-	g.UpdatedAt = time.Now().UTC()
+	g.UpdatedAt = now
 	return nil
 }

@@ -11,13 +11,15 @@ import (
 type DeleteUserByExternalIDHandler struct {
 	repo   domainuser.UserWriteRepository
 	outbox port.OutboxRepository
+	clock  port.Clock
 }
 
 func NewDeleteUserByExternalIDHandler(
 	repo domainuser.UserWriteRepository,
 	outbox port.OutboxRepository,
+	clock port.Clock,
 ) *DeleteUserByExternalIDHandler {
-	return &DeleteUserByExternalIDHandler{repo: repo, outbox: outbox}
+	return &DeleteUserByExternalIDHandler{repo: repo, outbox: outbox, clock: clock}
 }
 
 func (h *DeleteUserByExternalIDHandler) Handle(ctx context.Context, externalID string) error {
@@ -30,7 +32,7 @@ func (h *DeleteUserByExternalIDHandler) Handle(ctx context.Context, externalID s
 			return nil
 		}
 
-		user.MarkDeleted()
+		user.MarkDeleted(h.clock.Now())
 		events := user.PullEvents()
 
 		if err := h.repo.Delete(txCtx, user.ID); err != nil {

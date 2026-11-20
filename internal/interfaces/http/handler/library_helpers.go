@@ -18,8 +18,7 @@ import (
 func parseLibraryItemID(c fiber.Ctx) (uuid.UUID, error) {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid library item id"})
-		return uuid.Nil, validation.ErrValidationFailed
+		return uuid.Nil, validation.Reject(fiber.StatusBadRequest, fiber.Map{"message": "Invalid library item id"})
 	}
 	return id, nil
 }
@@ -45,11 +44,10 @@ func bindLibraryImport(c fiber.Ctx) ([]cmdlibrary.ImportItem, error) {
 		items = append(items, cmdlibrary.ImportItem{Key: in.Key, Definition: def})
 	}
 	if len(errs) > 0 {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+		return nil, validation.Reject(fiber.StatusBadRequest, fiber.Map{
 			"message": "Validation failed",
 			"errors":  errs,
 		})
-		return nil, validation.ErrValidationFailed
 	}
 	return items, nil
 }

@@ -10,7 +10,24 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-var ErrValidationFailed = errors.New("validation failed")
+// Rejection is a client error. Handlers return it instead of writing the
+// response themselves; FiberErrorHandler writes Status and Body exactly once.
+type Rejection struct {
+	Status int
+	Body   fiber.Map
+}
+
+func (r *Rejection) Error() string {
+	if msg, ok := r.Body["message"].(string); ok {
+		return msg
+	}
+	return "request rejected"
+}
+
+// Reject builds a client-error response for the error handler to write.
+func Reject(status int, body fiber.Map) error {
+	return &Rejection{Status: status, Body: body}
+}
 
 var validate *validator.Validate
 
@@ -37,41 +54,35 @@ func tagName(fld reflect.StructField, key string) string {
 
 func BindBody(c fiber.Ctx, dst any) error {
 	if err := c.Bind().Body(dst); err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "Invalid request body",
-		})
-		return ErrValidationFailed
+		return Reject(fiber.StatusBadRequest, fiber.Map{"message": "Invalid request body"})
 	}
 	return Struct(c, dst)
 }
 
 func BindAndValidateQuery(c fiber.Ctx, dst any) error {
 	if err := c.Bind().Query(dst); err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "Invalid query parameters",
-		})
-		return ErrValidationFailed
+		return Reject(fiber.StatusBadRequest, fiber.Map{"message": "Invalid query parameters"})
 	}
 	return Struct(c, dst)
 }
 
-func Struct(c fiber.Ctx, dst any) error {
+func Struct(_ fiber.Ctx, dst any) error {
 	trimRequiredStrings(dst)
 	if err := validate.Struct(dst); err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+		return Reject(fiber.StatusBadRequest, fiber.Map{
 			"message": "Validation failed",
 			"errors":  formatErrors(err),
 		})
-		return ErrValidationFailed
 	}
 	return nil
 }
 
-// FiberErrorHandler suppresses ErrValidationFailed because the response is already written.
+// FiberErrorHandler writes a Rejection as the client error it describes.
 // Other errors use the standard envelope `{ message }` (never `{ success, data }`).
 func FiberErrorHandler(c fiber.Ctx, err error) error {
-	if errors.Is(err, ErrValidationFailed) {
-		return nil
+	var rejection *Rejection
+	if errors.As(err, &rejection) {
+		return c.Status(rejection.Status).JSON(rejection.Body)
 	}
 
 	code := fiber.StatusInternalServerError

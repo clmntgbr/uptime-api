@@ -42,7 +42,7 @@ func (h *ListItemsHandler) Handle(ctx context.Context, q ListItemsQuery) ([]doma
 	if wf == nil {
 		return nil, domainworkflow.ErrNotFound
 	}
-	policy, err := cmdexpiry.ResolvePolicy(ctx, h.policies, q.UserID, q.WorkflowID, q.Type)
+	policy, err := cmdexpiry.ResolvePolicy(ctx, h.policies, q.UserID, q.WorkflowID, q.Type, time.Time{})
 	if err != nil {
 		return nil, err
 	}

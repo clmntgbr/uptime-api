@@ -23,14 +23,16 @@ type ReorderCallsHandler struct {
 	repo      domainworkflow.WriteRepository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
+	clock     port.Clock
 }
 
 func NewReorderCallsHandler(
 	repo domainworkflow.WriteRepository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
+	clock port.Clock,
 ) *ReorderCallsHandler {
-	return &ReorderCallsHandler{repo: repo, variables: variables, outbox: outbox}
+	return &ReorderCallsHandler{repo: repo, variables: variables, outbox: outbox, clock: clock}
 }
 
 func (h *ReorderCallsHandler) Handle(ctx context.Context, cmd ReorderCallsCommand) ([]domaincall.Call, error) {
@@ -45,7 +47,7 @@ func (h *ReorderCallsHandler) Handle(ctx context.Context, cmd ReorderCallsComman
 		if err != nil {
 			return err
 		}
-		if err := w.ReorderCalls(cmd.CallIDs, globals); err != nil {
+		if err := w.ReorderCalls(cmd.CallIDs, globals, h.clock.Now()); err != nil {
 			return err
 		}
 		if err := h.repo.Update(txCtx, w); err != nil {

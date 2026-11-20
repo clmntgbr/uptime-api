@@ -87,6 +87,15 @@ func (h *RecordCallProgressHandler) Handle(ctx context.Context, payload []byte) 
 		if state == nil {
 			return nil
 		}
+		// A progress message that arrives after the run finished (started or
+		// finished phase) must not add events to a terminal run.
+		status, found, err := h.runs.StatusOf(txCtx, runID)
+		if err != nil {
+			return err
+		}
+		if found && status != domainrun.StatusRunning {
+			return nil
+		}
 		created, err := h.runs.EnsureRunning(txCtx, r)
 		if err != nil {
 			return err

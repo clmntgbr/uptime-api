@@ -2,6 +2,7 @@ package variable
 
 import (
 	"context"
+	"go-api/internal/domain/port"
 
 	"go-api/internal/domain/variable"
 
@@ -16,11 +17,12 @@ type UpdateGlobalCommand struct {
 }
 
 type UpdateGlobalHandler struct {
-	repo variable.GlobalRepository
+	repo  variable.GlobalRepository
+	clock port.Clock
 }
 
-func NewUpdateGlobalHandler(repo variable.GlobalRepository) *UpdateGlobalHandler {
-	return &UpdateGlobalHandler{repo: repo}
+func NewUpdateGlobalHandler(repo variable.GlobalRepository, clock port.Clock) *UpdateGlobalHandler {
+	return &UpdateGlobalHandler{repo: repo, clock: clock}
 }
 
 func (h *UpdateGlobalHandler) Handle(ctx context.Context, cmd UpdateGlobalCommand) (*variable.Global, error) {
@@ -33,7 +35,7 @@ func (h *UpdateGlobalHandler) Handle(ctx context.Context, cmd UpdateGlobalComman
 		if existing == nil {
 			return variable.ErrNotFound
 		}
-		if err := existing.Change(cmd.Value, cmd.Secret); err != nil {
+		if err := existing.Change(cmd.Value, cmd.Secret, h.clock.Now()); err != nil {
 			return err
 		}
 		saved = existing

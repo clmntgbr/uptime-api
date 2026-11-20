@@ -1,6 +1,7 @@
 package di
 
 import (
+	"go-api/internal/domain/port"
 	"log"
 	"log/slog"
 
@@ -39,6 +40,7 @@ type Container struct {
 }
 
 func NewContainer(db *gorm.DB, env *config.Config) *Container {
+	clock := port.SystemClock{}
 	producer, err := kafka.NewProducer(env.Kafka)
 	if err != nil {
 		log.Fatalf("failed to create kafka producer: %v", err)
@@ -195,8 +197,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		kafka.NewNotificationPublisher(producer),
 		claimer,
 		outboxRepo,
-		slog.Default(),
-	)
+		slog.Default(), clock)
 	recordProgress := commandrun.NewRecordCallProgressHandler(stateRepo, runWriteRepo, claimer, outboxRepo)
 	resultsRouter := commandrun.NewResultsRouter(recordResult, recordProgress)
 	resultsConsumer := kafka.NewConsumer(

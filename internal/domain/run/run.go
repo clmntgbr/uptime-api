@@ -114,12 +114,14 @@ func (r *Run) Started() {
 		UserID:     r.UserID.String(),
 		Trigger:    r.Trigger,
 		StartedAt:  r.StartedAt,
-		Timestamp:  time.Now().UTC(),
+		Timestamp:  r.StartedAt,
 	})
 }
 
 // CallStarted records that a call began executing inside this open run.
+// The event carries the call's own start time, so it does not depend on a clock.
 func (r *Run) CallStarted(call CallRun) {
+	at := firstNonZero(call.StartedAt, r.StartedAt)
 	callID := ""
 	if call.CallID != nil {
 		callID = call.CallID.String()
@@ -132,12 +134,13 @@ func (r *Run) CallStarted(call CallRun) {
 		CallID:     callID,
 		CallName:   call.Name,
 		Position:   call.Position,
-		Timestamp:  time.Now().UTC(),
+		Timestamp:  at,
 	})
 }
 
 // CallFinished records a realtime-oriented event for one finished call.
 func (r *Run) CallFinished(call CallRun) {
+	at := firstNonZero(call.FinishedAt, call.StartedAt, r.StartedAt)
 	callID := ""
 	if call.CallID != nil {
 		callID = call.CallID.String()
@@ -151,7 +154,7 @@ func (r *Run) CallFinished(call CallRun) {
 		CallName:   call.Name,
 		Position:   call.Position,
 		Status:     string(call.Status),
-		Timestamp:  time.Now().UTC(),
+		Timestamp:  at,
 	})
 }
 
@@ -231,6 +234,16 @@ func (r *Run) recordEvent() {
 		Skipped:    r.Counts.Skipped,
 		StartedAt:  r.StartedAt,
 		FinishedAt: r.FinishedAt,
-		Timestamp:  time.Now().UTC(),
+		Timestamp:  firstNonZero(r.FinishedAt, r.StartedAt),
 	})
+}
+
+// firstNonZero returns the first set time, so an event never gets a zero timestamp.
+func firstNonZero(times ...time.Time) time.Time {
+	for _, t := range times {
+		if !t.IsZero() {
+			return t
+		}
+	}
+	return time.Time{}
 }

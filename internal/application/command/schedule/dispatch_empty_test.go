@@ -104,6 +104,9 @@ func (noopGlobals) Delete(context.Context, uuid.UUID, uuid.UUID) error { return 
 type noopRuns struct{}
 
 func (noopRuns) Save(context.Context, *domainrun.Run) error { return nil }
+func (noopRuns) StatusOf(context.Context, uuid.UUID) (domainrun.Status, bool, error) {
+	return "", false, nil
+}
 func (noopRuns) EnsureRunning(context.Context, *domainrun.Run) (bool, error) {
 	return false, nil
 }

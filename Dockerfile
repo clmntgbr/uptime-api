@@ -70,9 +70,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 
 # ============================================
-# Production stage - Minimal runtime
+# Runtime base - shared by every production image
 # ============================================
-FROM alpine:latest AS production
+FROM alpine:latest AS runtime
 
 RUN apk --no-cache add ca-certificates tzdata
 
@@ -80,16 +80,34 @@ RUN addgroup -g 1000 appuser && \
     adduser -D -u 1000 -G appuser appuser
 
 WORKDIR /home/appuser
-
-COPY --from=builder --chown=appuser:appuser /app/api .
-COPY --from=builder --chown=appuser:appuser /app/worker .
-COPY --from=builder --chown=appuser:appuser /app/worker-scheduler .
-COPY --from=builder --chown=appuser:appuser /app/worker-calls .
-COPY --from=builder --chown=appuser:appuser /app/worker-notify .
-COPY --from=builder --chown=appuser:appuser /app/cli .
-
 USER appuser
 
-EXPOSE 3000
 
+# ============================================
+# One image per service: each carries exactly one binary, so the
+# worker-calls image (which runs untrusted HTTP) has no admin CLI and no API code.
+# ============================================
+FROM runtime AS api
+COPY --from=builder --chown=appuser:appuser /app/api .
+EXPOSE 3000
 CMD ["./api"]
+
+FROM runtime AS worker
+COPY --from=builder --chown=appuser:appuser /app/worker .
+CMD ["./worker"]
+
+FROM runtime AS worker-scheduler
+COPY --from=builder --chown=appuser:appuser /app/worker-scheduler .
+CMD ["./worker-scheduler"]
+
+FROM runtime AS worker-calls
+COPY --from=builder --chown=appuser:appuser /app/worker-calls .
+CMD ["./worker-calls"]
+
+FROM runtime AS worker-notify
+COPY --from=builder --chown=appuser:appuser /app/worker-notify .
+CMD ["./worker-notify"]
+
+FROM runtime AS cli
+COPY --from=builder --chown=appuser:appuser /app/cli .
+CMD ["./cli"]

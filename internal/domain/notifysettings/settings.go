@@ -21,7 +21,7 @@ type Settings struct {
 }
 
 // DefaultSettings is the virtual policy when no row exists yet.
-func DefaultSettings(userID, workflowID uuid.UUID, creatorEmail string) Settings {
+func DefaultSettings(userID, workflowID uuid.UUID, creatorEmail string, now time.Time) Settings {
 	emails := NormalizeEmails([]string{creatorEmail})
 	return Settings{
 		WorkflowID:       workflowID,
@@ -29,7 +29,7 @@ func DefaultSettings(userID, workflowID uuid.UUID, creatorEmail string) Settings
 		Emails:           emails,
 		IncidentsEnabled: true,
 		TLSEnabled:       true,
-		UpdatedAt:        time.Now().UTC(),
+		UpdatedAt:        now,
 	}
 }
 

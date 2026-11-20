@@ -2,6 +2,7 @@ package notifyresolve
 
 import (
 	"context"
+	"time"
 
 	domainnotify "go-api/internal/domain/notifysettings"
 
@@ -17,5 +18,5 @@ func Resolve(ctx context.Context, repo domainnotify.Repository, userID, workflow
 	if stored != nil {
 		return *stored, nil
 	}
-	return domainnotify.DefaultSettings(userID, workflowID, ""), nil
+	return domainnotify.DefaultSettings(userID, workflowID, "", time.Time{}), nil
 }

@@ -13,7 +13,7 @@ import (
 )
 
 // AddCall appends a call at the end of the workflow.
-func (w *Workflow) AddCall(def domaincall.Definition, globalNames []string) (domaincall.Call, error) {
+func (w *Workflow) AddCall(def domaincall.Definition, globalNames []string, now time.Time) (domaincall.Call, error) {
 	if len(w.Calls) >= MaxCalls {
 		return domaincall.Call{}, &ValidationError{Message: fmt.Sprintf("a workflow has at most %d calls", MaxCalls)}
 	}
@@ -28,14 +28,14 @@ func (w *Workflow) AddCall(def domaincall.Definition, globalNames []string) (dom
 		return domaincall.Call{}, err
 	}
 	w.Calls = next
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return call, nil
 }
 
 // ReplaceCall updates an existing call in place (same id and position).
 // Call variables are owned by AddCallVariable / UpdateCallVariable / RemoveCallVariable
 // and are never replaced from the call definition.
-func (w *Workflow) ReplaceCall(callID uuid.UUID, def domaincall.Definition, globalNames []string) (domaincall.Call, error) {
+func (w *Workflow) ReplaceCall(callID uuid.UUID, def domaincall.Definition, globalNames []string, now time.Time) (domaincall.Call, error) {
 	index := -1
 	for i, c := range w.Calls {
 		if c.ID == callID {
@@ -59,7 +59,7 @@ func (w *Workflow) ReplaceCall(callID uuid.UUID, def domaincall.Definition, glob
 		return domaincall.Call{}, err
 	}
 	w.Calls = next
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return call, nil
 }
 
@@ -67,7 +67,7 @@ func (w *Workflow) ReplaceCall(callID uuid.UUID, def domaincall.Definition, glob
 // variables (extractions) are not copied — templates like {{token}} in the URL
 // keep working against variables produced by earlier calls. The new call is
 // placed at the end.
-func (w *Workflow) DuplicateCall(callID uuid.UUID, globalNames []string) (domaincall.Call, error) {
+func (w *Workflow) DuplicateCall(callID uuid.UUID, globalNames []string, now time.Time) (domaincall.Call, error) {
 	index, err := w.callIndex(callID)
 	if err != nil {
 		return domaincall.Call{}, err
@@ -99,7 +99,7 @@ func (w *Workflow) DuplicateCall(callID uuid.UUID, globalNames []string) (domain
 		ProxyURL:    src.ProxyURL,
 		Rules:       rules,
 	}
-	return w.AddCall(def, globalNames)
+	return w.AddCall(def, globalNames, now)
 }
 
 func copyStringMap(in map[string]string) map[string]string {
@@ -116,7 +116,7 @@ func copyStringMap(in map[string]string) map[string]string {
 // ReorderCalls sets call positions from an ordered list of IDs (drag-and-drop).
 // orderedIDs must be a permutation of the current call set; variable order is
 // re-validated so a producer cannot move after a consumer.
-func (w *Workflow) ReorderCalls(orderedIDs []uuid.UUID, globalNames []string) error {
+func (w *Workflow) ReorderCalls(orderedIDs []uuid.UUID, globalNames []string, now time.Time) error {
 	if len(orderedIDs) != len(w.Calls) {
 		return ErrInvalidCallOrder
 	}
@@ -146,12 +146,12 @@ func (w *Workflow) ReorderCalls(orderedIDs []uuid.UUID, globalNames []string) er
 		return err
 	}
 	w.Calls = next
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return nil
 }
 
 // RemoveCall deletes a call and renumbers the remaining positions.
-func (w *Workflow) RemoveCall(callID uuid.UUID, globalNames []string) error {
+func (w *Workflow) RemoveCall(callID uuid.UUID, globalNames []string, now time.Time) error {
 	next := make([]domaincall.Call, 0, len(w.Calls))
 	found := false
 	for _, c := range w.Calls {
@@ -174,12 +174,12 @@ func (w *Workflow) RemoveCall(callID uuid.UUID, globalNames []string) error {
 	if len(next) == 0 {
 		w.Enabled = false
 	}
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return nil
 }
 
-func (w *Workflow) recordCallMutation() {
-	w.UpdatedAt = time.Now().UTC()
+func (w *Workflow) recordCallMutation(now time.Time) {
+	w.UpdatedAt = now
 	w.recordEvent(w.newUpdatedOrCreatedEvent(false, w.UpdatedAt))
 }
 
@@ -218,7 +218,7 @@ func withPreservedExtractionIDs(def domaincall.Definition, existing []domaincall
 // InsertCall places a new call at position (1-based) and shifts the following
 // calls. position must be between 1 and len(calls)+1. Variables are re-validated
 // so a call inserted before its producer is rejected.
-func (w *Workflow) InsertCall(def domaincall.Definition, position int, globalNames []string) (domaincall.Call, error) {
+func (w *Workflow) InsertCall(def domaincall.Definition, position int, globalNames []string, now time.Time) (domaincall.Call, error) {
 	if len(w.Calls) >= MaxCalls {
 		return domaincall.Call{}, &ValidationError{Message: fmt.Sprintf("a workflow has at most %d calls", MaxCalls)}
 	}
@@ -242,7 +242,7 @@ func (w *Workflow) InsertCall(def domaincall.Definition, position int, globalNam
 		return domaincall.Call{}, err
 	}
 	w.Calls = next
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return next[position-1], nil
 }
 

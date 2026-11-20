@@ -19,10 +19,11 @@ type UpdateUserCommand struct {
 type UpdateUserHandler struct {
 	repo   domainuser.UserWriteRepository
 	outbox port.OutboxRepository
+	clock  port.Clock
 }
 
-func NewUpdateUserHandler(repo domainuser.UserWriteRepository, outbox port.OutboxRepository) *UpdateUserHandler {
-	return &UpdateUserHandler{repo: repo, outbox: outbox}
+func NewUpdateUserHandler(repo domainuser.UserWriteRepository, outbox port.OutboxRepository, clock port.Clock) *UpdateUserHandler {
+	return &UpdateUserHandler{repo: repo, outbox: outbox, clock: clock}
 }
 
 func (h *UpdateUserHandler) Handle(ctx context.Context, cmd UpdateUserCommand) error {
@@ -30,7 +31,7 @@ func (h *UpdateUserHandler) Handle(ctx context.Context, cmd UpdateUserCommand) e
 		return errors.New("user is required")
 	}
 
-	cmd.User.ApplyUpdate(cmd.FirstName, cmd.LastName, cmd.Email, cmd.Banned)
+	cmd.User.ApplyUpdate(cmd.FirstName, cmd.LastName, cmd.Email, cmd.Banned, h.clock.Now())
 
 	return h.repo.WithTransaction(ctx, func(txCtx context.Context) error {
 		if err := h.repo.Update(txCtx, cmd.User); err != nil {

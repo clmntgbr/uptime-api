@@ -67,7 +67,7 @@ func TestWorkflowLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	globals := write.NewGlobalVariableRepository(db, cipher)
-	secret, _ := variable.NewGlobal(userID, "password", "hunter2", true)
+	secret, _ := variable.NewGlobal(userID, "password", "hunter2", true, testNow)
 	if err := globals.Save(ctx, secret); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestWorkflowLifecycle(t *testing.T) {
 			{Name: "orders", URL: "{{base_url}}/orders", Headers: map[string]string{"Authorization": "Bearer {{token}}"}},
 		},
 	}
-	w, err := domainworkflow.New(userID, def, []string{"password"})
+	w, err := domainworkflow.New(userID, def, []string{"password"}, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestWorkflowLifecycle(t *testing.T) {
 	if string(callRow.Extractions) != "[]" {
 		t.Fatalf("legacy extractions column must stay empty, got %s", callRow.Extractions)
 	}
-	if _, err := loaded.Update(def, []string{"password"}); err != nil {
+	if _, err := loaded.Update(def, []string{"password"}, testNow); err != nil {
 		t.Fatal(err)
 	}
 	if err := workflows.Update(ctx, loaded); err != nil {

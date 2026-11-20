@@ -80,7 +80,7 @@ func newApp(users *fakeUsers, clerk port.ClerkUserFetcher) *fiber.App {
 	m := NewAuthenticateMiddleware(
 		authcmd.NewValidateTokenHandler(fakeKeys{}, users),
 		identitycmd.NewFetchUserHandler(clerk),
-		usercmd.NewCreateUserHandler(users, fakeOutbox{}),
+		usercmd.NewCreateUserHandler(users, fakeOutbox{}, port.SystemClock{}),
 	)
 	app := fiber.New()
 	app.Get("/", m.Protected(), func(c fiber.Ctx) error { return c.SendStatus(http.StatusOK) })
@@ -101,8 +101,8 @@ func call(t *testing.T, app *fiber.App, authz string) int {
 }
 
 func TestAuthenticate_Rejections(t *testing.T) {
-	existing := domainuser.NewUser("clerk_1", "A", "B", "a@x.test", false)
-	banned := domainuser.NewUser("clerk_2", "C", "D", "c@x.test", true)
+	existing := domainuser.NewUser("clerk_1", "A", "B", "a@x.test", false, testNow)
+	banned := domainuser.NewUser("clerk_2", "C", "D", "c@x.test", true, testNow)
 	users := &fakeUsers{byClerkID: map[string]*domainuser.User{"clerk_1": existing, "clerk_2": banned}}
 	app := newApp(users, fakeClerk{})
 

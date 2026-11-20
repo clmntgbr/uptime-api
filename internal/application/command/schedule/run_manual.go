@@ -146,18 +146,7 @@ func (h *RunManualHandler) prepare(
 }
 
 func (h *RunManualHandler) recordTimeout(ctx context.Context, lease domainschedule.ExpiredLease, workflowID, userID uuid.UUID) error {
-	claimed, err := h.processed.MarkProcessed(ctx, lease.RunID.String(), RecordRunHandlerName)
-	if err != nil {
-		return err
-	}
-	if !claimed {
-		return nil
-	}
-	r := domainrun.NewTimedOut(lease.RunID, workflowID, userID, lease.StartedAt, lease.Until)
-	if err := h.runs.Save(ctx, r); err != nil {
-		return fmt.Errorf("record timed out run: %w", err)
-	}
-	return h.outbox.StoreEvents(ctx, r.PullEvents())
+	return recordTimedOutRun(ctx, h.processed, h.runs, h.outbox, lease, workflowID, userID)
 }
 
 // recordSuperseded finalizes a cancelling run that was replaced by a new manual
@@ -188,17 +177,7 @@ func (h *RunManualHandler) release(ctx context.Context, job contract.Job) {
 		h.logger.Error("lease release skipped: invalid job ids", "workflow_id", job.WorkflowID, "run_id", job.RunID, "error", err)
 		return
 	}
-	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
-		state, err := h.states.GetForUpdate(txCtx, workflowID)
-		if err != nil || state == nil {
-			return err
-		}
-		if !state.ReleaseLease(runID) {
-			return nil
-		}
-		return h.states.Save(txCtx, *state)
-	})
-	if err != nil {
+	if err := releaseLease(ctx, h.states, workflowID, runID, nil); err != nil {
 		h.logger.Error("manual lease release failed", "workflow_id", job.WorkflowID, "run_id", job.RunID, "error", err)
 	}
 }

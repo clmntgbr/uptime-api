@@ -23,6 +23,7 @@ type DeleteCallHandler struct {
 	states    schedule.Repository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
+	clock     port.Clock
 }
 
 func NewDeleteCallHandler(
@@ -30,8 +31,9 @@ func NewDeleteCallHandler(
 	states schedule.Repository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
+	clock port.Clock,
 ) *DeleteCallHandler {
-	return &DeleteCallHandler{repo: repo, states: states, variables: variables, outbox: outbox}
+	return &DeleteCallHandler{repo: repo, states: states, variables: variables, outbox: outbox, clock: clock}
 }
 
 func (h *DeleteCallHandler) Handle(ctx context.Context, cmd DeleteCallCommand) error {
@@ -46,7 +48,7 @@ func (h *DeleteCallHandler) Handle(ctx context.Context, cmd DeleteCallCommand) e
 			return err
 		}
 		wasEnabled := w.Enabled
-		if err := w.RemoveCall(cmd.CallID, globals); err != nil {
+		if err := w.RemoveCall(cmd.CallID, globals, h.clock.Now()); err != nil {
 			return err
 		}
 		if err := h.repo.Update(txCtx, w); err != nil {

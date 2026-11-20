@@ -18,6 +18,9 @@ type WriteRepository interface {
 	EnsureRunning(ctx context.Context, r *Run) (created bool, err error)
 	// UpsertCallRun inserts or replaces one call_run by (run_id, position).
 	UpsertCallRun(ctx context.Context, run *Run, call CallRun) error
+	// StatusOf returns the stored status of a run. found is false when the run
+	// row does not exist yet.
+	StatusOf(ctx context.Context, runID uuid.UUID) (status Status, found bool, err error)
 }
 
 // Retention expires old results.

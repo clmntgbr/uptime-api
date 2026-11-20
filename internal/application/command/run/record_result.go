@@ -44,6 +44,7 @@ type RecordResultHandler struct {
 	processed      port.ProcessedEventRepository
 	outbox         port.OutboxRepository
 	logger         *slog.Logger
+	clock          port.Clock
 }
 
 func NewRecordResultHandler(
@@ -60,6 +61,7 @@ func NewRecordResultHandler(
 	processed port.ProcessedEventRepository,
 	outbox port.OutboxRepository,
 	logger *slog.Logger,
+	clock port.Clock,
 ) *RecordResultHandler {
 	if logger == nil {
 		logger = slog.Default()
@@ -69,7 +71,7 @@ func NewRecordResultHandler(
 		certificates: certificates, expiry: expiry, expiryPolicies: expiryPolicies,
 		incidents: incidents, notifySettings: notifySettings,
 		nestedTx: nestedTx, notify: notify,
-		processed: processed, outbox: outbox, logger: logger,
+		processed: processed, outbox: outbox, logger: logger, clock: clock,
 	}
 }
 
@@ -203,7 +205,7 @@ func (h *RecordResultHandler) tlsSignals(
 	}
 	var out []domainincident.Signal
 	for _, obs := range observations {
-		policy, err := cmdexpiry.ResolvePolicy(ctx, h.expiryPolicies, userID, workflowID, obs.Type)
+		policy, err := cmdexpiry.ResolvePolicy(ctx, h.expiryPolicies, userID, workflowID, obs.Type, h.clock.Now())
 		if err != nil {
 			h.logger.Error("tls incident policy resolve failed", "error", err)
 			continue
@@ -357,7 +359,7 @@ func (h *RecordResultHandler) finishOneShot(ctx context.Context, state *domainsc
 		return nil
 	}
 	state.ClearSchedule()
-	if !w.Disable() {
+	if !w.Disable(h.clock.Now()) {
 		return nil
 	}
 	if err := h.workflows.Update(ctx, w); err != nil {
@@ -389,37 +391,8 @@ func toRun(result contract.Result) (*domainrun.Run, []certificate.Certificate) {
 	var certs []certificate.Certificate
 	seen := map[string]struct{}{}
 	for _, c := range result.Calls {
-		cr := domainrun.CallRun{
-			ID:                 uuid.New(),
-			Name:               c.Name,
-			Position:           c.Order,
-			Status:             domainrun.CallStatus(c.Status),
-			Reason:             c.Reason,
-			HTTPStatus:         c.HTTPStatus,
-			Request:            c.Request,
-			Response:           c.Response,
-			Timings:            c.TimingsMS,
-			Network:            c.Network,
-			TLS:                c.TLS,
-			ExtractedVariables: c.ExtractedVariables,
-			UsedVariables:      c.UsedVariables,
-			Error:              c.Error,
-			BodyRef:            c.BodyRef,
-			BodyHash:           c.BodyHash,
-			BodyEncoding:       c.BodyEncoding,
-			ResponseKeys:       c.Response.Keys,
-			StartedAt:          c.StartedAt,
-			FinishedAt:         c.FinishedAt,
-		}
-		if id, err := uuid.Parse(c.CallID); err == nil {
-			cr.CallID = &id
-		}
-		for i, rr := range c.Rules {
-			cr.Rules = append(cr.Rules, domainrun.RuleRun{
-				ID: uuid.New(), Position: i + 1, Subject: rr.Subject, Operator: rr.Operator,
-				Text: rr.Text, Observed: rr.Observed, Expected: rr.Expected, Passed: rr.Passed,
-			})
-		}
+		// One mapping for call runs, shared with the progress path (toCallRun).
+		cr := toCallRun(c)
 		r.Calls = append(r.Calls, cr)
 
 		if c.TLS != nil && c.TLS.Host != "" && !c.TLS.ExpiresAt.IsZero() {

@@ -17,7 +17,7 @@ import (
 func TestIncidentHandler_ListPolicies_Success(t *testing.T) {
 	m := newMocks()
 	m.listPolicies.out = []domainincident.Policy{
-		domainincident.DefaultPolicy(testutil.TestUserID, testWorkflowID, domainincident.KindCallFailed),
+		domainincident.DefaultPolicy(testutil.TestUserID, testWorkflowID, domainincident.KindCallFailed, testNow),
 	}
 	resp := doJSON(t, m, true, http.MethodGet, "/workflows/"+testWorkflowID.String()+"/incident-policies", nil)
 	assertStatus(t, resp, http.StatusOK)

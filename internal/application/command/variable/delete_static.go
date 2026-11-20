@@ -21,14 +21,16 @@ type DeleteStaticHandler struct {
 	repo      domainworkflow.WriteRepository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
+	clock     port.Clock
 }
 
 func NewDeleteStaticHandler(
 	repo domainworkflow.WriteRepository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
+	clock port.Clock,
 ) *DeleteStaticHandler {
-	return &DeleteStaticHandler{repo: repo, variables: variables, outbox: outbox}
+	return &DeleteStaticHandler{repo: repo, variables: variables, outbox: outbox, clock: clock}
 }
 
 func (h *DeleteStaticHandler) Handle(ctx context.Context, cmd DeleteStaticCommand) error {
@@ -41,7 +43,7 @@ func (h *DeleteStaticHandler) Handle(ctx context.Context, cmd DeleteStaticComman
 		if err != nil {
 			return err
 		}
-		if err := w.RemoveStatic(cmd.Name, globals); err != nil {
+		if err := w.RemoveStatic(cmd.Name, globals, h.clock.Now()); err != nil {
 			return err
 		}
 		if err := h.repo.Update(txCtx, w); err != nil {

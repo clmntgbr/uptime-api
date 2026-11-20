@@ -15,7 +15,7 @@ func TestSetGetUser_RoundTrip(t *testing.T) {
 		if _, err := GetUser(c); err == nil {
 			t.Error("GetUser without SetUser must fail")
 		}
-		SetUser(c, *domainuser.NewUser("clerk_1", "A", "B", "a@x.test", false))
+		SetUser(c, *domainuser.NewUser("clerk_1", "A", "B", "a@x.test", false, testNow))
 		u, err := GetUser(c)
 		if err != nil || u.ClerkID != "clerk_1" {
 			t.Errorf("round trip: user=%v err=%v", u, err)

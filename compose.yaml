@@ -1,8 +1,4 @@
 x-go-prod: &go-prod
-  build:
-    context: .
-    dockerfile: Dockerfile
-    target: production
   restart: unless-stopped
 
 x-kafka-client-env: &kafka-client-env
@@ -25,6 +21,10 @@ services:
 
   api:
     <<: *go-prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
     command: ["./api"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/livez"]
@@ -63,6 +63,10 @@ services:
 
   worker-scheduler:
     <<: *go-prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker-scheduler
     command: ["./worker-scheduler"]
     environment:
       <<: *kafka-client-env
@@ -81,6 +85,10 @@ services:
 
   worker:
     <<: *go-prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
     command: ["./worker"]
     environment:
       <<: *kafka-client-env
@@ -105,6 +113,10 @@ services:
 
   worker-notify:
     <<: *go-prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker-notify
     command: ["./worker-notify"]
     environment:
       <<: *kafka-client-env
@@ -126,6 +138,10 @@ services:
 
   worker-calls:
     <<: *go-prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker-calls
     command: ["./worker-calls"]
     environment:
       <<: *kafka-client-env

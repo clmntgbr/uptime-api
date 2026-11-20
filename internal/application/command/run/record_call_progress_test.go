@@ -24,6 +24,12 @@ type memRuns struct {
 }
 
 func (m *memRuns) Save(context.Context, *domainrun.Run) error { m.saved++; return nil }
+func (m *memRuns) StatusOf(_ context.Context, _ uuid.UUID) (domainrun.Status, bool, error) {
+	if m.running == nil {
+		return "", false, nil
+	}
+	return m.running.Status, true, nil
+}
 func (m *memRuns) EnsureRunning(_ context.Context, r *domainrun.Run) (bool, error) {
 	m.ensured++
 	if m.running == nil {
@@ -205,6 +211,11 @@ func contains(ss []string, want string) bool {
 // repository refuses to rewrite its call rows.
 type finishedRuns struct{ memRuns }
 
+// StatusOf reports every run as already finished.
+func (f *finishedRuns) StatusOf(context.Context, uuid.UUID) (domainrun.Status, bool, error) {
+	return domainrun.StatusSuccess, true, nil
+}
+
 func (f *finishedRuns) UpsertCallRun(context.Context, *domainrun.Run, domainrun.CallRun) error {
 	return domainrun.ErrRunNotRunning
 }
@@ -232,5 +243,30 @@ func TestRecordCallProgress_LateFinishedOnTerminalRun_IsDropped(t *testing.T) {
 		if ev.EventType() == "call.finished" {
 			t.Fatal("call.finished must not be emitted for a terminal run")
 		}
+	}
+}
+
+func TestRecordCallProgress_LateStartedOnTerminalRun_IsDropped(t *testing.T) {
+	id := uuid.NewString()
+	progress := contract.CallProgress{
+		V: contract.CallProgressVersion, ID: uuid.NewString(), Type: contract.CallProgressType,
+		Phase:  contract.CallProgressPhaseStarted,
+		UserID: id, WorkflowID: id, RunID: id, Trigger: contract.TriggerManual,
+		Call: contract.CallRun{
+			CallID: uuid.NewString(), Name: "late", Order: 3, Status: contract.CallStatusSuccess,
+			StartedAt: time.Now().UTC(),
+		},
+		EmittedAt: time.Now().UTC(),
+	}
+	raw, _ := json.Marshal(progress)
+
+	outbox := &memOutbox{}
+	runs := &finishedRuns{}
+	h := NewRecordCallProgressHandler(memStates{}, runs, &memProcessed{}, outbox)
+	if err := h.Handle(context.Background(), raw); err != nil {
+		t.Fatalf("late started must be a no-op, got %v", err)
+	}
+	if len(outbox.events) != 0 || runs.ensured != 0 {
+		t.Fatalf("no event and no run write expected, events=%d ensured=%d", len(outbox.events), runs.ensured)
 	}
 }

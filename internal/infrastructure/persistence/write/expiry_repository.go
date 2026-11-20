@@ -214,3 +214,23 @@ func itemFromModel(m ExpiryItemModel) (expiry.Item, error) {
 		Fingerprint: m.Fingerprint, Meta: meta, ObservedAt: m.ObservedAt,
 	}, nil
 }
+
+func (r *expiryItemRepository) ListExpiringBetween(ctx context.Context, from, to time.Time) ([]expiry.Item, error) {
+	var models []ExpiryItemModel
+	err := DBWithContext(ctx, r.db).
+		Where("expires_at BETWEEN ? AND ?", from.UTC(), to.UTC()).
+		Order("expires_at").
+		Find(&models).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]expiry.Item, 0, len(models))
+	for _, m := range models {
+		item, err := itemFromModel(m)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}

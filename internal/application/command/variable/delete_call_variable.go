@@ -22,14 +22,16 @@ type DeleteCallVariableHandler struct {
 	repo      domainworkflow.WriteRepository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
+	clock     port.Clock
 }
 
 func NewDeleteCallVariableHandler(
 	repo domainworkflow.WriteRepository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
+	clock port.Clock,
 ) *DeleteCallVariableHandler {
-	return &DeleteCallVariableHandler{repo: repo, variables: variables, outbox: outbox}
+	return &DeleteCallVariableHandler{repo: repo, variables: variables, outbox: outbox, clock: clock}
 }
 
 func (h *DeleteCallVariableHandler) Handle(ctx context.Context, cmd DeleteCallVariableCommand) error {
@@ -42,7 +44,7 @@ func (h *DeleteCallVariableHandler) Handle(ctx context.Context, cmd DeleteCallVa
 		if err != nil {
 			return err
 		}
-		if err := w.RemoveCallVariable(cmd.CallID, cmd.Name, globals); err != nil {
+		if err := w.RemoveCallVariable(cmd.CallID, cmd.Name, globals, h.clock.Now()); err != nil {
 			return err
 		}
 		if err := h.repo.Update(txCtx, w); err != nil {

@@ -100,7 +100,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 	opener, _ := crypto.NewOpener(pub, priv)
 
 	globals := write.NewGlobalVariableRepository(db, cipher)
-	secret, _ := variable.NewGlobal(userID, "password", "hunter22", true)
+	secret, _ := variable.NewGlobal(userID, "password", "hunter22", true, testNow)
 	if err := globals.Save(ctx, secret); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 			{Name: "orders", URL: "{{base_url}}/orders", Headers: map[string]string{"Authorization": "Bearer {{access_token}}"}},
 		},
 	}
-	w, err := domainworkflow.New(userID, def, []string{"password"})
+	w, err := domainworkflow.New(userID, def, []string{"password"}, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestScheduleExecuteRecord(t *testing.T) {
 		t.Fatalf("run must succeed: %+v", result.Calls)
 	}
 
-	record := commandrun.NewRecordResultHandler(states, workflows, runs, write.NewCertificateRepository(db), nil, nil, nil, nil, nil, nil, claimer, outboxRepo, nil)
+	record := commandrun.NewRecordResultHandler(states, workflows, runs, write.NewCertificateRepository(db), nil, nil, nil, nil, nil, nil, claimer, outboxRepo, nil, port.SystemClock{})
 	payload, _ := json.Marshal(result)
 	for i := 0; i < 2; i++ {
 		if err := record.Handle(ctx, payload); err != nil {

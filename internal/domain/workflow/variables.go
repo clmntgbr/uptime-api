@@ -3,6 +3,7 @@ package workflow
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	domaincall "go-api/internal/domain/call"
 	"go-api/internal/domain/variable"
@@ -11,7 +12,7 @@ import (
 )
 
 // AddStatic declares a workflow-scoped variable (no extraction path).
-func (w *Workflow) AddStatic(name, value string, secret bool, globalNames []string) (StaticVariable, error) {
+func (w *Workflow) AddStatic(name, value string, secret bool, globalNames []string, now time.Time) (StaticVariable, error) {
 	name = strings.TrimSpace(name)
 	if err := variable.ValidateName(name); err != nil {
 		return StaticVariable{}, &ValidationError{Variable: name, Message: err.Error()}
@@ -31,12 +32,12 @@ func (w *Workflow) AddStatic(name, value string, secret bool, globalNames []stri
 		return StaticVariable{}, err
 	}
 	w.Statics = next
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return w.Statics[len(w.Statics)-1], nil
 }
 
 // UpdateStatic replaces the value/secret of an existing static variable.
-func (w *Workflow) UpdateStatic(name, value string, secret bool, globalNames []string) (StaticVariable, error) {
+func (w *Workflow) UpdateStatic(name, value string, secret bool, globalNames []string, now time.Time) (StaticVariable, error) {
 	name = strings.TrimSpace(name)
 	index := -1
 	for i, s := range w.Statics {
@@ -58,12 +59,12 @@ func (w *Workflow) UpdateStatic(name, value string, secret bool, globalNames []s
 		return StaticVariable{}, err
 	}
 	w.Statics = next
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return w.Statics[index], nil
 }
 
 // RemoveStatic deletes a static variable when no call references it.
-func (w *Workflow) RemoveStatic(name string, globalNames []string) error {
+func (w *Workflow) RemoveStatic(name string, globalNames []string, now time.Time) error {
 	name = strings.TrimSpace(name)
 	if w.UsesVariable(name) {
 		return fmt.Errorf("%w: %q", ErrVariableInUse, name)
@@ -84,7 +85,7 @@ func (w *Workflow) RemoveStatic(name string, globalNames []string) error {
 		return err
 	}
 	w.Statics = next
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return nil
 }
 
@@ -101,7 +102,7 @@ func (w *Workflow) FindStatic(name string) *StaticVariable {
 }
 
 // AddCallVariable declares an extraction on a call (optional path / expression).
-func (w *Workflow) AddCallVariable(callID uuid.UUID, extraction domaincall.Extraction, globalNames []string) (domaincall.Extraction, error) {
+func (w *Workflow) AddCallVariable(callID uuid.UUID, extraction domaincall.Extraction, globalNames []string, now time.Time) (domaincall.Extraction, error) {
 	index, err := w.callIndex(callID)
 	if err != nil {
 		return domaincall.Extraction{}, err
@@ -124,12 +125,12 @@ func (w *Workflow) AddCallVariable(callID uuid.UUID, extraction domaincall.Extra
 		return domaincall.Extraction{}, err
 	}
 	w.Calls = nextCalls
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return normalized, nil
 }
 
 // UpdateCallVariable replaces an extraction on a call (matched by current name).
-func (w *Workflow) UpdateCallVariable(callID uuid.UUID, name string, extraction domaincall.Extraction, globalNames []string) (domaincall.Extraction, error) {
+func (w *Workflow) UpdateCallVariable(callID uuid.UUID, name string, extraction domaincall.Extraction, globalNames []string, now time.Time) (domaincall.Extraction, error) {
 	index, err := w.callIndex(callID)
 	if err != nil {
 		return domaincall.Extraction{}, err
@@ -168,12 +169,12 @@ func (w *Workflow) UpdateCallVariable(callID uuid.UUID, name string, extraction 
 		return domaincall.Extraction{}, err
 	}
 	w.Calls = nextCalls
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return normalized, nil
 }
 
 // RemoveCallVariable deletes an extraction when later calls do not reference it.
-func (w *Workflow) RemoveCallVariable(callID uuid.UUID, name string, globalNames []string) error {
+func (w *Workflow) RemoveCallVariable(callID uuid.UUID, name string, globalNames []string, now time.Time) error {
 	index, err := w.callIndex(callID)
 	if err != nil {
 		return err
@@ -200,7 +201,7 @@ func (w *Workflow) RemoveCallVariable(callID uuid.UUID, name string, globalNames
 		return err
 	}
 	w.Calls = nextCalls
-	w.recordCallMutation()
+	w.recordCallMutation(now)
 	return nil
 }
 

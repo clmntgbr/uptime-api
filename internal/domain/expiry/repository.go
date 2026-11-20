@@ -2,6 +2,7 @@ package expiry
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -18,6 +19,9 @@ type ItemRepository interface {
 	ListByWorkflow(ctx context.Context, userID, workflowID uuid.UUID, t Type) ([]Item, error)
 	// ListAllForScan returns every item for the daily scheduler pass.
 	ListAllForScan(ctx context.Context) ([]Item, error)
+	// ListExpiringBetween returns items whose expiry falls in [from, to].
+	// The daily expiry pass only needs this window: see expiry.ScanWindow.
+	ListExpiringBetween(ctx context.Context, from, to time.Time) ([]Item, error)
 }
 
 type AlertRepository interface {

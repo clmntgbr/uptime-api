@@ -79,7 +79,7 @@ func doJSON(t *testing.T, app *fiber.App, method, path string, body any) *http.R
 }
 
 func TestNotifySettingsHandler_Get_Success(t *testing.T) {
-	get := &mockGet{settings: domainnotify.DefaultSettings(testUserID, testWorkflowID, "a@b.com")}
+	get := &mockGet{settings: domainnotify.DefaultSettings(testUserID, testWorkflowID, "a@b.com", testNow)}
 	app := mount(t, get, &mockUpsert{}, true)
 	resp := doJSON(t, app, http.MethodGet, "/api/workflows/"+testWorkflowID.String()+"/notification-settings", nil)
 	if resp.StatusCode != http.StatusOK {

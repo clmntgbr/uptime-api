@@ -17,7 +17,7 @@ func TestNormalizeAndValidateEmails(t *testing.T) {
 }
 
 func TestDefaultDisablesNothingExceptEmptyRuns(t *testing.T) {
-	s := DefaultSettings(uuid.New(), uuid.New(), "a@b.com")
+	s := DefaultSettings(uuid.New(), uuid.New(), "a@b.com", testNow)
 	if !s.IncidentsEnabled || !s.TLSEnabled || len(s.Emails) != 1 {
 		t.Fatalf("%+v", s)
 	}

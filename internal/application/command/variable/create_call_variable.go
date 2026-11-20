@@ -26,14 +26,16 @@ type CreateCallVariableHandler struct {
 	repo      domainworkflow.WriteRepository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
+	clock     port.Clock
 }
 
 func NewCreateCallVariableHandler(
 	repo domainworkflow.WriteRepository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
+	clock port.Clock,
 ) *CreateCallVariableHandler {
-	return &CreateCallVariableHandler{repo: repo, variables: variables, outbox: outbox}
+	return &CreateCallVariableHandler{repo: repo, variables: variables, outbox: outbox, clock: clock}
 }
 
 func (h *CreateCallVariableHandler) Handle(ctx context.Context, cmd CreateCallVariableCommand) (*domaincall.Extraction, error) {
@@ -52,7 +54,7 @@ func (h *CreateCallVariableHandler) Handle(ctx context.Context, cmd CreateCallVa
 			Source:     domaincall.ExtractionSource(cmd.Source),
 			Expression: cmd.Path,
 			Secret:     cmd.Secret,
-		}, globals)
+		}, globals, h.clock.Now())
 		if err != nil {
 			return err
 		}

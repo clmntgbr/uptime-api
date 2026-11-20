@@ -63,8 +63,7 @@ type Workflow struct {
 }
 
 // New validates the definition against the user's global variable names.
-func New(userID uuid.UUID, def Definition, globalNames []string) (*Workflow, error) {
-	now := time.Now().UTC()
+func New(userID uuid.UUID, def Definition, globalNames []string, now time.Time) (*Workflow, error) {
 	w := &Workflow{
 		ID:        uuid.New(),
 		UserID:    userID,
@@ -73,7 +72,7 @@ func New(userID uuid.UUID, def Definition, globalNames []string) (*Workflow, err
 		UpdatedAt: now,
 		EnabledAt: now,
 	}
-	if err := w.apply(def, globalNames); err != nil {
+	if err := w.apply(def, globalNames, now); err != nil {
 		return nil, err
 	}
 	w.recordEvent(w.newUpdatedOrCreatedEvent(true, now))
@@ -83,13 +82,13 @@ func New(userID uuid.UUID, def Definition, globalNames []string) (*Workflow, err
 // Update replaces the definition. When Calls are replaced, IDs are kept by
 // position so results stay attached across edits. It reports whether the
 // schedule changed (type, interval, runAt or enablement).
-func (w *Workflow) Update(def Definition, globalNames []string) (bool, error) {
+func (w *Workflow) Update(def Definition, globalNames []string, now time.Time) (bool, error) {
 	previous := scheduleSnapshot(w)
 	wasEnabled := w.Enabled
-	if err := w.apply(def, globalNames); err != nil {
+	if err := w.apply(def, globalNames, now); err != nil {
 		return false, err
 	}
-	w.UpdatedAt = time.Now().UTC()
+	w.UpdatedAt = now
 	if !wasEnabled && w.Enabled {
 		w.EnabledAt = w.UpdatedAt
 	}
@@ -99,12 +98,12 @@ func (w *Workflow) Update(def Definition, globalNames []string) (bool, error) {
 
 // Disable turns the workflow off and records WorkflowUpdated. Returns false when
 // it was already disabled.
-func (w *Workflow) Disable() bool {
+func (w *Workflow) Disable(now time.Time) bool {
 	if !w.Enabled {
 		return false
 	}
 	w.Enabled = false
-	w.UpdatedAt = time.Now().UTC()
+	w.UpdatedAt = now
 	w.recordEvent(w.newUpdatedOrCreatedEvent(false, w.UpdatedAt))
 	return true
 }
@@ -162,12 +161,12 @@ func (w *Workflow) newUpdatedOrCreatedEvent(created bool, at time.Time) event.Do
 	}
 }
 
-func (w *Workflow) MarkDeleted() {
+func (w *Workflow) MarkDeleted(now time.Time) {
 	w.recordEvent(WorkflowDeleted{
 		ID:         uuid.New().String(),
 		WorkflowID: w.ID.String(),
 		UserID:     w.UserID.String(),
-		Timestamp:  time.Now().UTC(),
+		Timestamp:  now,
 	})
 }
 
@@ -181,12 +180,12 @@ func (w *Workflow) recordEvent(e event.DomainEvent) {
 	w.events = append(w.events, e)
 }
 
-func (w *Workflow) apply(def Definition, globalNames []string) error {
+func (w *Workflow) apply(def Definition, globalNames []string, now time.Time) error {
 	name := strings.TrimSpace(def.Name)
 	if name == "" || len(name) > MaxNameLength {
 		return &ValidationError{Message: fmt.Sprintf("workflow name is required (max %d characters)", MaxNameLength)}
 	}
-	scheduleType, interval, runAt, err := normalizeSchedule(def, w.RunAt)
+	scheduleType, interval, runAt, err := normalizeSchedule(def, w.RunAt, now)
 	if err != nil {
 		return err
 	}
@@ -245,7 +244,7 @@ func (w *Workflow) apply(def Definition, globalNames []string) error {
 	return nil
 }
 
-func normalizeSchedule(def Definition, previousRunAt *time.Time) (ScheduleType, time.Duration, *time.Time, error) {
+func normalizeSchedule(def Definition, previousRunAt *time.Time, now time.Time) (ScheduleType, time.Duration, *time.Time, error) {
 	typ := def.ScheduleType
 	if typ == "" {
 		typ = ScheduleInterval
@@ -276,7 +275,7 @@ func normalizeSchedule(def Definition, previousRunAt *time.Time) (ScheduleType, 
 		}
 		at := schedule.AlignAt(*def.RunAt)
 		unchanged := previousRunAt != nil && at.Equal(schedule.AlignAt(*previousRunAt))
-		if !unchanged && !at.After(time.Now().UTC()) {
+		if !unchanged && !at.After(now) {
 			return "", 0, nil, &ValidationError{Message: "runAt must be a future minute"}
 		}
 		return typ, 0, &at, nil

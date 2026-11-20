@@ -17,10 +17,11 @@ type DeleteWorkflowCommand struct {
 type DeleteWorkflowHandler struct {
 	repo   domainworkflow.WriteRepository
 	outbox port.OutboxRepository
+	clock  port.Clock
 }
 
-func NewDeleteWorkflowHandler(repo domainworkflow.WriteRepository, outbox port.OutboxRepository) *DeleteWorkflowHandler {
-	return &DeleteWorkflowHandler{repo: repo, outbox: outbox}
+func NewDeleteWorkflowHandler(repo domainworkflow.WriteRepository, outbox port.OutboxRepository, clock port.Clock) *DeleteWorkflowHandler {
+	return &DeleteWorkflowHandler{repo: repo, outbox: outbox, clock: clock}
 }
 
 // Handle deletes the configuration; past runs stay until the retention purge.
@@ -36,7 +37,7 @@ func (h *DeleteWorkflowHandler) Handle(ctx context.Context, cmd DeleteWorkflowCo
 		if w.UserID != cmd.UserID {
 			return domainworkflow.ErrWrongOwner
 		}
-		w.MarkDeleted()
+		w.MarkDeleted(h.clock.Now())
 		if err := h.repo.Delete(txCtx, w.ID); err != nil {
 			return err
 		}

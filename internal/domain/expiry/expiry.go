@@ -49,14 +49,14 @@ type Policy struct {
 
 // DefaultPolicy is the virtual policy when the workflow has no row yet:
 // alerts off, no thresholds — configure at create or via PUT.
-func DefaultPolicy(userID, workflowID uuid.UUID, t Type) Policy {
+func DefaultPolicy(userID, workflowID uuid.UUID, t Type, now time.Time) Policy {
 	return Policy{
 		UserID:         userID,
 		WorkflowID:     workflowID,
 		Type:           t,
 		Enabled:        false,
 		ThresholdsDays: []int{},
-		UpdatedAt:      time.Now().UTC(),
+		UpdatedAt:      now,
 	}
 }
 
@@ -251,4 +251,14 @@ func SubjectHostPort(host string, port int) string {
 		port = 443
 	}
 	return fmt.Sprintf("%s:%d", host, port)
+}
+
+// ScanWindow is the expiry range that can produce a notification at now:
+// thresholds stop at MaxThresholdDays before expiry, and items are ignored
+// once they are ExpiredAlertDays past. One extra day on each side absorbs
+// rounding in DaysLeft.
+func ScanWindow(now time.Time) (from, to time.Time) {
+	from = now.AddDate(0, 0, -(ExpiredAlertDays + 1))
+	to = now.AddDate(0, 0, MaxThresholdDays+1)
+	return from, to
 }

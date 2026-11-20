@@ -65,6 +65,7 @@ type Container struct {
 }
 
 func NewContainer(db *gorm.DB, env *config.Config) *Container {
+	clock := port.SystemClock{}
 	jwksProvider, err := infraClerk.NewJWKSProvider(env)
 	if err != nil {
 		log.Fatalf("failed to create JWKS provider: %v", err)
@@ -74,10 +75,10 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	userReadRepo := read.NewUserReadRepository(db)
 	outboxRepo := outbox.NewRepository(db)
 
-	createUserHandler := usercmd.NewCreateUserHandler(userWriteRepo, outboxRepo)
-	updateUserHandler := usercmd.NewUpdateUserHandler(userWriteRepo, outboxRepo)
+	createUserHandler := usercmd.NewCreateUserHandler(userWriteRepo, outboxRepo, clock)
+	updateUserHandler := usercmd.NewUpdateUserHandler(userWriteRepo, outboxRepo, clock)
 	getUserByExternalIDHandler := usercmd.NewGetUserByExternalIDHandler(userWriteRepo)
-	deleteUserByExternalIDHandler := usercmd.NewDeleteUserByExternalIDHandler(userWriteRepo, outboxRepo)
+	deleteUserByExternalIDHandler := usercmd.NewDeleteUserByExternalIDHandler(userWriteRepo, outboxRepo, clock)
 	validateTokenHandler := authcmd.NewValidateTokenHandler(jwksProvider, userWriteRepo)
 	fetchUserHandler := identitycmd.NewFetchUserHandler(infraClerk.NewUserGateway(env.ClerkSecretKey))
 	getUserByIDHandler := queryuser.NewGetUserByIDHandler(userReadRepo)
@@ -105,7 +106,6 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	statisticsRepo := read.NewStatisticsRepository(db)
 	stateRepo := write.NewStateRepository(db)
 	runWriteRepo := write.NewRunWriteRepository(db)
-	clock := port.SystemClock{}
 
 	workflowPublisher := kafka.NewWorkflowPublisher(producer)
 	runManual := schedulecmd.NewRunManualHandler(
@@ -160,7 +160,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			workflowcmd.NewUpdateWorkflowHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo, clock),
 			queryworkflow.NewListWorkflowsHandler(workflowReadRepo),
 			queryworkflow.NewGetWorkflowHandler(workflowReadRepo),
-			workflowcmd.NewDeleteWorkflowHandler(workflowWriteRepo, outboxRepo),
+			workflowcmd.NewDeleteWorkflowHandler(workflowWriteRepo, outboxRepo, clock),
 			runManual,
 			stopRun,
 		),
@@ -198,14 +198,14 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			cmdnotify.NewUpsertHandler(workflowReadRepo, write.NewNotifySettingsRepository(db)),
 		),
 		CallHandler: httphandler.NewCallHandler(
-			callcmd.NewCreateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
-			callcmd.NewCopyCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
-			callcmd.NewUpdateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
-			callcmd.NewDeleteCallHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo),
-			callcmd.NewReorderCallsHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			callcmd.NewCreateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo, clock),
+			callcmd.NewCopyCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo, clock),
+			callcmd.NewUpdateCallHandler(workflowWriteRepo, globalVariableRepo, outboxRepo, clock),
+			callcmd.NewDeleteCallHandler(workflowWriteRepo, stateRepo, globalVariableRepo, outboxRepo, clock),
+			callcmd.NewReorderCallsHandler(workflowWriteRepo, globalVariableRepo, outboxRepo, clock),
 			querycall.NewListCallsHandler(workflowReadRepo),
 			querycall.NewGetCallHandler(workflowReadRepo),
-			callcmd.NewInsertFromLibraryHandler(workflowWriteRepo, libraryWriteRepo, globalVariableRepo, outboxRepo),
+			callcmd.NewInsertFromLibraryHandler(workflowWriteRepo, libraryWriteRepo, globalVariableRepo, outboxRepo, clock),
 		),
 		LibraryHandler: httphandler.NewLibraryHandler(
 			cmdlibrary.NewCreateItemHandler(libraryWriteRepo),
@@ -218,19 +218,19 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 			cmdlibrary.NewSaveFromCallHandler(workflowWriteRepo, libraryWriteRepo),
 		),
 		VariableHandler: httphandler.NewVariableHandler(
-			variablecmd.NewCreateGlobalHandler(globalVariableRepo, workflowWriteRepo),
-			variablecmd.NewUpdateGlobalHandler(globalVariableRepo),
-			variablecmd.NewDeleteGlobalVariableHandler(globalVariableRepo, workflowWriteRepo),
+			variablecmd.NewCreateGlobalHandler(globalVariableRepo, workflowWriteRepo, clock),
+			variablecmd.NewUpdateGlobalHandler(globalVariableRepo, clock),
+			variablecmd.NewDeleteGlobalVariableHandler(globalVariableRepo, workflowWriteRepo, clock),
 			queryvariable.NewListGlobalsHandler(globalVariableRepo),
 			queryvariable.NewGetGlobalHandler(globalVariableRepo),
-			variablecmd.NewCreateStaticHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
-			variablecmd.NewUpdateStaticHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
-			variablecmd.NewDeleteStaticHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			variablecmd.NewCreateStaticHandler(workflowWriteRepo, globalVariableRepo, outboxRepo, clock),
+			variablecmd.NewUpdateStaticHandler(workflowWriteRepo, globalVariableRepo, outboxRepo, clock),
+			variablecmd.NewDeleteStaticHandler(workflowWriteRepo, globalVariableRepo, outboxRepo, clock),
 			queryvariable.NewListStaticsHandler(workflowWriteRepo),
 			queryvariable.NewGetStaticHandler(workflowWriteRepo),
-			variablecmd.NewCreateCallVariableHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
-			variablecmd.NewUpdateCallVariableHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
-			variablecmd.NewDeleteCallVariableHandler(workflowWriteRepo, globalVariableRepo, outboxRepo),
+			variablecmd.NewCreateCallVariableHandler(workflowWriteRepo, globalVariableRepo, outboxRepo, clock),
+			variablecmd.NewUpdateCallVariableHandler(workflowWriteRepo, globalVariableRepo, outboxRepo, clock),
+			variablecmd.NewDeleteCallVariableHandler(workflowWriteRepo, globalVariableRepo, outboxRepo, clock),
 			queryvariable.NewListCallVariablesHandler(workflowWriteRepo),
 			queryvariable.NewGetCallVariableHandler(workflowWriteRepo),
 			queryvariable.NewListAvailableHandler(workflowWriteRepo, globalVariableRepo),

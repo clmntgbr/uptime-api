@@ -23,14 +23,16 @@ type CreateStaticHandler struct {
 	repo      domainworkflow.WriteRepository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
+	clock     port.Clock
 }
 
 func NewCreateStaticHandler(
 	repo domainworkflow.WriteRepository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
+	clock port.Clock,
 ) *CreateStaticHandler {
-	return &CreateStaticHandler{repo: repo, variables: variables, outbox: outbox}
+	return &CreateStaticHandler{repo: repo, variables: variables, outbox: outbox, clock: clock}
 }
 
 func (h *CreateStaticHandler) Handle(ctx context.Context, cmd CreateStaticCommand) (*domainworkflow.StaticVariable, error) {
@@ -44,7 +46,7 @@ func (h *CreateStaticHandler) Handle(ctx context.Context, cmd CreateStaticComman
 		if err != nil {
 			return err
 		}
-		s, err := w.AddStatic(cmd.Name, cmd.Value, cmd.Secret, globals)
+		s, err := w.AddStatic(cmd.Name, cmd.Value, cmd.Secret, globals, h.clock.Now())
 		if err != nil {
 			return err
 		}

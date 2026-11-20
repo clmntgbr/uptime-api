@@ -369,3 +369,18 @@ func (r *certificateRepository) Upsert(ctx context.Context, certificates []certi
 		}},
 	}).Create(&rows).Error
 }
+
+func (r *runWriteRepository) StatusOf(ctx context.Context, runID uuid.UUID) (domainrun.Status, bool, error) {
+	var row struct {
+		Status string
+	}
+	err := DBWithContext(ctx, r.db).Model(&RunModel{}).Select("status").
+		Where("id = ?", runID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return domainrun.Status(row.Status), true, nil
+}

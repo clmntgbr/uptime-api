@@ -22,8 +22,7 @@ type User struct {
 	events []event.DomainEvent
 }
 
-func NewUser(clerkID, firstName, lastName, email string, banned bool) *User {
-	now := time.Now().UTC()
+func NewUser(clerkID, firstName, lastName, email string, banned bool, now time.Time) *User {
 	u := &User{
 		ID:        uuid.New(),
 		ClerkID:   clerkID,
@@ -57,14 +56,14 @@ func (u *User) recordEvent(e event.DomainEvent) {
 	u.events = append(u.events, e)
 }
 
-func (u *User) ApplyUpdate(firstName, lastName, email string, banned bool) {
+func (u *User) ApplyUpdate(firstName, lastName, email string, banned bool, now time.Time) {
 	u.FirstName = firstName
 	u.LastName = lastName
 	u.Banned = banned
 	if email != "" {
 		u.Email = email
 	}
-	u.UpdatedAt = time.Now().UTC()
+	u.UpdatedAt = now
 	u.recordEvent(UserUpdated{
 		ID:        uuid.New().String(),
 		UserID:    u.ID.String(),
@@ -77,11 +76,11 @@ func (u *User) ApplyUpdate(firstName, lastName, email string, banned bool) {
 	})
 }
 
-func (u *User) MarkDeleted() {
+func (u *User) MarkDeleted(now time.Time) {
 	u.recordEvent(UserDeleted{
 		ID:        uuid.New().String(),
 		UserID:    u.ID.String(),
 		ClerkID:   u.ClerkID,
-		Timestamp: time.Now().UTC(),
+		Timestamp: now,
 	})
 }

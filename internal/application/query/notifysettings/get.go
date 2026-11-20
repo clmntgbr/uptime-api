@@ -2,6 +2,7 @@ package notifysettings
 
 import (
 	"context"
+	"time"
 
 	domainnotify "go-api/internal/domain/notifysettings"
 	domainworkflow "go-api/internal/domain/workflow"
@@ -41,5 +42,5 @@ func (h *GetHandler) Handle(ctx context.Context, q GetQuery) (domainnotify.Setti
 	if stored != nil {
 		return *stored, nil
 	}
-	return domainnotify.DefaultSettings(q.UserID, q.WorkflowID, ""), nil
+	return domainnotify.DefaultSettings(q.UserID, q.WorkflowID, "", time.Time{}), nil
 }

@@ -19,13 +19,11 @@ import (
 func parseWorkflowAndCallIDs(c fiber.Ctx) (workflowID, callID uuid.UUID, err error) {
 	workflowID, err = uuid.Parse(c.Params("id"))
 	if err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid workflow id"})
-		return uuid.Nil, uuid.Nil, validation.ErrValidationFailed
+		return uuid.Nil, uuid.Nil, validation.Reject(fiber.StatusBadRequest, fiber.Map{"message": "Invalid workflow id"})
 	}
 	callID, err = uuid.Parse(c.Params("callId"))
 	if err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid call id"})
-		return uuid.Nil, uuid.Nil, validation.ErrValidationFailed
+		return uuid.Nil, uuid.Nil, validation.Reject(fiber.StatusBadRequest, fiber.Map{"message": "Invalid call id"})
 	}
 	return workflowID, callID, nil
 }
@@ -33,8 +31,7 @@ func parseWorkflowAndCallIDs(c fiber.Ctx) (workflowID, callID uuid.UUID, err err
 func parseWorkflowID(c fiber.Ctx) (uuid.UUID, error) {
 	workflowID, err := uuid.Parse(c.Params("id"))
 	if err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid workflow id"})
-		return uuid.Nil, validation.ErrValidationFailed
+		return uuid.Nil, validation.Reject(fiber.StatusBadRequest, fiber.Map{"message": "Invalid workflow id"})
 	}
 	return workflowID, nil
 }
@@ -48,11 +45,10 @@ func bindReorderCallIDs(c fiber.Ctx) ([]uuid.UUID, error) {
 	for _, raw := range body.CallIDs {
 		id, err := uuid.Parse(raw)
 		if err != nil {
-			_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			return nil, validation.Reject(fiber.StatusBadRequest, fiber.Map{
 				"message": "Validation failed",
 				"errors":  map[string]string{"callIds": "must be valid UUIDs"},
 			})
-			return nil, validation.ErrValidationFailed
 		}
 		ids = append(ids, id)
 	}
@@ -67,11 +63,10 @@ func bindCallDefinition(c fiber.Ctx) (domaincall.Definition, error) {
 
 	def, ruleErrors := callDefinitionFromRequest(body)
 	if len(ruleErrors) > 0 {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+		return domaincall.Definition{}, validation.Reject(fiber.StatusBadRequest, fiber.Map{
 			"message": "Validation failed",
 			"errors":  ruleErrors,
 		})
-		return domaincall.Definition{}, validation.ErrValidationFailed
 	}
 	return def, nil
 }
@@ -112,13 +107,11 @@ func callDefinitionFromRequest(body dto.CallRequest) (domaincall.Definition, map
 func parseWorkflowAndLibraryItemIDs(c fiber.Ctx) (workflowID, itemID uuid.UUID, err error) {
 	workflowID, err = uuid.Parse(c.Params("id"))
 	if err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid workflow id"})
-		return uuid.Nil, uuid.Nil, validation.ErrValidationFailed
+		return uuid.Nil, uuid.Nil, validation.Reject(fiber.StatusBadRequest, fiber.Map{"message": "Invalid workflow id"})
 	}
 	itemID, err = uuid.Parse(c.Params("itemId"))
 	if err != nil {
-		_ = c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Invalid library item id"})
-		return uuid.Nil, uuid.Nil, validation.ErrValidationFailed
+		return uuid.Nil, uuid.Nil, validation.Reject(fiber.StatusBadRequest, fiber.Map{"message": "Invalid library item id"})
 	}
 	return workflowID, itemID, nil
 }

@@ -78,7 +78,7 @@ func TestApplyReopenResetsReminders(t *testing.T) {
 }
 
 func TestDefaultPolicyAvailability(t *testing.T) {
-	p := DefaultPolicy(uuid.New(), uuid.New(), KindAvailabilityLow)
+	p := DefaultPolicy(uuid.New(), uuid.New(), KindAvailabilityLow, testNow)
 	if p.Enabled || p.OpenAfter != 1 || p.CloseAfter != DefaultCloseAfter {
 		t.Fatalf("unexpected %+v", p)
 	}

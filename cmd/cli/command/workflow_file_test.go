@@ -69,7 +69,7 @@ func TestParseWorkflowFile(t *testing.T) {
 		t.Fatalf("unexpected call %+v", list)
 	}
 
-	if _, err := domainworkflow.New(uuid.New(), def, []string{"api_secret"}); err != nil {
+	if _, err := domainworkflow.New(uuid.New(), def, []string{"api_secret"}, testNow); err != nil {
 		t.Fatalf("definition must be valid: %v", err)
 	}
 }
@@ -80,7 +80,7 @@ func TestParseWorkflowFile_OrderIsChecked(t *testing.T) {
 		t.Fatal(err)
 	}
 	def.Calls[0], def.Calls[1] = def.Calls[1], def.Calls[0]
-	_, err = domainworkflow.New(uuid.New(), def, []string{"api_secret"})
+	_, err = domainworkflow.New(uuid.New(), def, []string{"api_secret"}, testNow)
 	if !errors.Is(err, domainworkflow.ErrVarOutOfOrder) || !strings.Contains(err.Error(), "token") {
 		t.Fatalf("expected out of order error naming token, got %v", err)
 	}

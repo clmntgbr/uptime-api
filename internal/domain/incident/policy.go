@@ -21,7 +21,7 @@ type Policy struct {
 }
 
 // DefaultPolicy is the virtual policy when no row exists.
-func DefaultPolicy(userID, workflowID uuid.UUID, kind Kind) Policy {
+func DefaultPolicy(userID, workflowID uuid.UUID, kind Kind, now time.Time) Policy {
 	p := Policy{
 		UserID:     userID,
 		WorkflowID: workflowID,
@@ -31,7 +31,7 @@ func DefaultPolicy(userID, workflowID uuid.UUID, kind Kind) Policy {
 		OpenAfter:  DefaultOpenAfter,
 		CloseAfter: DefaultCloseAfter,
 		Params:     map[string]any{},
-		UpdatedAt:  time.Now().UTC(),
+		UpdatedAt:  now,
 	}
 	switch kind {
 	case KindCallFailed, KindWorkflowFailed:

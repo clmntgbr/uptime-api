@@ -2,6 +2,7 @@ package expiry
 
 import (
 	"context"
+	"time"
 
 	cmdexpiry "go-api/internal/application/command/expiry"
 	domainexpiry "go-api/internal/domain/expiry"
@@ -45,7 +46,7 @@ func (h *ListPoliciesHandler) Handle(ctx context.Context, q ListPoliciesQuery) (
 	}
 	// Phase 1: always expose tls_certificate (defaults if missing).
 	if _, ok := byType[domainexpiry.TypeTLSCertificate]; !ok {
-		p, err := cmdexpiry.ResolvePolicy(ctx, h.policies, q.UserID, q.WorkflowID, domainexpiry.TypeTLSCertificate)
+		p, err := cmdexpiry.ResolvePolicy(ctx, h.policies, q.UserID, q.WorkflowID, domainexpiry.TypeTLSCertificate, time.Time{})
 		if err != nil {
 			return nil, err
 		}

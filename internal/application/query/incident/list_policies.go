@@ -2,6 +2,7 @@ package incident
 
 import (
 	"context"
+	"time"
 
 	domainincident "go-api/internal/domain/incident"
 	domainworkflow "go-api/internal/domain/workflow"
@@ -48,7 +49,7 @@ func (h *ListPoliciesHandler) Handle(ctx context.Context, q ListPoliciesQuery) (
 			out = append(out, p)
 			continue
 		}
-		out = append(out, domainincident.DefaultPolicy(q.UserID, q.WorkflowID, kind))
+		out = append(out, domainincident.DefaultPolicy(q.UserID, q.WorkflowID, kind, time.Time{}))
 	}
 	return out, nil
 }

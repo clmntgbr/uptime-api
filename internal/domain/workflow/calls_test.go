@@ -26,7 +26,7 @@ func TestReplaceCall_KeepsExtractionsWhenOmitted(t *testing.T) {
 				ID: extID, Name: "token", Source: domaincall.ExtractJSON, Expression: "$.token",
 			}},
 		}},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestReplaceCall_KeepsExtractionsWhenOmitted(t *testing.T) {
 		Method: "POST",
 		URL:    "https://example.com/login-v2",
 		// Extractions omitted — call PUT payloads usually leave them empty.
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestReplaceCall_IgnoresDefinitionExtractions(t *testing.T) {
 				ID: extID, Name: "token", Source: domaincall.ExtractJSON, Expression: "$.token",
 			}},
 		}},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestReplaceCall_IgnoresDefinitionExtractions(t *testing.T) {
 		Extractions: []domaincall.Extraction{{
 			Name: "other", Source: domaincall.ExtractJSON, Expression: "$.other",
 		}},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,13 +120,13 @@ func TestDuplicateCall_CopiesFieldsAndRulesKeepsTemplates(t *testing.T) {
 				}},
 			},
 		},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	srcID := w.Calls[1].ID
 
-	copied, err := w.DuplicateCall(srcID, nil)
+	copied, err := w.DuplicateCall(srcID, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,13 +160,13 @@ func TestReorderCalls_Success(t *testing.T) {
 			{Name: "b", Method: "GET", URL: "https://example.com/b"},
 			{Name: "c", Method: "GET", URL: "https://example.com/c"},
 		},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a, b, c := w.Calls[0].ID, w.Calls[1].ID, w.Calls[2].ID
 
-	if err := w.ReorderCalls([]uuid.UUID{c, a, b}, nil); err != nil {
+	if err := w.ReorderCalls([]uuid.UUID{c, a, b}, nil, testNow); err != nil {
 		t.Fatal(err)
 	}
 	if w.Calls[0].ID != c || w.Calls[0].Position != 1 ||
@@ -190,13 +190,13 @@ func TestReorderCalls_RejectsProducerAfterConsumer(t *testing.T) {
 				Name: "orders", Method: "GET", URL: "https://example.com/orders?t={{token}}",
 			},
 		},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	login, orders := w.Calls[0].ID, w.Calls[1].ID
 
-	err = w.ReorderCalls([]uuid.UUID{orders, login}, nil)
+	err = w.ReorderCalls([]uuid.UUID{orders, login}, nil, testNow)
 	var verr *ValidationError
 	if err == nil || !errors.As(err, &verr) {
 		t.Fatalf("got %v want ValidationError", err)
@@ -210,11 +210,11 @@ func TestReorderCalls_IncompleteList(t *testing.T) {
 			{Name: "a", Method: "GET", URL: "https://example.com/a"},
 			{Name: "b", Method: "GET", URL: "https://example.com/b"},
 		},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.ReorderCalls([]uuid.UUID{w.Calls[0].ID}, nil); err != ErrInvalidCallOrder {
+	if err := w.ReorderCalls([]uuid.UUID{w.Calls[0].ID}, nil, testNow); err != ErrInvalidCallOrder {
 		t.Fatalf("got %v want ErrInvalidCallOrder", err)
 	}
 }
@@ -225,11 +225,11 @@ func TestReorderCalls_UnknownID(t *testing.T) {
 		Calls: []domaincall.Definition{
 			{Name: "a", Method: "GET", URL: "https://example.com/a"},
 		},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.ReorderCalls([]uuid.UUID{uuid.New()}, nil); err != ErrInvalidCallOrder {
+	if err := w.ReorderCalls([]uuid.UUID{uuid.New()}, nil, testNow); err != ErrInvalidCallOrder {
 		t.Fatalf("got %v want ErrInvalidCallOrder", err)
 	}
 }
@@ -241,12 +241,12 @@ func TestReorderCalls_DuplicateID(t *testing.T) {
 			{Name: "a", Method: "GET", URL: "https://example.com/a"},
 			{Name: "b", Method: "GET", URL: "https://example.com/b"},
 		},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := w.Calls[0].ID
-	if err := w.ReorderCalls([]uuid.UUID{id, id}, nil); err != ErrInvalidCallOrder {
+	if err := w.ReorderCalls([]uuid.UUID{id, id}, nil, testNow); err != ErrInvalidCallOrder {
 		t.Fatalf("got %v want ErrInvalidCallOrder", err)
 	}
 }
@@ -255,11 +255,11 @@ func TestDuplicateCall_NotFound(t *testing.T) {
 	w, err := New(uuid.New(), Definition{
 		Name: "wf", Interval: MinInterval, Enabled: true,
 		Calls: []domaincall.Definition{{Name: "a", Method: "GET", URL: "https://example.com"}},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.DuplicateCall(uuid.New(), nil); err != ErrCallNotFound {
+	if _, err := w.DuplicateCall(uuid.New(), nil, testNow); err != ErrCallNotFound {
 		t.Fatalf("got %v want ErrCallNotFound", err)
 	}
 }
@@ -273,13 +273,13 @@ func TestAddCall_AllowsDuplicateNames(t *testing.T) {
 		Calls: []domaincall.Definition{{
 			Name: "Orders call", Method: "GET", URL: "https://example.com/a",
 		}},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	second, err := w.AddCall(domaincall.Definition{
 		Name: "Orders call", Method: "GET", URL: "https://example.com/b",
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatalf("duplicate call names must be allowed: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestAddCall_AllowsDuplicateNames(t *testing.T) {
 func TestNew_RejectsEnabledWithoutCalls(t *testing.T) {
 	_, err := New(uuid.New(), Definition{
 		Name: "empty", Interval: MinInterval, Enabled: true,
-	}, nil)
+	}, nil, testNow)
 	if err != ErrNoCalls {
 		t.Fatalf("got %v want ErrNoCalls", err)
 	}
@@ -303,11 +303,11 @@ func TestRemoveCall_DisablesWhenEmpty(t *testing.T) {
 		Calls: []domaincall.Definition{
 			{Name: "only", Method: "GET", URL: "https://example.com"},
 		},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.RemoveCall(w.Calls[0].ID, nil); err != nil {
+	if err := w.RemoveCall(w.Calls[0].ID, nil, testNow); err != nil {
 		t.Fatal(err)
 	}
 	if w.Enabled || len(w.Calls) != 0 {
@@ -330,7 +330,7 @@ func TestApply_PreservesExtractionIDsByCallName(t *testing.T) {
 				ID: extID, Name: "token", Source: domaincall.ExtractJSON, Expression: "$.token",
 			}},
 		}},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +347,7 @@ func TestApply_PreservesExtractionIDsByCallName(t *testing.T) {
 				Name: "token", Source: domaincall.ExtractJSON, Expression: "$.new",
 			}},
 		}},
-	}, nil); err != nil {
+	}, nil, testNow); err != nil {
 		t.Fatal(err)
 	}
 	if w.Calls[0].Extractions[0].ID != extID {
@@ -361,15 +361,15 @@ func TestUpdate_RearmsEnabledAtOnReenable(t *testing.T) {
 		Calls: []domaincall.Definition{
 			{Name: "a", Method: "GET", URL: "https://example.com"},
 		},
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	before := w.EnabledAt
-	time.Sleep(2 * time.Millisecond)
+	later := testNow.Add(time.Minute)
 	_, err = w.Update(Definition{
 		Name: "wf", Interval: MinInterval, Enabled: true,
-	}, nil)
+	}, nil, later)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +379,7 @@ func TestUpdate_RearmsEnabledAtOnReenable(t *testing.T) {
 	armed := w.EnabledAt
 	_, err = w.Update(Definition{
 		Name: "wf-renamed", Interval: MinInterval, Enabled: true,
-	}, nil)
+	}, nil, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}

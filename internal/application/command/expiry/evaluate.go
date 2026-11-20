@@ -30,7 +30,7 @@ func (h *EvaluateHandler) Evaluate(ctx context.Context, item domainexpiry.Item) 
 		return nil, err
 	}
 	if policy == nil {
-		def := domainexpiry.DefaultPolicy(item.UserID, item.WorkflowID, item.Type)
+		def := domainexpiry.DefaultPolicy(item.UserID, item.WorkflowID, item.Type, h.clock().UTC())
 		policy = &def
 	}
 	if !policy.Enabled {
@@ -80,13 +80,13 @@ func (h *EvaluateHandler) Evaluate(ctx context.Context, item domainexpiry.Item) 
 }
 
 // ResolvePolicy returns the stored or default policy for a workflow type.
-func ResolvePolicy(ctx context.Context, policies domainexpiry.PolicyRepository, userID, workflowID uuid.UUID, t domainexpiry.Type) (domainexpiry.Policy, error) {
+func ResolvePolicy(ctx context.Context, policies domainexpiry.PolicyRepository, userID, workflowID uuid.UUID, t domainexpiry.Type, now time.Time) (domainexpiry.Policy, error) {
 	p, err := policies.Get(ctx, workflowID, t)
 	if err != nil {
 		return domainexpiry.Policy{}, err
 	}
 	if p == nil {
-		return domainexpiry.DefaultPolicy(userID, workflowID, t), nil
+		return domainexpiry.DefaultPolicy(userID, workflowID, t, now), nil
 	}
 	return *p, nil
 }

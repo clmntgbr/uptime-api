@@ -83,7 +83,7 @@ func (h *CreateWorkflowHandler) Handle(ctx context.Context, cmd CreateWorkflowCo
 		}
 	}
 
-	w, err := domainworkflow.New(cmd.UserID, cmd.Definition, globals)
+	w, err := domainworkflow.New(cmd.UserID, cmd.Definition, globals, h.clock.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (h *CreateWorkflowHandler) Handle(ctx context.Context, cmd CreateWorkflowCo
 			}
 		}
 		if h.notifySettings != nil {
-			ns := domainnotify.DefaultSettings(cmd.UserID, w.ID, "")
+			ns := domainnotify.DefaultSettings(cmd.UserID, w.ID, "", h.clock.Now())
 			ns.Emails = notifyEmails
 			ns.UpdatedAt = now
 			if err := h.notifySettings.Upsert(txCtx, ns); err != nil {

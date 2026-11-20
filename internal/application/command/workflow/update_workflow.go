@@ -58,7 +58,7 @@ func (h *UpdateWorkflowHandler) Handle(ctx context.Context, cmd UpdateWorkflowCo
 			return domainworkflow.ErrWrongOwner
 		}
 
-		scheduleChanged, err := w.Update(cmd.Definition, globals)
+		scheduleChanged, err := w.Update(cmd.Definition, globals, h.clock.Now())
 		if err != nil {
 			return err
 		}

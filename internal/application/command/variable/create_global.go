@@ -3,6 +3,7 @@ package variable
 import (
 	"context"
 	"fmt"
+	"go-api/internal/domain/port"
 
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
@@ -20,10 +21,11 @@ type CreateGlobalCommand struct {
 type CreateGlobalHandler struct {
 	repo      variable.GlobalRepository
 	workflows domainworkflow.WriteRepository
+	clock     port.Clock
 }
 
-func NewCreateGlobalHandler(repo variable.GlobalRepository, workflows domainworkflow.WriteRepository) *CreateGlobalHandler {
-	return &CreateGlobalHandler{repo: repo, workflows: workflows}
+func NewCreateGlobalHandler(repo variable.GlobalRepository, workflows domainworkflow.WriteRepository, clock port.Clock) *CreateGlobalHandler {
+	return &CreateGlobalHandler{repo: repo, workflows: workflows, clock: clock}
 }
 
 func (h *CreateGlobalHandler) Handle(ctx context.Context, cmd CreateGlobalCommand) (*variable.Global, error) {
@@ -36,7 +38,7 @@ func (h *CreateGlobalHandler) Handle(ctx context.Context, cmd CreateGlobalComman
 		if existing != nil {
 			return variable.ErrAlreadyExists
 		}
-		g, err := variable.NewGlobal(cmd.UserID, cmd.Name, cmd.Value, cmd.Secret)
+		g, err := variable.NewGlobal(cmd.UserID, cmd.Name, cmd.Value, cmd.Secret, h.clock.Now())
 		if err != nil {
 			return err
 		}

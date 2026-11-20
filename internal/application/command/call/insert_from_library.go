@@ -27,6 +27,7 @@ type InsertFromLibraryHandler struct {
 	library   domainlibrary.WriteRepository
 	variables variable.GlobalRepository
 	outbox    port.OutboxRepository
+	clock     port.Clock
 }
 
 func NewInsertFromLibraryHandler(
@@ -34,8 +35,9 @@ func NewInsertFromLibraryHandler(
 	library domainlibrary.WriteRepository,
 	variables variable.GlobalRepository,
 	outbox port.OutboxRepository,
+	clock port.Clock,
 ) *InsertFromLibraryHandler {
-	return &InsertFromLibraryHandler{repo: repo, library: library, variables: variables, outbox: outbox}
+	return &InsertFromLibraryHandler{repo: repo, library: library, variables: variables, outbox: outbox, clock: clock}
 }
 
 func (h *InsertFromLibraryHandler) Handle(ctx context.Context, cmd InsertFromLibraryCommand) (*domaincall.Call, error) {
@@ -61,7 +63,7 @@ func (h *InsertFromLibraryHandler) Handle(ctx context.Context, cmd InsertFromLib
 		if position == 0 {
 			position = len(w.Calls) + 1
 		}
-		call, err := w.InsertCall(item.Definition, position, globals)
+		call, err := w.InsertCall(item.Definition, position, globals, h.clock.Now())
 		if err != nil {
 			return err
 		}

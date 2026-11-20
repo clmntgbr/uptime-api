@@ -3,6 +3,7 @@ package variable
 import (
 	"context"
 	"fmt"
+	"go-api/internal/domain/port"
 
 	"go-api/internal/domain/variable"
 	domainworkflow "go-api/internal/domain/workflow"
@@ -20,10 +21,11 @@ type SetGlobalVariableCommand struct {
 type SetGlobalVariableHandler struct {
 	repo      variable.GlobalRepository
 	workflows domainworkflow.WriteRepository
+	clock     port.Clock
 }
 
-func NewSetGlobalVariableHandler(repo variable.GlobalRepository, workflows domainworkflow.WriteRepository) *SetGlobalVariableHandler {
-	return &SetGlobalVariableHandler{repo: repo, workflows: workflows}
+func NewSetGlobalVariableHandler(repo variable.GlobalRepository, workflows domainworkflow.WriteRepository, clock port.Clock) *SetGlobalVariableHandler {
+	return &SetGlobalVariableHandler{repo: repo, workflows: workflows, clock: clock}
 }
 
 // Handle creates or replaces a global. A new name must not already be a
@@ -36,14 +38,14 @@ func (h *SetGlobalVariableHandler) Handle(ctx context.Context, cmd SetGlobalVari
 			return err
 		}
 		if existing != nil {
-			if err := existing.Change(cmd.Value, cmd.Secret); err != nil {
+			if err := existing.Change(cmd.Value, cmd.Secret, h.clock.Now()); err != nil {
 				return err
 			}
 			saved = existing
 			return h.repo.Save(txCtx, existing)
 		}
 
-		g, err := variable.NewGlobal(cmd.UserID, cmd.Name, cmd.Value, cmd.Secret)
+		g, err := variable.NewGlobal(cmd.UserID, cmd.Name, cmd.Value, cmd.Secret, h.clock.Now())
 		if err != nil {
 			return err
 		}
