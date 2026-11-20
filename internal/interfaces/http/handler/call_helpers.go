@@ -82,6 +82,7 @@ func callDefinitionFromRequest(body dto.CallRequest) (domaincall.Definition, map
 		Headers:     body.Headers,
 		Query:       body.Query,
 		Body:        body.Body,
+		BodyExample: body.BodyExample,
 		Timeout:     time.Duration(body.TimeoutMS) * time.Millisecond,
 		VerifyTLS:   body.VerifyTLS,
 		IPVersion:   domaincall.IPVersion(body.IPVersion),

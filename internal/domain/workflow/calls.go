@@ -93,6 +93,7 @@ func (w *Workflow) DuplicateCall(callID uuid.UUID, globalNames []string, now tim
 		Headers:     copyStringMap(src.Headers),
 		Query:       copyStringMap(src.Query),
 		Body:        src.Body,
+		BodyExample: src.BodyExample,
 		Timeout:     src.Timeout,
 		VerifyTLS:   &verifyTLS,
 		IPVersion:   src.IPVersion,

@@ -130,3 +130,19 @@ func TestCallHandler_Create_HandlerError_Internal(t *testing.T) {
 		t.Fatalf("unexpected body %v", out)
 	}
 }
+
+func TestCallHandler_Create_PassesBodyExample(t *testing.T) {
+	m := newMocks()
+	body := validCallBody()
+	body["bodyExample"] = `{"user":"example"}`
+	resp := doJSON(t, m, true, http.MethodPost, callsPath(), body)
+	assertStatus(t, resp, http.StatusCreated)
+	if got := m.create.got.Definition.BodyExample; got != `{"user":"example"}` {
+		t.Fatalf("bodyExample not passed to the command: %q", got)
+	}
+	var out presenter.CallResponse
+	testutil.DecodeJSON(t, resp, &out)
+	if out.BodyExample != `{"user":"example"}` {
+		t.Fatalf("bodyExample not returned: %q", out.BodyExample)
+	}
+}

@@ -28,16 +28,17 @@ func (LibraryItemModel) TableName() string { return "library_items" }
 // libraryPayload is the stored shape of a definition. Keys match the API request
 // (CallRequest) so the JSON stays readable in the database.
 type libraryPayload struct {
-	Method    string            `json:"method"`
-	URL       string            `json:"url"`
-	Headers   map[string]string `json:"headers,omitempty"`
-	Query     map[string]string `json:"query,omitempty"`
-	Body      string            `json:"body,omitempty"`
-	TimeoutMS int64             `json:"timeoutMs"`
-	VerifyTLS bool              `json:"verifyTls"`
-	IPVersion string            `json:"ipVersion"`
-	ProxyURL  string            `json:"proxyUrl,omitempty"`
-	Rules     []libraryRule     `json:"rules,omitempty"`
+	Method      string            `json:"method"`
+	URL         string            `json:"url"`
+	Headers     map[string]string `json:"headers,omitempty"`
+	Query       map[string]string `json:"query,omitempty"`
+	Body        string            `json:"body,omitempty"`
+	BodyExample string            `json:"bodyExample,omitempty"`
+	TimeoutMS   int64             `json:"timeoutMs"`
+	VerifyTLS   bool              `json:"verifyTls"`
+	IPVersion   string            `json:"ipVersion"`
+	ProxyURL    string            `json:"proxyUrl,omitempty"`
+	Rules       []libraryRule     `json:"rules,omitempty"`
 }
 
 type libraryRule struct {
@@ -50,15 +51,16 @@ type libraryRule struct {
 func newLibraryItemModel(item domainlibrary.Item) (LibraryItemModel, error) {
 	def := item.Definition
 	payload := libraryPayload{
-		Method:    def.Method,
-		URL:       def.URL,
-		Headers:   def.Headers,
-		Query:     def.Query,
-		Body:      def.Body,
-		TimeoutMS: def.Timeout.Milliseconds(),
-		VerifyTLS: def.VerifyTLS == nil || *def.VerifyTLS,
-		IPVersion: string(def.IPVersion),
-		ProxyURL:  def.ProxyURL,
+		Method:      def.Method,
+		URL:         def.URL,
+		Headers:     def.Headers,
+		Query:       def.Query,
+		Body:        def.Body,
+		BodyExample: def.BodyExample,
+		TimeoutMS:   def.Timeout.Milliseconds(),
+		VerifyTLS:   def.VerifyTLS == nil || *def.VerifyTLS,
+		IPVersion:   string(def.IPVersion),
+		ProxyURL:    def.ProxyURL,
 	}
 	for _, r := range def.Rules {
 		payload.Rules = append(payload.Rules, libraryRule{
@@ -96,6 +98,7 @@ func toLibraryItem(m LibraryItemModel) (domainlibrary.Item, error) {
 		Headers:     payload.Headers,
 		Query:       payload.Query,
 		Body:        payload.Body,
+		BodyExample: payload.BodyExample,
 		Timeout:     time.Duration(payload.TimeoutMS) * time.Millisecond,
 		VerifyTLS:   &verifyTLS,
 		IPVersion:   domaincall.IPVersion(payload.IPVersion),

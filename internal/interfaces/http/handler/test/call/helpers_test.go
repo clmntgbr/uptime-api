@@ -38,11 +38,12 @@ func (m *mockCreateHandler) Handle(_ context.Context, cmd callcmd.CreateCallComm
 		return nil, m.err
 	}
 	return &domaincall.Call{
-		ID:       testCallID,
-		Name:     cmd.Definition.Name,
-		Method:   cmd.Definition.Method,
-		URL:      cmd.Definition.URL,
-		Position: 1,
+		ID:          testCallID,
+		Name:        cmd.Definition.Name,
+		Method:      cmd.Definition.Method,
+		URL:         cmd.Definition.URL,
+		BodyExample: cmd.Definition.BodyExample,
+		Position:    1,
 	}, nil
 }
 

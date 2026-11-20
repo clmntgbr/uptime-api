@@ -35,8 +35,9 @@ func main() {
 		CaseSensitive: true,
 		StrictRouting: true,
 		UnescapePath:  true,
-		// Must cover library import (domainlibrary.MaxImportBytes = 2 MiB) plus multipart overhead.
-		BodyLimit:    3 * 1024 * 1024,
+		// Must cover library import: the content (domainlibrary.MaxImportBytes = 10 MiB) travels as a
+		// JSON string, where escaping can roughly double it, so allow 2.5x the content size.
+		BodyLimit:    25 * 1024 * 1024,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

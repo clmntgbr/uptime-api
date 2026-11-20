@@ -104,12 +104,21 @@ func TestParseOpenAPIPetstore(t *testing.T) {
 		name:     "Update a pet",
 		method:   "PUT",
 		url:      "{{base_url}}/pets/{{petId}}",
-		body:     petBody,
 		headers:  map[string]string{"Authorization": "Bearer {{token}}", "Content-Type": "application/json"},
 		warnings: []string{"deprecated_operation", "auth_placeholder", "variable_to_define", "variable_to_define"},
 	})
 	if res.Candidates[1].Key != "op-2" || res.Candidates[2].Key != "op-3" {
 		t.Errorf("keys = %q, %q; want op-2, op-3", res.Candidates[1].Key, res.Candidates[2].Key)
+	}
+	// The OpenAPI example is kept as a reference payload and never copied into the body.
+	if got := res.Candidates[2].Definition.BodyExample; got == "" {
+		t.Error("BodyExample must hold the documented example")
+	}
+	if got := res.Candidates[2].Definition.Body; got != "" {
+		t.Errorf("Body = %q, want empty: the example must not be sent by default", got)
+	}
+	if got := res.Candidates[0].Definition.BodyExample; got != "" {
+		t.Errorf("operation without example: BodyExample = %q, want empty", got)
 	}
 }
 
@@ -140,12 +149,17 @@ func TestParseOpenAPIJSONWithCookieAndAPIKeyQuery(t *testing.T) {
 		name:        "createOrder",
 		method:      "POST",
 		url:         "/orders",
-		body:        "{\n  \"qty\": 2,\n  \"sku\": \"A-1\"\n}",
 		description: "Creates an order",
 		headers:     map[string]string{"Content-Type": "application/json"},
 		query:       map[string]string{"key": "{{api_key}}"},
 		warnings:    []string{"cookie_parameter_ignored", "auth_placeholder"},
 	})
+	if got := res.Candidates[0].Definition.BodyExample; got != "{\n  \"qty\": 2,\n  \"sku\": \"A-1\"\n}" {
+		t.Errorf("bodyExample = %q", got)
+	}
+	if got := res.Candidates[0].Definition.Body; got != "" {
+		t.Errorf("body = %q, want empty", got)
+	}
 }
 
 func TestParseOpenAPISkipsUnresolvableOperations(t *testing.T) {
@@ -210,8 +224,8 @@ components:
 		t.Fatalf("got %d candidates, want 1", len(res.Candidates))
 	}
 	var decoded any
-	if err := json.Unmarshal([]byte(res.Candidates[0].Definition.Body), &decoded); err != nil {
-		t.Fatalf("body is not JSON: %v", err)
+	if err := json.Unmarshal([]byte(res.Candidates[0].Definition.BodyExample), &decoded); err != nil {
+		t.Fatalf("bodyExample is not JSON: %v", err)
 	}
 }
 

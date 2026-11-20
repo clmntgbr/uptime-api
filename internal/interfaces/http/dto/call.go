@@ -16,6 +16,7 @@ type CallRequest struct {
 	Headers     map[string]string `json:"headers" validate:"max=100,dive,keys,max=256,endkeys,max=8192"`
 	Query       map[string]string `json:"query" validate:"max=200,dive,keys,max=256,endkeys,max=8192"`
 	Body        string            `json:"body" validate:"max=524288"`
+	BodyExample string            `json:"bodyExample" validate:"max=524288"`
 	TimeoutMS   int               `json:"timeoutMs" validate:"omitempty,min=100,max=60000"`
 	VerifyTLS   *bool             `json:"verifyTls"`
 	IPVersion   string            `json:"ipVersion" validate:"omitempty,oneof=any ipv4 ipv6"`

@@ -143,6 +143,7 @@ type CallView struct {
 	Headers     map[string]string
 	Query       map[string]string
 	Body        string
+	BodyExample string
 	TimeoutMS   int
 	VerifyTLS   bool
 	IPVersion   string

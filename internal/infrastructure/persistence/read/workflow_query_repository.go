@@ -348,6 +348,7 @@ type callDetailRow struct {
 	Headers     dbtype.JSONB `gorm:"column:headers"`
 	Query       dbtype.JSONB `gorm:"column:query"`
 	Body        *string      `gorm:"column:body"`
+	BodyExample string       `gorm:"column:body_example"`
 	TimeoutMS   int          `gorm:"column:timeout_ms"`
 	VerifyTLS   bool         `gorm:"column:verify_tls"`
 	IPVersion   string       `gorm:"column:ip_version"`
@@ -436,7 +437,7 @@ func (r *workflowQueryRepository) FindCall(ctx context.Context, userID, workflow
 	var row callDetailRow
 	err := r.db.WithContext(ctx).
 		Table("calls c").
-		Select("c.id, c.name, c.description, c.method, c.url, c.headers, c.query, c.body, c.timeout_ms, c.verify_tls, c.ip_version, c.proxy_url").
+		Select("c.id, c.name, c.description, c.method, c.url, c.headers, c.query, c.body, c.body_example, c.timeout_ms, c.verify_tls, c.ip_version, c.proxy_url").
 		Joins("JOIN workflows w ON w.id = c.workflow_id").
 		Where("c.id = ? AND c.workflow_id = ? AND w.user_id = ? AND w.deleted_at IS NULL", callID, workflowID, userID).
 		Take(&row).Error
@@ -475,6 +476,7 @@ func (r *workflowQueryRepository) FindCall(ctx context.Context, userID, workflow
 	if row.Body != nil {
 		view.Body = *row.Body
 	}
+	view.BodyExample = row.BodyExample
 	if row.ProxyURL != nil {
 		view.ProxyURL = *row.ProxyURL
 	}

@@ -20,7 +20,7 @@ var (
 )
 
 // MaxImportBytes caps the raw content of one import request.
-const MaxImportBytes = 2 * 1024 * 1024
+const MaxImportBytes = 10 * 1024 * 1024
 
 // Item is a reusable call template owned by one user. Inserting an item copies
 // its definition into a workflow; later changes on either side are independent.

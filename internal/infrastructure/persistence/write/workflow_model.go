@@ -39,6 +39,7 @@ type CallModel struct {
 	Headers     dbtype.JSONB `gorm:"column:headers"`
 	Query       dbtype.JSONB `gorm:"column:query"`
 	Body        *string      `gorm:"column:body"`
+	BodyExample string       `gorm:"column:body_example"`
 	TimeoutMS   int          `gorm:"column:timeout_ms"`
 	VerifyTLS   bool         `gorm:"column:verify_tls"`
 	IPVersion   string       `gorm:"column:ip_version"`

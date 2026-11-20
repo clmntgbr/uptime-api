@@ -28,6 +28,7 @@ type CallRecentRunResponse struct {
 
 // CallResponse is the shape of create/update and list call rows.
 type CallResponse struct {
+	BodyExample    string                  `json:"bodyExample,omitempty"`
 	ID             string                  `json:"id"`
 	Name           string                  `json:"name"`
 	Description    string                  `json:"description"`
@@ -43,6 +44,7 @@ type CallResponse struct {
 
 func NewCallResponseFromCall(c domaincall.Call) CallResponse {
 	return CallResponse{
+		BodyExample: c.BodyExample,
 		ID:          c.ID.String(),
 		Name:        c.Name,
 		Description: c.Description,
@@ -124,6 +126,7 @@ type CallDetailResponse struct {
 	Headers     map[string]string `json:"headers"`
 	Query       map[string]string `json:"query"`
 	Body        string            `json:"body"`
+	BodyExample string            `json:"bodyExample"`
 	TimeoutMS   int               `json:"timeoutMs"`
 	VerifyTLS   bool              `json:"verifyTls"`
 	IPVersion   string            `json:"ipVersion"`
@@ -148,6 +151,7 @@ func NewCallDetailResponseFromView(v domainworkflow.CallView) CallDetailResponse
 		Headers:     headers,
 		Query:       query,
 		Body:        v.Body,
+		BodyExample: v.BodyExample,
 		TimeoutMS:   v.TimeoutMS,
 		VerifyTLS:   v.VerifyTLS,
 		IPVersion:   v.IPVersion,

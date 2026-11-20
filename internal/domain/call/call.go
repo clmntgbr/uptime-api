@@ -44,6 +44,9 @@ type Call struct {
 	Headers     map[string]string
 	Query       map[string]string
 	Body        string
+	// BodyExample is the reference payload (e.g. from an OpenAPI example), kept
+	// with the call so the UI can offer it. It is not sent unless copied into Body.
+	BodyExample string
 	Timeout     time.Duration
 	VerifyTLS   bool
 	IPVersion   IPVersion
@@ -61,6 +64,9 @@ type Definition struct {
 	Headers     map[string]string
 	Query       map[string]string
 	Body        string
+	// BodyExample is the reference payload (e.g. from an OpenAPI example), kept
+	// with the call so the UI can offer it. It is not sent unless copied into Body.
+	BodyExample string
 	Timeout     time.Duration
 	VerifyTLS   *bool
 	IPVersion   IPVersion
@@ -169,6 +175,7 @@ func New(def Definition, position int, id uuid.UUID) (Call, error) {
 		Headers:     copyMap(def.Headers),
 		Query:       copyMap(def.Query),
 		Body:        def.Body,
+		BodyExample: def.BodyExample,
 		Timeout:     timeout,
 		VerifyTLS:   verifyTLS,
 		IPVersion:   ipVersion,
@@ -270,6 +277,7 @@ func (c Call) Definition() Definition {
 		Headers:     copyMap(c.Headers),
 		Query:       copyMap(c.Query),
 		Body:        c.Body,
+		BodyExample: c.BodyExample,
 		Timeout:     c.Timeout,
 		VerifyTLS:   &verifyTLS,
 		IPVersion:   c.IPVersion,

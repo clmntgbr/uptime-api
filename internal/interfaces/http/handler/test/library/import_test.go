@@ -291,3 +291,19 @@ func TestLibraryHandler_PreviewImport_BaseURLVariableErrors(t *testing.T) {
 		})
 	}
 }
+
+// A bulk import must keep the reference example the preview produced, otherwise
+// every imported call loses it on the way to the library.
+func TestLibraryHandler_Import_KeepsBodyExample(t *testing.T) {
+	m := newMocks()
+	item := confirmItem("op-1", "", nil)
+	item["payload"].(map[string]any)["bodyExample"] = `{"qty":2}`
+	resp := doJSON(t, m, true, http.MethodPost, importPath, map[string]any{"items": []map[string]any{item}})
+	assertStatus(t, resp, http.StatusCreated)
+	if got := m.imports.got.Items[0].Definition.BodyExample; got != `{"qty":2}` {
+		t.Fatalf("bodyExample lost in bulk import: %q", got)
+	}
+	if got := m.imports.got.Items[0].Definition.Body; got != "" {
+		t.Fatalf("body must not be filled from the example: %q", got)
+	}
+}

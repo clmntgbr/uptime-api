@@ -286,7 +286,9 @@ func (p *openAPIParser) applyRequestBody(def *domaincall.Definition, op map[stri
 		ws.add(warnUnsupportedBody, "body", "Request body example cannot be converted to JSON; the body was not imported")
 		return nil
 	}
-	def.Body = string(encoded)
+	// The documented example is a reference only: it goes to BodyExample, never to Body,
+	// so an imported call does not send it until the user copies it.
+	def.BodyExample = string(encoded)
 	if !hasHeader(def.Headers, "Content-Type") {
 		def.Headers["Content-Type"] = "application/json"
 	}

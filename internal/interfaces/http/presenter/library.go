@@ -24,6 +24,7 @@ type LibraryDefinitionResponse struct {
 	Headers     map[string]string     `json:"headers"`
 	Query       map[string]string     `json:"query"`
 	Body        string                `json:"body"`
+	BodyExample string                `json:"bodyExample"`
 	TimeoutMS   int64                 `json:"timeoutMs"`
 	VerifyTLS   bool                  `json:"verifyTls"`
 	IPVersion   string                `json:"ipVersion"`
@@ -92,6 +93,7 @@ func NewLibraryDefinitionResponse(def domaincall.Definition) LibraryDefinitionRe
 		Headers:     nonNilMap(def.Headers),
 		Query:       nonNilMap(def.Query),
 		Body:        def.Body,
+		BodyExample: def.BodyExample,
 		TimeoutMS:   def.Timeout.Milliseconds(),
 		VerifyTLS:   verifyTLS,
 		IPVersion:   string(def.IPVersion),
