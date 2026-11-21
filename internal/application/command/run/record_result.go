@@ -97,6 +97,8 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 	r, certs := toRun(result)
 	var notes []domainexpiry.NotificationRequest
 	var incidentNotes []cmdincident.NotifyIntent
+	var runNotify *contract.NotificationRequest
+	var oneShotNotify *contract.NotificationRequest
 	var recorded bool
 
 	err := h.states.WithTransaction(ctx, func(txCtx context.Context) error {
@@ -115,6 +117,7 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 			// The workflow was deleted while it ran: nothing to attach the run to.
 			return nil
 		}
+		previousStatus := state.LastStatus
 		if err := h.runs.Save(txCtx, r); err != nil {
 			return err
 		}
@@ -164,13 +167,25 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 			// Only the scheduled fire that still owns the lease finishes a one-shot.
 			// A late result from a previous interval run must not disable a rescheduled once/at.
 			if r.Trigger == contract.TriggerSchedule && ownedLease {
-				if err := h.finishOneShot(txCtx, state, r.WorkflowID); err != nil {
+				disabled, name, err := h.finishOneShot(txCtx, state, r.WorkflowID)
+				if err != nil {
 					return err
+				}
+				if disabled {
+					oneShotNotify = &contract.NotificationRequest{
+						V: contract.NotificationRequestV1, Kind: "workflow.one_shot.done",
+						UserID: r.UserID.String(), WorkflowID: r.WorkflowID.String(),
+						Subject: name, Severity: "info",
+						Message: fmt.Sprintf("One-shot workflow %q finished and was disabled.", name),
+					}
 				}
 			}
 			if err := h.states.Save(txCtx, *state); err != nil {
 				return err
 			}
+		}
+		if note, ok := h.buildRunNotification(txCtx, r, previousStatus); ok {
+			runNotify = &note
 		}
 		recorded = true
 		return h.outbox.StoreEvents(txCtx, r.PullEvents())
@@ -183,7 +198,59 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 	}
 	h.publishExpiryNotes(ctx, notes)
 	h.publishIncidentNotes(ctx, incidentNotes)
+	if runNotify != nil {
+		h.publishPrepared(ctx, *runNotify)
+	}
+	if oneShotNotify != nil {
+		h.publishPrepared(ctx, *oneShotNotify)
+	}
 	return nil
+}
+
+func (h *RecordResultHandler) buildRunNotification(
+	ctx context.Context, r *domainrun.Run, previousStatus string,
+) (contract.NotificationRequest, bool) {
+	if h.notifySettings == nil {
+		return contract.NotificationRequest{}, false
+	}
+	status := string(r.Status)
+	kind := ""
+	severity := "critical"
+	switch r.Status {
+	case domainrun.StatusFailed:
+		kind = "run.failed"
+	case domainrun.StatusError:
+		kind = "run.errored"
+	case domainrun.StatusSuccess:
+		kind = "run.success"
+		severity = "info"
+	default:
+		return contract.NotificationRequest{}, false
+	}
+	settings, err := notifyresolve.Resolve(ctx, h.notifySettings, r.UserID, r.WorkflowID)
+	if err != nil || !settings.ShouldNotifyRun(status, previousStatus) {
+		return contract.NotificationRequest{}, false
+	}
+	msg := fmt.Sprintf("Workflow run finished with status %s", status)
+	if r.Reason != "" {
+		msg = fmt.Sprintf("Workflow run finished with status %s (%s)", status, r.Reason)
+	}
+	req := contract.NotificationRequest{
+		V: contract.NotificationRequestV1, Kind: kind, Type: status,
+		UserID: r.UserID.String(), WorkflowID: r.WorkflowID.String(),
+		ItemID: r.ID.String(), Severity: severity, Message: msg,
+		Recipients: append([]string(nil), settings.Emails...),
+	}
+	return req, true
+}
+
+func (h *RecordResultHandler) publishPrepared(ctx context.Context, req contract.NotificationRequest) {
+	if h.notify == nil {
+		return
+	}
+	if err := h.notify.PublishRequest(ctx, req); err != nil {
+		h.logger.Error("publish notification failed", "kind", req.Kind, "workflow_id", req.WorkflowID, "error", err)
+	}
 }
 
 func (h *RecordResultHandler) publishIncidentNotes(ctx context.Context, notes []cmdincident.NotifyIntent) {
@@ -363,22 +430,26 @@ func (h *RecordResultHandler) publishExpiryNotes(ctx context.Context, notes []do
 }
 
 // finishOneShot parks and disables once/at workflows after their scheduled fire.
-func (h *RecordResultHandler) finishOneShot(ctx context.Context, state *domainschedule.State, workflowID uuid.UUID) error {
+// Returns whether the workflow was newly disabled and its name for notification.
+func (h *RecordResultHandler) finishOneShot(ctx context.Context, state *domainschedule.State, workflowID uuid.UUID) (bool, string, error) {
 	w, err := h.workflows.GetByID(ctx, workflowID)
 	if err != nil {
-		return err
+		return false, "", err
 	}
 	if w == nil || !w.ScheduleType.IsOneShot() {
-		return nil
+		return false, "", nil
 	}
 	state.ClearSchedule()
 	if !w.Disable(h.clock.Now()) {
-		return nil
+		return false, "", nil
 	}
 	if err := h.workflows.Update(ctx, w); err != nil {
-		return err
+		return false, "", err
 	}
-	return h.outbox.StoreEvents(ctx, w.PullEvents())
+	if err := h.outbox.StoreEvents(ctx, w.PullEvents()); err != nil {
+		return false, "", err
+	}
+	return true, w.Name, nil
 }
 
 func toRun(result contract.Result) (*domainrun.Run, []certificate.Certificate) {

@@ -16,6 +16,9 @@ type UpsertCommand struct {
 	Emails           []string
 	IncidentsEnabled bool
 	TLSEnabled       bool
+	RunsEnabled      bool
+	RunStatuses      []string
+	RunMode          string
 }
 
 type UpsertHandler struct {
@@ -42,10 +45,17 @@ func (h *UpsertHandler) Handle(ctx context.Context, cmd UpsertCommand) (domainno
 	if err := domainnotify.ValidateEmails(emails); err != nil {
 		return domainnotify.Settings{}, err
 	}
+	mode, err := domainnotify.ParseRunMode(cmd.RunMode)
+	if err != nil {
+		return domainnotify.Settings{}, err
+	}
 	s := domainnotify.Settings{
 		WorkflowID: cmd.WorkflowID, UserID: cmd.UserID, Emails: emails,
 		IncidentsEnabled: cmd.IncidentsEnabled, TLSEnabled: cmd.TLSEnabled,
-		UpdatedAt: time.Now().UTC(),
+		RunsEnabled: cmd.RunsEnabled,
+		RunStatuses: domainnotify.NormalizeRunStatuses(cmd.RunStatuses),
+		RunMode:     mode,
+		UpdatedAt:   time.Now().UTC(),
 	}
 	if err := h.settings.Upsert(ctx, s); err != nil {
 		return domainnotify.Settings{}, err

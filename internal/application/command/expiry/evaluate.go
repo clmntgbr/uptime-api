@@ -2,6 +2,7 @@ package expiry
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	domainexpiry "go-api/internal/domain/expiry"
@@ -54,14 +55,53 @@ func (h *EvaluateHandler) Evaluate(ctx context.Context, item domainexpiry.Item) 
 	fp := domainexpiry.AlertFingerprint(item.Fingerprint, daysLeft, now)
 
 	var toClaim []int
+	var kind string
 	switch {
 	case daysLeft < -domainexpiry.ExpiredAlertDays:
 		return out, nil
 	case daysLeft < 0:
 		toClaim = []int{0}
+		kind = "expiry.expired"
 	default:
 		toClaim = domainexpiry.CrossedThresholds(policy.ThresholdsDays, daysLeft)
+		kind = "expiry.threshold"
 	}
+
+	// Renewed: nothing currently crossed, and a prior alert used another
+	// fingerprint (certificate actually changed — not a policy edit).
+	if len(toClaim) == 0 && daysLeft >= 0 {
+		hadPrior, err := h.alerts.HadOtherFingerprint(ctx, item.ID, item.Fingerprint)
+		if err != nil {
+			return out, err
+		}
+		if !hadPrior {
+			return out, nil
+		}
+		claimed, err := h.alerts.Claim(ctx, item.ID, item.Fingerprint, []int{domainexpiry.RenewedClaimThreshold})
+		if err != nil {
+			return out, err
+		}
+		out.Claimed = claimed
+		if len(claimed) == 0 {
+			return out, nil
+		}
+		out.Notification = &domainexpiry.NotificationRequest{
+			Kind:          "expiry.renewed",
+			V:             1,
+			Type:          item.Type,
+			UserID:        item.UserID,
+			WorkflowID:    item.WorkflowID,
+			ItemID:        item.ID,
+			Subject:       item.Subject,
+			DaysLeft:      daysLeft,
+			ThresholdDays: domainexpiry.RenewedClaimThreshold,
+			ExpiresAt:     item.ExpiresAt,
+			Severity:      domainexpiry.SeverityInfo,
+			Message:       fmt.Sprintf("The certificate of %s was renewed (expires in %d days)", item.Subject, daysLeft),
+		}
+		return out, nil
+	}
+
 	if len(toClaim) == 0 {
 		return out, nil
 	}
@@ -76,8 +116,12 @@ func (h *EvaluateHandler) Evaluate(ctx context.Context, item domainexpiry.Item) 
 	}
 
 	notifyAt := domainexpiry.NotifyThreshold(claimed, daysLeft)
+	severity := domainexpiry.SeverityFor(daysLeft)
+	if kind == "expiry.expired" {
+		severity = domainexpiry.SeverityCritical
+	}
 	out.Notification = &domainexpiry.NotificationRequest{
-		Kind:          "expiry.threshold",
+		Kind:          kind,
 		V:             1,
 		Type:          item.Type,
 		UserID:        item.UserID,
@@ -87,7 +131,7 @@ func (h *EvaluateHandler) Evaluate(ctx context.Context, item domainexpiry.Item) 
 		DaysLeft:      daysLeft,
 		ThresholdDays: notifyAt,
 		ExpiresAt:     item.ExpiresAt,
-		Severity:      domainexpiry.SeverityFor(daysLeft),
+		Severity:      severity,
 		Message:       domainexpiry.MessageFor(item.Type, item.Subject, daysLeft),
 	}
 	return out, nil

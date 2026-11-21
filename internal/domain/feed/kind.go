@@ -20,6 +20,7 @@ const (
 
 	KindTLSThresholdCrossed    Kind = "tls.threshold_crossed"
 	KindTLSExpired             Kind = "tls.expired"
+	KindTLSRenewed             Kind = "tls.renewed"
 	KindAvailabilityBreached   Kind = "availability.breached"
 	KindAvailabilityRecovered  Kind = "availability.recovered"
 	KindExpiryThresholdCrossed Kind = "expiry.threshold_crossed"

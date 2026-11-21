@@ -187,6 +187,15 @@ func (r *expiryAlertRepository) Claim(ctx context.Context, itemID uuid.UUID, fin
 	return claimed, nil
 }
 
+func (r *expiryAlertRepository) HadOtherFingerprint(ctx context.Context, itemID uuid.UUID, fingerprint string) (bool, error) {
+	var n int64
+	err := DBWithContext(ctx, r.db).Model(&ExpiryAlertModel{}).
+		Where("item_id = ? AND fingerprint <> ? AND fingerprint NOT LIKE ?",
+			itemID, fingerprint, fingerprint+"|%").
+		Limit(1).Count(&n).Error
+	return n > 0, err
+}
+
 func policyFromModel(m ExpiryPolicyModel) (*expiry.Policy, error) {
 	var days []int
 	if len(m.ThresholdsDays) > 0 {

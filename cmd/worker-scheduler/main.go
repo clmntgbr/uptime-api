@@ -149,6 +149,8 @@ func (s *scheduler) tick(ctx context.Context, at time.Time) {
 	}
 	lagSeconds.Set(stats.Lag.Seconds())
 	s.notifyEmptyDisabled(ctx, stats.EmptyDisabled)
+	s.notifyOneShotDone(ctx, stats.OneShotDone)
+	s.notifyTimedOutRuns(ctx, stats.TimedOutRuns)
 	runsTotal.WithLabelValues("dispatched").Add(float64(stats.Dispatched))
 	runsTotal.WithLabelValues("skipped").Add(float64(stats.Skipped))
 	runsTotal.WithLabelValues("timeout").Add(float64(stats.TimedOut))
@@ -315,11 +317,50 @@ func (s *scheduler) notifyEmptyDisabled(ctx context.Context, disabled []schedule
 		req := contract.NotificationRequest{
 			V: contract.NotificationRequestV1, Kind: "workflow.disabled",
 			UserID: d.UserID.String(), WorkflowID: d.WorkflowID.String(),
-			Severity: "warning",
-			Message:  fmt.Sprintf("Workflow %q was disabled because it has no calls.", d.Name),
+			Subject: d.Name, Severity: "warning",
+			Message: fmt.Sprintf("Workflow %q was disabled because it has no calls.", d.Name),
 		}
 		if err := s.container.Notify.PublishRequest(ctx, req); err != nil {
 			s.logger.Error("publish empty workflow notification failed", "workflow_id", d.WorkflowID, "error", err)
+		}
+	}
+}
+
+func (s *scheduler) notifyOneShotDone(ctx context.Context, done []schedule.EmptyDisabledWorkflow) {
+	if s.container.Notify == nil || len(done) == 0 {
+		return
+	}
+	for _, d := range done {
+		req := contract.NotificationRequest{
+			V: contract.NotificationRequestV1, Kind: "workflow.one_shot.done",
+			UserID: d.UserID.String(), WorkflowID: d.WorkflowID.String(),
+			Subject: d.Name, Severity: "info",
+			Message: fmt.Sprintf("One-shot workflow %q finished and was disabled.", d.Name),
+		}
+		if err := s.container.Notify.PublishRequest(ctx, req); err != nil {
+			s.logger.Error("publish one-shot done notification failed", "workflow_id", d.WorkflowID, "error", err)
+		}
+	}
+}
+
+func (s *scheduler) notifyTimedOutRuns(ctx context.Context, timedOut []schedule.TimedOutRun) {
+	if s.container.Notify == nil || len(timedOut) == 0 {
+		return
+	}
+	for _, t := range timedOut {
+		settings, err := notifyresolve.Resolve(ctx, s.container.NotifySettings, t.UserID, t.WorkflowID)
+		if err != nil || !settings.ShouldNotifyRun("error", t.PreviousStatus) {
+			continue
+		}
+		req := contract.NotificationRequest{
+			V: contract.NotificationRequestV1, Kind: "run.errored", Type: "error",
+			UserID: t.UserID.String(), WorkflowID: t.WorkflowID.String(),
+			ItemID: t.RunID.String(), Severity: "critical",
+			Message: "Workflow run timed out (lease expired before a result arrived).",
+			Recipients: append([]string(nil), settings.Emails...),
+		}
+		if err := s.container.Notify.PublishRequest(ctx, req); err != nil {
+			s.logger.Error("publish timed out run notification failed", "run_id", t.RunID, "error", err)
 		}
 	}
 }

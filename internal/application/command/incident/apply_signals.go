@@ -124,7 +124,7 @@ func (h *ApplySignalsHandler) Handle(ctx context.Context, cmd ApplySignalsComman
 				}
 				ev := domainincident.NewReopenedEvent(*resolved, now)
 				result.DomainEvents = append(result.DomainEvents, ev)
-				result.Notifications = append(result.Notifications, notifyOpened(*resolved))
+				result.Notifications = append(result.Notifications, notifyReopened(*resolved))
 				continue
 			}
 			if !domainincident.ShouldOpen(failures, policy.OpenAfter) {
@@ -173,7 +173,7 @@ func (h *ApplySignalsHandler) Handle(ctx context.Context, cmd ApplySignalsComman
 				Kind: "incident.resolved", IncidentID: active.ID,
 				UserID: active.UserID, WorkflowID: active.WorkflowID,
 				IncidentKind: active.Kind, Severity: active.Severity,
-				Message: fmt.Sprintf("Incident %s resolved", active.Kind),
+				Message: incidentMessage("resolved", active.Kind),
 			})
 		}
 	}
@@ -241,6 +241,45 @@ func notifyOpened(inc domainincident.Incident) NotifyIntent {
 		Kind: "incident.opened", IncidentID: inc.ID,
 		UserID: inc.UserID, WorkflowID: inc.WorkflowID,
 		IncidentKind: inc.Kind, Severity: inc.Severity,
-		Message: fmt.Sprintf("Incident %s opened", inc.Kind),
+		Message: incidentMessage("opened", inc.Kind),
+	}
+}
+
+func notifyReopened(inc domainincident.Incident) NotifyIntent {
+	return NotifyIntent{
+		Kind: "incident.reopened", IncidentID: inc.ID,
+		UserID: inc.UserID, WorkflowID: inc.WorkflowID,
+		IncidentKind: inc.Kind, Severity: inc.Severity,
+		Message: incidentMessage("reopened", inc.Kind),
+	}
+}
+
+func incidentMessage(action string, kind domainincident.Kind) string {
+	switch kind {
+	case domainincident.KindAvailabilityLow:
+		if action == "resolved" {
+			return "Availability recovered"
+		}
+		return "Availability breached"
+	case domainincident.KindNoRun:
+		if action == "resolved" {
+			return "Workflow is running again"
+		}
+		return "Workflow has not run within the expected window"
+	case domainincident.KindTLSExpiry:
+		if action == "resolved" {
+			return "TLS certificate is healthy again"
+		}
+		return "TLS certificate is expiring or expired"
+	case domainincident.KindCallFailed:
+		return fmt.Sprintf("Call failure incident %s", action)
+	case domainincident.KindCallSlow:
+		return fmt.Sprintf("Slow call incident %s", action)
+	case domainincident.KindWorkflowFailed:
+		return fmt.Sprintf("Workflow failure incident %s", action)
+	case domainincident.KindChainBroken:
+		return fmt.Sprintf("Chain broken incident %s", action)
+	default:
+		return fmt.Sprintf("Incident %s %s", kind, action)
 	}
 }

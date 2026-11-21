@@ -49,6 +49,8 @@ func (m *mockUpsert) Handle(_ context.Context, cmd cmdnotify.UpsertCommand) (dom
 	return domainnotify.Settings{
 		WorkflowID: cmd.WorkflowID, UserID: cmd.UserID, Emails: cmd.Emails,
 		IncidentsEnabled: cmd.IncidentsEnabled, TLSEnabled: cmd.TLSEnabled,
+		RunsEnabled: cmd.RunsEnabled, RunStatuses: cmd.RunStatuses,
+		RunMode: domainnotify.RunMode(cmd.RunMode),
 	}, nil
 }
 
@@ -90,8 +92,11 @@ func TestNotifySettingsHandler_Get_Success(t *testing.T) {
 	if len(emails) != 1 || emails[0] != "a@b.com" {
 		t.Fatalf("emails %#v", out["emails"])
 	}
-	if _, ok := out["runsEnabled"]; ok {
-		t.Fatal("runsEnabled must not be exposed")
+	if out["runsEnabled"] != false {
+		t.Fatalf("runsEnabled %#v", out["runsEnabled"])
+	}
+	if out["runMode"] != "transition" {
+		t.Fatalf("runMode %#v", out["runMode"])
 	}
 }
 
@@ -134,6 +139,7 @@ func TestNotifySettingsHandler_Upsert_Success(t *testing.T) {
 	app := mount(t, &mockGet{}, up, true)
 	resp := doJSON(t, app, http.MethodPut, "/api/workflows/"+testWorkflowID.String()+"/notification-settings", map[string]any{
 		"emails": []string{"a@b.com"}, "incidentsEnabled": true, "tlsEnabled": true,
+		"runsEnabled": true, "runStatuses": []string{"failed", "error"}, "runMode": "every",
 	})
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
@@ -141,6 +147,9 @@ func TestNotifySettingsHandler_Upsert_Success(t *testing.T) {
 	}
 	if len(up.got.Emails) != 1 || up.got.Emails[0] != "a@b.com" {
 		t.Fatalf("got %+v", up.got)
+	}
+	if !up.got.RunsEnabled || up.got.RunMode != "every" {
+		t.Fatalf("runs fields %+v", up.got)
 	}
 }
 

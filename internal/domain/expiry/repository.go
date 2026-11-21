@@ -27,6 +27,9 @@ type ItemRepository interface {
 type AlertRepository interface {
 	// Claim inserts alert rows; returns thresholds that were newly claimed.
 	Claim(ctx context.Context, itemID uuid.UUID, fingerprint string, thresholds []int) ([]int, error)
+	// HadOtherFingerprint is true when an alert exists for this item under a
+	// different certificate fingerprint (or a dated expired claim of another cert).
+	HadOtherFingerprint(ctx context.Context, itemID uuid.UUID, fingerprint string) (bool, error)
 }
 
 type ItemView struct {

@@ -41,6 +41,18 @@ type DispatchStats struct {
 	// EmptyDisabled lists workflows switched off this pass because they had no
 	// calls. The caller notifies their owner.
 	EmptyDisabled []EmptyDisabledWorkflow
+	// TimedOutRuns lists leases that expired this pass (caller may notify).
+	TimedOutRuns []TimedOutRun
+	// OneShotDone lists once/at workflows disabled after a timed-out fire.
+	OneShotDone []EmptyDisabledWorkflow
+}
+
+// TimedOutRun identifies a run recorded because its lease expired.
+type TimedOutRun struct {
+	UserID         uuid.UUID
+	WorkflowID     uuid.UUID
+	RunID          uuid.UUID
+	PreviousStatus string
 }
 
 // EmptyDisabledWorkflow identifies a workflow disabled for having no calls.
@@ -143,15 +155,26 @@ func (h *DispatchDueRunsHandler) Handle(ctx context.Context) (DispatchStats, err
 				continue
 			}
 
+			prevStatus := state.LastStatus
 			if lease, expired := state.ExpireLease(); expired {
 				if err := h.recordTimeout(txCtx, lease, state.WorkflowID, d.UserID); err != nil {
 					return err
 				}
 				stats.TimedOut++
+				stats.TimedOutRuns = append(stats.TimedOutRuns, TimedOutRun{
+					UserID: d.UserID, WorkflowID: state.WorkflowID,
+					RunID: lease.RunID, PreviousStatus: prevStatus,
+				})
 				// A lost result on a parked/disabled one-shot must still finish it.
 				if isOneShot(d.ScheduleType) && (state.NextRunAt.Equal(domainschedule.Never) || !d.Enabled) {
-					if err := h.disableOneShot(txCtx, state.WorkflowID); err != nil {
+					disabled, name, err := h.disableOneShot(txCtx, state.WorkflowID)
+					if err != nil {
 						return err
+					}
+					if disabled {
+						stats.OneShotDone = append(stats.OneShotDone, EmptyDisabledWorkflow{
+							UserID: d.UserID, WorkflowID: state.WorkflowID, Name: name,
+						})
 					}
 					state.ClearSchedule()
 					if err := h.states.Save(txCtx, state); err != nil {
@@ -248,18 +271,21 @@ func isOneShot(scheduleType string) bool {
 	return scheduleType == string(domainworkflow.ScheduleOnce) || scheduleType == string(domainworkflow.ScheduleAt)
 }
 
-func (h *DispatchDueRunsHandler) disableOneShot(ctx context.Context, workflowID uuid.UUID) error {
+func (h *DispatchDueRunsHandler) disableOneShot(ctx context.Context, workflowID uuid.UUID) (bool, string, error) {
 	w, err := h.workflows.GetByID(ctx, workflowID)
 	if err != nil {
-		return err
+		return false, "", err
 	}
 	if w == nil || !w.ScheduleType.IsOneShot() || !w.Disable(h.clock.Now()) {
-		return nil
+		return false, "", nil
 	}
 	if err := h.workflows.Update(ctx, w); err != nil {
-		return err
+		return false, "", err
 	}
-	return h.outbox.StoreEvents(ctx, w.PullEvents())
+	if err := h.outbox.StoreEvents(ctx, w.PullEvents()); err != nil {
+		return false, "", err
+	}
+	return true, w.Name, nil
 }
 
 // disableEmptyWorkflow turns off a workflow that has nothing to run and logs a

@@ -2,6 +2,7 @@ package expiry
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	domainexpiry "go-api/internal/domain/expiry"
@@ -74,12 +75,23 @@ func (h *RecordObservationsHandler) Handle(
 }
 
 func feedEventsFromOutcome(outcome EvaluateOutcome) []domainfeed.Event {
-	if len(outcome.Claimed) == 0 {
+	if outcome.Notification == nil || len(outcome.Claimed) == 0 {
 		return nil
 	}
 	at := outcome.At
 	if at.IsZero() {
 		at = time.Now().UTC()
+	}
+	if outcome.Notification.Kind == "expiry.renewed" {
+		wf := outcome.Item.WorkflowID
+		return []domainfeed.Event{{
+			ID: uuid.New(), UserID: outcome.Item.UserID, WorkflowID: &wf,
+			Kind: domainfeed.KindTLSRenewed, Severity: domainfeed.SeveritySuccess, At: at,
+			Title: fmt.Sprintf("TLS %s renewed", outcome.Item.Subject),
+			Payload: map[string]any{
+				"subject": outcome.Item.Subject, "daysLeft": outcome.DaysLeft,
+			},
+		}}
 	}
 	out := make([]domainfeed.Event, 0, len(outcome.Claimed))
 	for _, th := range outcome.Claimed {

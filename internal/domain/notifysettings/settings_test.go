@@ -24,4 +24,27 @@ func TestDefaultDisablesNothingExceptEmptyRuns(t *testing.T) {
 	if !s.AllowsIncident() || !s.AllowsTLS() {
 		t.Fatal("defaults should allow incident and TLS mail")
 	}
+	if s.RunsEnabled || s.AllowsRuns() {
+		t.Fatal("runs mail must be opt-in by default")
+	}
+}
+
+func TestShouldNotifyRun(t *testing.T) {
+	s := DefaultSettings(uuid.New(), uuid.New(), "a@b.com", testNow)
+	s.RunsEnabled = true
+	s.RunStatuses = []string{"failed", "error"}
+	s.RunMode = RunModeTransition
+	if !s.ShouldNotifyRun("failed", "success") {
+		t.Fatal("transition failed after success")
+	}
+	if s.ShouldNotifyRun("failed", "failed") {
+		t.Fatal("transition same status should not notify")
+	}
+	s.RunMode = RunModeEvery
+	if !s.ShouldNotifyRun("failed", "failed") {
+		t.Fatal("every mode should notify every failure")
+	}
+	if s.ShouldNotifyRun("success", "failed") {
+		t.Fatal("success not in watched statuses")
+	}
 }

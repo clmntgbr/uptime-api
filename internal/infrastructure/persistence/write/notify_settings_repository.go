@@ -32,11 +32,16 @@ func (r *notifySettingsRepository) Get(ctx context.Context, workflowID uuid.UUID
 }
 
 func (r *notifySettingsRepository) Upsert(ctx context.Context, s notifysettings.Settings) error {
+	mode := string(s.RunMode)
+	if mode == "" {
+		mode = string(notifysettings.RunModeTransition)
+	}
 	m := WorkflowNotificationSettingsModel{
 		WorkflowID: s.WorkflowID, UserID: s.UserID,
 		Emails:           pq.StringArray(s.Emails),
 		IncidentsEnabled: s.IncidentsEnabled, TLSEnabled: s.TLSEnabled,
-		UpdatedAt: s.UpdatedAt,
+		RunsEnabled: s.RunsEnabled, RunStatuses: pq.StringArray(s.RunStatuses),
+		RunMode: mode, UpdatedAt: s.UpdatedAt,
 	}
 	if m.UpdatedAt.IsZero() {
 		m.UpdatedAt = time.Now().UTC()
@@ -44,7 +49,8 @@ func (r *notifySettingsRepository) Upsert(ctx context.Context, s notifysettings.
 	return DBWithContext(ctx, r.db).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "workflow_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"emails", "incidents_enabled", "tls_enabled", "updated_at",
+			"emails", "incidents_enabled", "tls_enabled",
+			"runs_enabled", "run_statuses", "run_mode", "updated_at",
 		}),
 	}).Create(&m).Error
 }
@@ -54,9 +60,12 @@ func notifySettingsFromModel(m WorkflowNotificationSettingsModel) *notifysetting
 	if emails == nil {
 		emails = []string{}
 	}
+	statuses := notifysettings.NormalizeRunStatuses([]string(m.RunStatuses))
+	mode, _ := notifysettings.ParseRunMode(m.RunMode)
 	return &notifysettings.Settings{
 		WorkflowID: m.WorkflowID, UserID: m.UserID, Emails: emails,
 		IncidentsEnabled: m.IncidentsEnabled, TLSEnabled: m.TLSEnabled,
+		RunsEnabled: m.RunsEnabled, RunStatuses: statuses, RunMode: mode,
 		UpdatedAt: m.UpdatedAt,
 	}
 }

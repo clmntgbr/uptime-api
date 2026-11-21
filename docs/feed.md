@@ -81,6 +81,7 @@ Un call sans règle qui répond 200 → **aucune ligne feed**.
 **Seuils et observations**
 - `tls.threshold_crossed` : un événement **par palier** franchi (30, 14, 7, 1 jour), comme `expiry_alerts`.
 - `tls.expired`.
+- `tls.renewed` : nouveau fingerprint après alerte sous un autre cert (claim `RenewedClaimThreshold`).
 - `availability.breached` / `availability.recovered` : une fois chacun au passage sous / au-dessus du seuil.
 - `expiry.threshold_crossed`.
 
@@ -134,7 +135,7 @@ GET /api/feed?cursor=…&limit=50&workflowId=…&kind=…&severity=…&from=…&
 ## 9. Ce que le feed n'est pas
 
 - Pas une source de vérité pour l'état d'un incident : l'API incidents reste la référence.
-- Pas un moteur de notification : une ligne feed n'envoie aucun mail.
+- Pas un moteur de notification : une ligne feed n'envoie aucun mail (catalogue e-mails : [`docs/emails.md`](emails.md)).
 - Pas un outil d'analyse : les agrégats (disponibilité, latence moyenne) restent dans `statistics`.
 
 ## 10. Décisions

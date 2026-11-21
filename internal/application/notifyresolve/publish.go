@@ -15,6 +15,7 @@ type Family string
 const (
 	FamilyIncident Family = "incident"
 	FamilyTLS      Family = "tls"
+	FamilyRuns     Family = "runs"
 )
 
 // PrepareRequest loads settings and returns false when the family must not send.
@@ -43,6 +44,10 @@ func PrepareRequest(
 		}
 	case FamilyTLS:
 		if !settings.AllowsTLS() {
+			return req, false
+		}
+	case FamilyRuns:
+		if !settings.AllowsRuns() {
 			return req, false
 		}
 	default:

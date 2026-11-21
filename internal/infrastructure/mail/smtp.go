@@ -102,6 +102,7 @@ func (s *Sender) Send(to, subject, htmlBody string) error {
 }
 
 func buildMessage(from, to, subject, htmlBody string) []byte {
+	subject = sanitizeHeader(subject)
 	var b strings.Builder
 	b.WriteString("From: " + from + "\r\n")
 	b.WriteString("To: " + to + "\r\n")
@@ -111,4 +112,13 @@ func buildMessage(from, to, subject, htmlBody string) []byte {
 	b.WriteString("\r\n")
 	b.WriteString(htmlBody)
 	return []byte(b.String())
+}
+
+func sanitizeHeader(v string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' {
+			return -1
+		}
+		return r
+	}, v)
 }

@@ -18,6 +18,9 @@ const (
 	MaxThresholdDays = 365
 	StaleAfter       = 7 * 24 * time.Hour
 	ExpiredAlertDays = 7
+	// RenewedClaimThreshold is a sentinel stored in expiry_alerts so "renewed"
+	// is claimed at most once per certificate fingerprint.
+	RenewedClaimThreshold = 10000
 )
 
 type ItemState string
