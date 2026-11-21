@@ -18,10 +18,10 @@ const (
 	KindIncidentAcknowledged Kind = "incident.acknowledged"
 	KindIncidentResolved     Kind = "incident.resolved"
 
-	KindTLSThresholdCrossed   Kind = "tls.threshold_crossed"
-	KindTLSExpired            Kind = "tls.expired"
-	KindAvailabilityBreached  Kind = "availability.breached"
-	KindAvailabilityRecovered Kind = "availability.recovered"
+	KindTLSThresholdCrossed    Kind = "tls.threshold_crossed"
+	KindTLSExpired             Kind = "tls.expired"
+	KindAvailabilityBreached   Kind = "availability.breached"
+	KindAvailabilityRecovered  Kind = "availability.recovered"
 	KindExpiryThresholdCrossed Kind = "expiry.threshold_crossed"
 
 	KindWorkflowCreated Kind = "workflow.created"

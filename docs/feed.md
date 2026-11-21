@@ -160,5 +160,5 @@ GET /api/feed?cursor=…&limit=50&workflowId=…&kind=…&severity=…&from=…&
 3. API `GET /api/feed` : fusion `feed_events` + transitions `incident_events`, pagination curseur, tests HTTP.
 4. Écriture seuils TLS / disponibilité au franchissement.
 5. Purge `FEED_RETENTION_DAYS`.
-6. Front : card aperçu (incidents / last run) + drawer liste complète, i18n sur `kind`.
+6. Front (`uptime-app`) : card Activity à côté incidents / last run + drawer « See all » (scroll curseur).
 7. (Plus tard) `feed.created` Centrifugo + éventuel `run.passed` optionnel.

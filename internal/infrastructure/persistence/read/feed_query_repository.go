@@ -24,6 +24,9 @@ func NewFeedQueryRepository(db *gorm.DB) feed.ReadRepository {
 
 // listFeedSQL merges feed_events with projected incident_events (opened/reopened/ack/resolved).
 // availability_low transitions are exposed as availability.breached / availability.recovered.
+//
+// Optional filters use boolean flags — never `@name::type` casts: GORM leaves those
+// unsubstituted and Postgres errors with "operator does not exist: @ uuid".
 const listFeedSQL = `
 SELECT * FROM (
   SELECT
@@ -40,13 +43,13 @@ SELECT * FROM (
     f.payload
   FROM feed_events f
   WHERE f.user_id = @user_id
-    AND (@workflow_id::uuid IS NULL OR f.workflow_id = @workflow_id)
-    AND (@from_at::timestamptz IS NULL OR f.at >= @from_at)
-    AND (@to_at::timestamptz IS NULL OR f.at <= @to_at)
-    AND (CARDINALITY(@kinds::text[]) = 0 OR f.kind = ANY(@kinds))
-    AND (CARDINALITY(@severities::text[]) = 0 OR f.severity = ANY(@severities))
+    AND (@has_workflow = FALSE OR f.workflow_id = @workflow_id)
+    AND (@has_from = FALSE OR f.at >= @from_at)
+    AND (@has_to = FALSE OR f.at <= @to_at)
+    AND (@has_kinds = FALSE OR f.kind = ANY(@kinds))
+    AND (@has_severities = FALSE OR f.severity = ANY(@severities))
     AND (
-      @cursor_at::timestamptz IS NULL
+      @has_cursor = FALSE
       OR (f.at, f.id) < (@cursor_at, @cursor_id)
     )
 
@@ -84,11 +87,11 @@ SELECT * FROM (
   INNER JOIN incidents i ON i.id = ie.incident_id
   WHERE i.user_id = @user_id
     AND ie.type IN ('opened', 'reopened', 'acknowledged', 'resolved')
-    AND (@workflow_id::uuid IS NULL OR i.workflow_id = @workflow_id)
-    AND (@from_at::timestamptz IS NULL OR ie.at >= @from_at)
-    AND (@to_at::timestamptz IS NULL OR ie.at <= @to_at)
+    AND (@has_workflow = FALSE OR i.workflow_id = @workflow_id)
+    AND (@has_from = FALSE OR ie.at >= @from_at)
+    AND (@has_to = FALSE OR ie.at <= @to_at)
     AND (
-      CARDINALITY(@kinds::text[]) = 0
+      @has_kinds = FALSE
       OR (
         CASE
           WHEN i.kind = 'availability_low' AND ie.type IN ('opened', 'reopened') THEN 'availability.breached'
@@ -101,9 +104,9 @@ SELECT * FROM (
         END
       ) = ANY(@kinds)
     )
-    AND (CARDINALITY(@severities::text[]) = 0 OR i.severity = ANY(@severities))
+    AND (@has_severities = FALSE OR i.severity = ANY(@severities))
     AND (
-      @cursor_at::timestamptz IS NULL
+      @has_cursor = FALSE
       OR (ie.at, ie.id) < (@cursor_at, @cursor_id)
     )
 ) AS feed
@@ -135,16 +138,40 @@ func (r *feedQueryRepository) List(ctx context.Context, q feed.ListQuery) ([]fee
 	for _, s := range q.Severities {
 		sevs = append(sevs, string(s))
 	}
+
+	var workflowID uuid.UUID
+	if q.WorkflowID != nil {
+		workflowID = *q.WorkflowID
+	}
+	var fromAt, toAt, cursorAt time.Time
+	if q.From != nil {
+		fromAt = q.From.UTC()
+	}
+	if q.To != nil {
+		toAt = q.To.UTC()
+	}
+	var cursorID uuid.UUID
+	if q.CursorAt != nil && q.CursorID != nil {
+		cursorAt = q.CursorAt.UTC()
+		cursorID = *q.CursorID
+	}
+
 	params := map[string]any{
-		"user_id":     q.UserID,
-		"workflow_id": q.WorkflowID,
-		"from_at":     q.From,
-		"to_at":       q.To,
-		"kinds":       pq.StringArray(kinds),
-		"severities":  pq.StringArray(sevs),
-		"cursor_at":   q.CursorAt,
-		"cursor_id":   q.CursorID,
-		"limit":       q.Limit,
+		"user_id":        q.UserID,
+		"has_workflow":   q.WorkflowID != nil,
+		"workflow_id":    workflowID,
+		"has_from":       q.From != nil,
+		"from_at":        fromAt,
+		"has_to":         q.To != nil,
+		"to_at":          toAt,
+		"has_kinds":      len(kinds) > 0,
+		"kinds":          pq.StringArray(kinds),
+		"has_severities": len(sevs) > 0,
+		"severities":     pq.StringArray(sevs),
+		"has_cursor":     q.CursorAt != nil && q.CursorID != nil,
+		"cursor_at":      cursorAt,
+		"cursor_id":      cursorID,
+		"limit":          q.Limit,
 	}
 	var rows []feedListRow
 	if err := r.db.WithContext(ctx).Raw(listFeedSQL, params).Scan(&rows).Error; err != nil {
