@@ -16,6 +16,9 @@ type WorkflowNotificationSettingsModel struct {
 	RunsEnabled      bool           `gorm:"column:runs_enabled"`
 	RunStatuses      pq.StringArray `gorm:"column:run_statuses;type:text[]"`
 	RunMode          string         `gorm:"column:run_mode"`
+	DigestDaily      bool           `gorm:"column:digest_daily"`
+	DigestWeekly     bool           `gorm:"column:digest_weekly"`
+	DigestMonthly    bool           `gorm:"column:digest_monthly"`
 	UpdatedAt        time.Time      `gorm:"column:updated_at"`
 }
 

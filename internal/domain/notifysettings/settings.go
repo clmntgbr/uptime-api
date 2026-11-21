@@ -18,6 +18,14 @@ const (
 	RunModeTransition RunMode = "transition"
 )
 
+type DigestCadence string
+
+const (
+	DigestDaily   DigestCadence = "daily"
+	DigestWeekly  DigestCadence = "weekly"
+	DigestMonthly DigestCadence = "monthly"
+)
+
 type Settings struct {
 	WorkflowID       uuid.UUID
 	UserID           uuid.UUID
@@ -27,6 +35,9 @@ type Settings struct {
 	RunsEnabled      bool
 	RunStatuses      []string
 	RunMode          RunMode
+	DigestDaily      bool
+	DigestWeekly     bool
+	DigestMonthly    bool
 	UpdatedAt        time.Time
 }
 
@@ -42,7 +53,26 @@ func DefaultSettings(userID, workflowID uuid.UUID, creatorEmail string, now time
 		RunsEnabled:      false,
 		RunStatuses:      []string{"failed", "error"},
 		RunMode:          RunModeTransition,
+		DigestDaily:      false,
+		DigestWeekly:     false,
+		DigestMonthly:    false,
 		UpdatedAt:        now,
+	}
+}
+
+func (s Settings) AllowsDigest(c DigestCadence) bool {
+	if len(s.Emails) == 0 {
+		return false
+	}
+	switch c {
+	case DigestDaily:
+		return s.DigestDaily
+	case DigestWeekly:
+		return s.DigestWeekly
+	case DigestMonthly:
+		return s.DigestMonthly
+	default:
+		return false
 	}
 }
 

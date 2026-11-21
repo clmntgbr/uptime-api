@@ -356,7 +356,7 @@ func (s *scheduler) notifyTimedOutRuns(ctx context.Context, timedOut []schedule.
 			V: contract.NotificationRequestV1, Kind: "run.errored", Type: "error",
 			UserID: t.UserID.String(), WorkflowID: t.WorkflowID.String(),
 			ItemID: t.RunID.String(), Severity: "critical",
-			Message: "Workflow run timed out (lease expired before a result arrived).",
+			Message:    "Workflow run timed out (lease expired before a result arrived).",
 			Recipients: append([]string(nil), settings.Emails...),
 		}
 		if err := s.container.Notify.PublishRequest(ctx, req); err != nil {
