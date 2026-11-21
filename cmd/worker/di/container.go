@@ -169,6 +169,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	runWriteRepo := write.NewRunWriteRepository(db)
 	claimer := processed.NewTxClaimer(db)
 	expiryPolicyRepo := write.NewExpiryPolicyRepository(db)
+	feedWriteRepo := write.NewFeedWriteRepository(db)
 	expiryEvaluate := cmdexpiry.NewEvaluateHandler(
 		expiryPolicyRepo,
 		write.NewExpiryAlertRepository(db),
@@ -176,7 +177,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	expiryRecord := cmdexpiry.NewRecordObservationsHandler(
 		write.NewExpiryItemRepository(db),
 		expiryEvaluate,
-	)
+	).WithFeed(feedWriteRepo)
 	incidentApply := cmdincident.NewApplySignalsHandler(
 		write.NewIncidentPolicyRepository(db),
 		write.NewSignalStateRepository(db),
@@ -197,7 +198,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		kafka.NewNotificationPublisher(producer),
 		claimer,
 		outboxRepo,
-		slog.Default(), clock)
+		slog.Default(), clock).WithFeed(feedWriteRepo)
 	recordProgress := commandrun.NewRecordCallProgressHandler(stateRepo, runWriteRepo, claimer, outboxRepo)
 	resultsRouter := commandrun.NewResultsRouter(recordResult, recordProgress)
 	resultsConsumer := kafka.NewConsumer(

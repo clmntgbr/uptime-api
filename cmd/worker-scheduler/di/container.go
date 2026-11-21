@@ -48,6 +48,7 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 	}
 	clock := port.SystemClock{}
 
+	feedWriteRepo := write.NewFeedWriteRepository(db)
 	dispatch := schedule.NewDispatchDueRunsHandler(
 		write.NewStateRepository(db),
 		write.NewWorkflowWriteRepository(db, cipher),
@@ -60,13 +61,16 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 		clock,
 		schedule.DispatchConfig{BatchSize: env.DispatchBatchSize, LeaseMargin: env.LeaseMargin, MaxJitter: env.MaxJitter},
 		logger,
-	)
+	).WithFeed(feedWriteRepo)
 	maintain := schedule.NewMaintainResultsHandler(
 		write.NewRunRetention(db),
 		clock,
 		time.Duration(env.RetentionDays)*24*time.Hour,
 		logger,
-	).WithEventRetention(write.NewEventRetention(db))
+	).WithEventRetention(write.NewEventRetention(db)).WithFeedRetention(
+		feedWriteRepo,
+		time.Duration(env.FeedRetentionDays)*24*time.Hour,
+	)
 	expiryPolicyRepo := write.NewExpiryPolicyRepository(db)
 	expiryItemRepo := write.NewExpiryItemRepository(db)
 	expiryEvaluate := cmdexpiry.NewEvaluateHandler(
@@ -77,7 +81,7 @@ func NewContainer(db *gorm.DB, env *config.SchedulerConfig, logger *slog.Logger)
 		expiryItemRepo,
 		expiryEvaluate,
 		logger,
-	)
+	).WithFeed(feedWriteRepo)
 
 	stateRepo := write.NewStateRepository(db)
 	outboxRepo := outbox.NewRepository(db)

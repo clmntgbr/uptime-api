@@ -31,9 +31,14 @@ func setupAPIRoutes(app *fiber.App, container *di.Container) {
 	setupUserRoutes(protected, container)
 	setupRealtimeRoutes(protected, container)
 	setupStatisticsRoutes(protected, container)
+	setupFeedRoutes(protected, container)
 	setupVariableRoutes(protected, container)
 	setupWorkflowRoutes(protected, container)
 	setupLibraryRoutes(protected, container)
+}
+
+func setupFeedRoutes(api fiber.Router, container *di.Container) {
+	api.Get("/feed", container.FeedHandler.List)
 }
 
 func setupLibraryRoutes(api fiber.Router, container *di.Container) {

@@ -16,6 +16,7 @@ import (
 	"go-api/internal/contract"
 	"go-api/internal/domain/certificate"
 	domainexpiry "go-api/internal/domain/expiry"
+	domainfeed "go-api/internal/domain/feed"
 	domainincident "go-api/internal/domain/incident"
 	domainnotify "go-api/internal/domain/notifysettings"
 	"go-api/internal/domain/port"
@@ -43,6 +44,7 @@ type RecordResultHandler struct {
 	notify         notificationPublisher
 	processed      port.ProcessedEventRepository
 	outbox         port.OutboxRepository
+	feedRepo       domainfeed.WriteRepository
 	logger         *slog.Logger
 	clock          port.Clock
 }
@@ -73,6 +75,12 @@ func NewRecordResultHandler(
 		nestedTx: nestedTx, notify: notify,
 		processed: processed, outbox: outbox, logger: logger, clock: clock,
 	}
+}
+
+// WithFeed enables anomaly feed writes in the same transaction as the run.
+func (h *RecordResultHandler) WithFeed(repo domainfeed.WriteRepository) *RecordResultHandler {
+	h.feedRepo = repo
+	return h
 }
 
 // Handle stores a result from `workflow.results` in one transaction: run, call
@@ -109,6 +117,11 @@ func (h *RecordResultHandler) Handle(ctx context.Context, payload []byte) error 
 		}
 		if err := h.runs.Save(txCtx, r); err != nil {
 			return err
+		}
+		if h.feedRepo != nil {
+			if err := h.feedRepo.Append(txCtx, domainfeed.EventsFromRun(r)); err != nil {
+				return err
+			}
 		}
 		if err := h.certificates.Upsert(txCtx, certs); err != nil {
 			return err

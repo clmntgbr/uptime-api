@@ -1,6 +1,6 @@
 # Feed d'événements (journal)
 
-Statut : **décisions figées**, pas encore implémenté. Voir §10.
+Statut : **implémenté (API)**. Front (card + drawer) hors de ce repo. Voir §10.
 
 ## 1. Objectif
 
@@ -93,8 +93,9 @@ Hors v1 (éventuel plus tard) : `run.passed` résumé optionnel par workflow ; j
 
 - **Dans le worker, au moment de `RecordResultHandler`** : anomalies call/run écrites dans la même transaction. Pas de perte, pas de doublon grâce au `processed_events` déjà en place.
 - **Transitions d'incident** : déjà dans `incident_events`. **Lecture directe** dans l'API feed (pas de duplication dans `feed_events`), fusionnées chronologiquement avec les lignes `feed_events`.
-- **Seuils TLS** : un event par palier franchi (claim comme `expiry_alerts`).
-- **Disponibilité** : `breached` puis `recovered`, pas à chaque observation.
+- **Seuils TLS** : un event par palier franchi (claim comme `expiry_alerts`), écrit dans `feed_events`.
+- **Disponibilité** : projetée depuis `incident_events` (`availability_low` → `availability.breached` / `availability.recovered`), une fois à l'ouverture / résolution d'incident.
+- **Configuration** (`workflow.*`, `library.imported`) : kinds réservés, writers hors v1.
 
 ## 6. Volume
 

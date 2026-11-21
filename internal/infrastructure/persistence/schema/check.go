@@ -26,6 +26,7 @@ func Models() []any {
 		&write.CallRunModel{},
 		&write.RuleRunModel{},
 		&write.LibraryItemModel{},
+		&write.FeedEventModel{},
 	}
 }
 

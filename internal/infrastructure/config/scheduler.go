@@ -7,6 +7,7 @@ type SchedulerConfig struct {
 	SecretsEncryptionKey string
 	JobSealPublicKey     string
 	RetentionDays        int
+	FeedRetentionDays    int
 	DispatchBatchSize    int
 	LeaseMargin          time.Duration
 	MaxJitter            time.Duration
@@ -25,6 +26,7 @@ func LoadScheduler() *SchedulerConfig {
 		SecretsEncryptionKey: getEnv("SECRETS_ENCRYPTION_KEY"),
 		JobSealPublicKey:     getEnv("JOB_SEAL_PUBLIC_KEY"),
 		RetentionDays:        getEnvIntOrDefault("RESULTS_RETENTION_DAYS", 30),
+		FeedRetentionDays:    getEnvIntOrDefault("FEED_RETENTION_DAYS", 30),
 		DispatchBatchSize:    getEnvIntOrDefault("SCHEDULER_BATCH_SIZE", 500),
 		LeaseMargin:          getEnvDuration("SCHEDULER_LEASE_MARGIN", time.Minute),
 		MaxJitter:            getEnvDuration("SCHEDULER_MAX_JITTER", 5*time.Second),

@@ -19,6 +19,7 @@ import (
 	querycall "go-api/internal/application/query/call"
 	querycontext "go-api/internal/application/query/contextpanel"
 	queryexpiry "go-api/internal/application/query/expiry"
+	queryfeed "go-api/internal/application/query/feed"
 	queryincident "go-api/internal/application/query/incident"
 	querylibrary "go-api/internal/application/query/library"
 	querynotify "go-api/internal/application/query/notifysettings"
@@ -58,6 +59,7 @@ type Container struct {
 	ContextHandler         *httphandler.ContextHandler
 	ExpiryHandler          *httphandler.ExpiryHandler
 	IncidentHandler        *httphandler.IncidentHandler
+	FeedHandler            *httphandler.FeedHandler
 	NotifySettingsHandler  *httphandler.NotifySettingsHandler
 	VariableHandler        *httphandler.VariableHandler
 	SuggestionHandler      *httphandler.SuggestionHandler
@@ -108,6 +110,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 	runWriteRepo := write.NewRunWriteRepository(db)
 
 	workflowPublisher := kafka.NewWorkflowPublisher(producer)
+	feedWriteRepo := write.NewFeedWriteRepository(db)
 	runManual := schedulecmd.NewRunManualHandler(
 		stateRepo,
 		workflowWriteRepo,
@@ -120,7 +123,7 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 		clock,
 		time.Minute,
 		slog.Default(),
-	)
+	).WithFeed(feedWriteRepo)
 	stopRun := schedulecmd.NewStopRunHandler(
 		stateRepo,
 		workflowWriteRepo,
@@ -192,6 +195,9 @@ func NewContainer(db *gorm.DB, env *config.Config) *Container {
 				write.NewIncidentEventRepository(db),
 				outboxRepo,
 			),
+		),
+		FeedHandler: httphandler.NewFeedHandler(
+			queryfeed.NewListFeedHandler(read.NewFeedQueryRepository(db)),
 		),
 		NotifySettingsHandler: httphandler.NewNotifySettingsHandler(
 			querynotify.NewGetHandler(workflowReadRepo, write.NewNotifySettingsRepository(db)),

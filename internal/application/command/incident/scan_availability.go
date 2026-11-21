@@ -29,6 +29,7 @@ func NewScanAvailabilityHandler(
 }
 
 // Handle evaluates availability_low for workflows with an enabled stored policy.
+// Feed rows come from the API merge of incident_events (mapped to availability.*).
 func (h *ScanAvailabilityHandler) Handle(ctx context.Context) (ApplyResult, error) {
 	var result ApplyResult
 	now := h.clock().UTC()

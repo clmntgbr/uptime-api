@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go-api/internal/contract"
+	domainfeed "go-api/internal/domain/feed"
 	"go-api/internal/domain/port"
 	domainrun "go-api/internal/domain/run"
 	domainschedule "go-api/internal/domain/schedule"
@@ -56,6 +57,7 @@ type DispatchDueRunsHandler struct {
 	runs      domainrun.WriteRepository
 	processed port.ProcessedEventRepository
 	outbox    port.OutboxRepository
+	feedRepo  domainfeed.WriteRepository
 	sealer    port.JobSealer
 	publisher port.JobPublisher
 	clock     port.Clock
@@ -80,6 +82,12 @@ func NewDispatchDueRunsHandler(
 		states: states, workflows: workflows, globals: globals, runs: runs, processed: processed,
 		outbox: outbox, sealer: sealer, publisher: publisher, clock: clock, cfg: cfg, logger: logger,
 	}
+}
+
+// WithFeed enables anomaly feed writes for skipped / timed-out runs.
+func (h *DispatchDueRunsHandler) WithFeed(repo domainfeed.WriteRepository) *DispatchDueRunsHandler {
+	h.feedRepo = repo
+	return h
 }
 
 type pendingJob struct {
@@ -299,11 +307,16 @@ func (h *DispatchDueRunsHandler) record(ctx context.Context, r *domainrun.Run) e
 	if err := h.runs.Save(ctx, r); err != nil {
 		return fmt.Errorf("record run: %w", err)
 	}
+	if h.feedRepo != nil {
+		if err := h.feedRepo.Append(ctx, domainfeed.EventsFromRun(r)); err != nil {
+			return fmt.Errorf("record feed: %w", err)
+		}
+	}
 	return h.outbox.StoreEvents(ctx, r.PullEvents())
 }
 
 func (h *DispatchDueRunsHandler) recordTimeout(ctx context.Context, lease domainschedule.ExpiredLease, workflowID, userID uuid.UUID) error {
-	return recordTimedOutRun(ctx, h.processed, h.runs, h.outbox, lease, workflowID, userID)
+	return recordTimedOutRun(ctx, h.processed, h.runs, h.outbox, lease, workflowID, userID, h.feedRepo)
 }
 
 func (h *DispatchDueRunsHandler) jitter() time.Duration {

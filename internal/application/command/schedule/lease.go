@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	domainfeed "go-api/internal/domain/feed"
 	"go-api/internal/domain/port"
 	domainrun "go-api/internal/domain/run"
 	domainschedule "go-api/internal/domain/schedule"
@@ -20,6 +21,7 @@ func recordTimedOutRun(
 	outbox port.OutboxRepository,
 	lease domainschedule.ExpiredLease,
 	workflowID, userID uuid.UUID,
+	feedRepo domainfeed.WriteRepository,
 ) error {
 	claimed, err := processed.MarkProcessed(ctx, lease.RunID.String(), RecordRunHandlerName)
 	if err != nil {
@@ -31,6 +33,11 @@ func recordTimedOutRun(
 	r := domainrun.NewTimedOut(lease.RunID, workflowID, userID, lease.StartedAt, lease.Until)
 	if err := runs.Save(ctx, r); err != nil {
 		return fmt.Errorf("record timed out run: %w", err)
+	}
+	if feedRepo != nil {
+		if err := feedRepo.Append(ctx, domainfeed.EventsFromRun(r)); err != nil {
+			return fmt.Errorf("record timed out feed: %w", err)
+		}
 	}
 	return outbox.StoreEvents(ctx, r.PullEvents())
 }

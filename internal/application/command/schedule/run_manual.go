@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go-api/internal/contract"
+	domainfeed "go-api/internal/domain/feed"
 	"go-api/internal/domain/port"
 	domainrun "go-api/internal/domain/run"
 	domainschedule "go-api/internal/domain/schedule"
@@ -30,6 +31,7 @@ type RunManualHandler struct {
 	runs        domainrun.WriteRepository
 	processed   port.ProcessedEventRepository
 	outbox      port.OutboxRepository
+	feedRepo    domainfeed.WriteRepository
 	sealer      port.JobSealer
 	publisher   port.JobPublisher
 	clock       port.Clock
@@ -61,6 +63,12 @@ func NewRunManualHandler(
 		outbox: outbox, sealer: sealer, publisher: publisher, clock: clock,
 		leaseMargin: leaseMargin, logger: logger,
 	}
+}
+
+// WithFeed enables anomaly feed writes for timed-out runs.
+func (h *RunManualHandler) WithFeed(repo domainfeed.WriteRepository) *RunManualHandler {
+	h.feedRepo = repo
+	return h
 }
 
 // Handle leases the workflow and publishes a manual job. Returns ErrRunInProgress
@@ -146,7 +154,7 @@ func (h *RunManualHandler) prepare(
 }
 
 func (h *RunManualHandler) recordTimeout(ctx context.Context, lease domainschedule.ExpiredLease, workflowID, userID uuid.UUID) error {
-	return recordTimedOutRun(ctx, h.processed, h.runs, h.outbox, lease, workflowID, userID)
+	return recordTimedOutRun(ctx, h.processed, h.runs, h.outbox, lease, workflowID, userID, h.feedRepo)
 }
 
 // recordSuperseded finalizes a cancelling run that was replaced by a new manual
